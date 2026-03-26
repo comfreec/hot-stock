@@ -538,6 +538,8 @@ if mode == "🔍 급등 예고 종목 탐지":
                     if not active:
                         st.info("추가 신호 없음 (핵심 조건만 충족)")
 
+                    rsi_s = r["rsi_series"]
+                    cd    = get_chart_data(r["symbol"], "2y")
                     if cd is not None:
                         cross_date = r["close_series"].index[-(r["days_since_cross"]+1)]
                         st.plotly_chart(
