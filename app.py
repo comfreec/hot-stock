@@ -359,8 +359,15 @@ def make_candle(data, title, ma240_series=None, cross_date=None, show_levels=Tru
         fig.add_hrect(y0=stop, y1=current,
             fillcolor="rgba(255,51,85,0.08)", line_width=0)
 
+        # ── 차트 타이틀에 요약 정보 추가 ──
+        title = (f"{title}   |   "
+                 f"<span style='color:#00ff88'>🎯 목표 ₩{target:,.0f} (+{upside:.1f}%)</span>   "
+                 f"<span style='color:#aaa'>📍 현재 ₩{current:,.0f}</span>   "
+                 f"<span style='color:#ff3355'>🛑 손절 ₩{stop:,.0f} ({downside:.1f}%)</span>   "
+                 f"<span style='color:#ffd700'>손익비 {rr_ratio:.1f}:1</span>")
+
     fig.update_layout(
-        title=dict(text=title, font=dict(color="#e0e6f0", size=14)),
+        title=dict(text=title, font=dict(color="#e0e6f0", size=13)),
         paper_bgcolor="#0e1117", plot_bgcolor="#0e1117",
         font=dict(color="#8b92a5"),
         yaxis=dict(gridcolor="#1e2540", fixedrange=True),
@@ -368,7 +375,7 @@ def make_candle(data, title, ma240_series=None, cross_date=None, show_levels=Tru
         xaxis=dict(gridcolor="#1e2540", rangeslider_visible=False, fixedrange=True),
         legend=dict(bgcolor="#1e2130", bordercolor="#2d3555"),
         dragmode=False,
-        height=420, margin=dict(l=0,r=0,t=30,b=0))
+        height=420, margin=dict(l=0,r=0,t=60,b=0))
     return fig
 
 # ── 급등 예고 종목 탐지 ──────────────────────────────────────────
