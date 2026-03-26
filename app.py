@@ -907,11 +907,12 @@ elif mode == "🎯 최적 급등 타이밍":
             low_120  = float(close.tail(120).min())
             high_120 = float(close.tail(120).max())
             recovery = (current - low_120) / (high_120 - low_120 + 1e-9)
-            # 저점에서 20~60% 반등 구간이 최적 (너무 많이 오르면 늦음)
-            signals["recovery_zone"] = 0.15 <= recovery <= 0.55
+            # 저점에서 반등 중인 구간 (0~80%)
+            signals["recovery_zone"] = recovery <= 0.75
             signals["recovery_pct"]  = round(recovery * 100, 1)
-            if 0.15 <= recovery <= 0.35:  score += 4  # 초기 반등 (최적)
-            elif 0.35 < recovery <= 0.55: score += 2  # 중간 반등
+            if recovery <= 0.35:   score += 4  # 초기 반등 (최적)
+            elif recovery <= 0.55: score += 3  # 중간 반등
+            elif recovery <= 0.75: score += 1  # 후반 반등
 
             # ── [조건2] 세력 매집 신호 ───────────────────────────
             # OBV 상승 + 최근 20일 가격 변화 < 거래량 변화 (매집 패턴)
@@ -1042,7 +1043,7 @@ elif mode == "🎯 최적 급등 타이밍":
             prog_text.markdown(f"<span style='color:#8b92a5;font-size:13px;'>({idx+1}/{total}) {symbol} 분석 중...</span>", unsafe_allow_html=True)
             prog.progress((idx + 1) / total)
             r = calc_surge_timing_score(symbol)
-            if r and r["total_score"] >= 8:
+            if r and r["total_score"] >= 5:
                 results.append(r)
 
         prog.empty()
