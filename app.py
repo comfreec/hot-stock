@@ -183,7 +183,7 @@ with st.sidebar:
 | 📰 긍정 뉴스 | 1~2점 |
 | 📋 호재 공시 | 2점 |""")
     st.markdown("---")
-    mode = st.selectbox("화면", ["🔍 급등 예고 종목 탐지", "📈 개별 종목 분석"],
+    mode = st.selectbox("화면", ["🔍 급등 예고 종목 탐지", "📈 개별 종목 분석", "💎 우량주 RSI 70 이탈"],
                         label_visibility="collapsed")
     st.caption("⚠️ 투자 손실에 책임지지 않습니다")
 
@@ -280,7 +280,8 @@ def make_rsi_chart(rsi_s, chart_data=None):
         yaxis=dict(range=[0,100], gridcolor="#1e2540", title="RSI",
                    tickvals=[0,20,30,50,70,80,100], fixedrange=True),
         xaxis=dict(gridcolor="#1e2540", rangeslider_visible=False, fixedrange=True),
-        height=160, margin=dict(l=40,r=40,t=25,b=5),
+        height=120, margin=dict(l=40,r=40,t=20,b=5),
+        width=600,
         title=dict(text="RSI(20)", font=dict(color="#e0e6f0", size=13)),
         showlegend=False,
         dragmode=False,
@@ -461,7 +462,7 @@ if mode == "🔍 급등 예고 종목 탐지":
                 rsi_s  = r["rsi_series"]
                 cd     = get_chart_data(r["symbol"], "2y")
                 with st.expander(f"📊 {r['name']} RSI(20) 차트", expanded=True):
-                    st.plotly_chart(make_rsi_chart(rsi_s, cd), config={"scrollZoom":False,"displayModeBar":False}, use_container_width=True, key=f"rsi_main_{r['symbol']}")
+                    st.plotly_chart(make_rsi_chart(rsi_s, cd), config={"scrollZoom":False,"displayModeBar":False}, use_container_width=False, key=f"rsi_main_{r['symbol']}")
 
                 with st.expander(f"🔍 {r['name']} 상세 신호 + 주가 차트"):
                     m1,m2,m3,m4 = st.columns(4)
@@ -499,7 +500,7 @@ if mode == "🔍 급등 예고 종목 탐지":
                             make_candle(cd, f"{r['name']} ({r['symbol']}) — 2년 차트", cross_date=cross_date),
                             config={"scrollZoom":False,"displayModeBar":False}, use_container_width=True, key=f"candle_{r['symbol']}")
                         # RSI 차트 (주가 차트와 x축 동일)
-                        st.plotly_chart(make_rsi_chart(rsi_s, cd), config={"scrollZoom":False,"displayModeBar":False}, use_container_width=True, key=f"rsi_detail_{r['symbol']}")
+                        st.plotly_chart(make_rsi_chart(rsi_s, cd), config={"scrollZoom":False,"displayModeBar":False}, use_container_width=False, key=f"rsi_detail_{r['symbol']}")
 
 # ── 개별 종목 분석 ───────────────────────────────────────────────
 elif mode == "📈 개별 종목 분석":
@@ -590,7 +591,7 @@ elif mode == "📈 개별 종목 분석":
 
                 # RSI 차트 (주가 차트와 x축 동일하게)
                 rsi_s  = result["rsi_series"]
-                st.plotly_chart(make_rsi_chart(rsi_s, data), config={"scrollZoom":False,"displayModeBar":False}, use_container_width=True, key="chart_rsi_individual")
+                st.plotly_chart(make_rsi_chart(rsi_s, data), config={"scrollZoom":False,"displayModeBar":False}, use_container_width=False, key="chart_rsi_individual")
 
             else:
                 # 핵심 조건 미충족 — 그래도 차트와 기본 정보는 보여줌
@@ -625,4 +626,161 @@ elif mode == "📈 개별 종목 분석":
                                 config={"scrollZoom":False,"displayModeBar":False}, use_container_width=True, key="chart_candle_no_cond")
                 # 조건 미충족이어도 RSI 차트 표시
                 rsi_s  = calc_rsi_wilder(data["Close"], period=20)
-                st.plotly_chart(make_rsi_chart(rsi_s, data), config={"scrollZoom":False,"displayModeBar":False}, use_container_width=True, key="chart_rsi_no_cond")
+                st.plotly_chart(make_rsi_chart(rsi_s, data), config={"scrollZoom":False,"displayModeBar":False}, use_container_width=False, key="chart_rsi_no_cond")
+
+
+# ── 우량주 RSI 70 이탈 스캐너 ────────────────────────────────────
+elif mode == "💎 우량주 RSI 70 이탈":
+
+    # 재무 우량 + 성장성 높은 종목 (시총 상위 + 실적 안정)
+    QUALITY_STOCKS = {
+        # 반도체/IT
+        "005930.KS": "삼성전자",
+        "000660.KS": "SK하이닉스",
+        "011070.KS": "LG이노텍",
+        "035420.KS": "NAVER",
+        "035720.KS": "카카오",
+        # 자동차
+        "005380.KS": "현대차",
+        "000270.KS": "기아",
+        "012330.KS": "현대모비스",
+        # 바이오/헬스
+        "207940.KS": "삼성바이오로직스",
+        "068270.KS": "셀트리온",
+        "145020.KQ": "휴젤",
+        "214150.KQ": "클래시스",
+        "196170.KQ": "알테오젠",
+        # 2차전지
+        "006400.KS": "삼성SDI",
+        "051910.KS": "LG화학",
+        "373220.KS": "LG에너지솔루션",
+        "247540.KQ": "에코프로비엠",
+        # 금융
+        "105560.KS": "KB금융",
+        "055550.KS": "신한지주",
+        "316140.KS": "우리금융지주",
+        # 방산/중공업
+        "042660.KS": "한화오션",
+        "064350.KS": "현대로템",
+        "329180.KS": "HD현대중공업",
+        # 소비/유통
+        "090430.KS": "아모레퍼시픽",
+        "097950.KS": "CJ제일제당",
+        # 통신
+        "017670.KS": "SK텔레콤",
+        "030200.KS": "KT",
+        # 소재
+        "010130.KS": "고려아연",
+        "005490.KS": "POSCO홀딩스",
+    }
+
+    st.markdown("""
+    <div style='background:linear-gradient(135deg,#1a1f35,#0e1117);
+         padding:20px 24px;border-radius:12px;margin-bottom:16px;border:1px solid #2d3555;'>
+      <h3 style='color:#fff;margin:0;'>💎 재무 우량주 RSI(20) 70 이탈 스캐너</h3>
+      <p style='color:#8b92a5;margin:8px 0 0;font-size:13px;'>
+        재무 우량 + 성장성 높은 종목 중 <b style='color:#ffd700;'>RSI(20)이 70 이상 도달 후 70 이하로 이탈한 종목</b>을 탐지합니다.<br>
+        고점 확인 후 조정 → 다음 매수 타이밍 준비 신호
+      </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    days_ago = st.slider("📅 최근 며칠 이내 이탈", 1, 30, 10, help="70선 이탈이 며칠 이내인지")
+
+    if st.button("🔍 스캔 시작", type="primary", use_container_width=True):
+        results = []
+        prog = st.progress(0)
+        total = len(QUALITY_STOCKS)
+
+        for idx, (symbol, name) in enumerate(QUALITY_STOCKS.items()):
+            prog.progress((idx + 1) / total)
+            try:
+                df = yf.Ticker(symbol).history(period="1y")
+                if df is None or len(df) < 60:
+                    continue
+                rsi = calc_rsi_wilder(df["Close"], 20).dropna()
+                if len(rsi) < 5:
+                    continue
+
+                # 최근 days_ago 이내에 70 이탈 (이전 >= 70, 현재 < 70)
+                recent = rsi.tail(days_ago + 1)
+                cross_down = (recent.shift(1) >= 70) & (recent < 70)
+                if not cross_down.any():
+                    continue
+
+                cross_date = cross_down[cross_down].index[-1]
+                days_since = (rsi.index[-1] - cross_date).days
+
+                current_price = float(df["Close"].iloc[-1])
+                prev_price    = float(df["Close"].iloc[-2])
+                chg           = (current_price - prev_price) / prev_price * 100
+                current_rsi   = float(rsi.iloc[-1])
+                peak_rsi      = float(rsi[rsi.index <= cross_date].tail(20).max())
+
+                results.append({
+                    "symbol":       symbol,
+                    "name":         name,
+                    "current_price": current_price,
+                    "price_change_1d": chg,
+                    "current_rsi":  current_rsi,
+                    "peak_rsi":     peak_rsi,
+                    "cross_date":   str(cross_date.date()),
+                    "days_since":   days_since,
+                    "rsi_series":   rsi,
+                    "df":           df,
+                })
+            except Exception:
+                continue
+
+        prog.empty()
+
+        if not results:
+            st.warning(f"최근 {days_ago}일 이내 RSI 70 이탈 종목이 없습니다. 기간을 늘려보세요.")
+        else:
+            results.sort(key=lambda x: x["days_since"])
+            st.success(f"✅ {len(results)}개 종목 발견!")
+
+            # 요약 카드
+            c1, c2, c3 = st.columns(3)
+            metric_card(c1, "발견 종목", f"{len(results)}개")
+            metric_card(c2, "평균 현재 RSI", f"{sum(r['current_rsi'] for r in results)/len(results):.1f}")
+            metric_card(c3, "최근 이탈", f"{min(r['days_since'] for r in results)}일 전")
+
+            st.markdown("<div class='sec-title'>📋 RSI 70 이탈 종목</div>", unsafe_allow_html=True)
+
+            # 테이블
+            df_out = pd.DataFrame([{
+                "종목명":    r["name"],
+                "종목코드":  r["symbol"],
+                "현재가":    f"₩{r['current_price']:,.0f}",
+                "등락률":    f"{'🔺' if r['price_change_1d']>0 else '🔻'}{r['price_change_1d']:.2f}%",
+                "현재RSI":   round(r["current_rsi"], 1),
+                "고점RSI":   round(r["peak_rsi"], 1),
+                "70이탈일":  r["cross_date"],
+                "경과일":    f"{r['days_since']}일",
+            } for r in results])
+
+            st.dataframe(df_out,
+                column_config={
+                    "현재RSI": st.column_config.ProgressColumn("현재RSI", min_value=0, max_value=100, format="%.1f"),
+                    "고점RSI": st.column_config.ProgressColumn("고점RSI", min_value=0, max_value=100, format="%.1f"),
+                },
+                use_container_width=True, hide_index=True)
+
+            # 종목별 RSI 차트
+            st.markdown("<div class='sec-title'>📈 종목별 RSI 차트</div>", unsafe_allow_html=True)
+            for r in results:
+                with st.expander(f"📊 {r['name']} ({r['symbol']}) — 현재 RSI: {r['current_rsi']:.1f} | 70이탈: {r['cross_date']}"):
+                    m1, m2, m3, m4 = st.columns(4)
+                    m1.metric("현재 RSI", f"{r['current_rsi']:.1f}")
+                    m2.metric("고점 RSI", f"{r['peak_rsi']:.1f}")
+                    m3.metric("70 이탈일", r["cross_date"])
+                    m4.metric("경과", f"{r['days_since']}일")
+                    st.plotly_chart(
+                        make_rsi_chart(r["rsi_series"], r["df"]),
+                        config={"scrollZoom": False, "displayModeBar": False},
+                        use_container_width=False, key=f"rsi_quality_{r['symbol']}")
+                    st.plotly_chart(
+                        make_candle(r["df"], f"{r['name']} ({r['symbol']})"),
+                        config={"scrollZoom": False, "displayModeBar": False},
+                        use_container_width=True, key=f"candle_quality_{r['symbol']}")
