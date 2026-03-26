@@ -288,7 +288,7 @@ def make_rsi_chart(rsi_s, chart_data=None):
     )
     return fig
 
-def make_candle(data, title, ma240_series=None, cross_date=None, show_levels=False):
+def make_candle(data, title, ma240_series=None, cross_date=None, show_levels=True):
     fig = go.Figure()
     fig.add_trace(go.Candlestick(
         x=data.index, open=data["Open"], high=data["High"],
@@ -310,41 +310,55 @@ def make_candle(data, title, ma240_series=None, cross_date=None, show_levels=Fal
             pass
 
     if show_levels:
-        current = float(data["Close"].iloc[-1])
-        # 목표가: 최근 1년 고점 (저항선)
-        target  = float(data["High"].tail(252).max())
-        # 손절가: 최근 20일 저점 or MA20 중 낮은 값
+        current  = float(data["Close"].iloc[-1])
         ma20_now = float(data["Close"].rolling(20).mean().iloc[-1])
-        stop     = min(float(data["Low"].tail(20).min()), ma20_now)
-        rr_ratio = (target - current) / (current - stop + 1e-9)  # 손익비
 
-        # 목표가 라인 (초록)
+        # 목표가: 52주 고점
+        target   = float(data["High"].tail(252).max())
+        # 손절가: 최근 10일 저점 vs MA20 중 낮은 값, 단 현재가 -3% 이상
+        raw_stop = min(float(data["Low"].tail(10).min()), ma20_now)
+        stop     = min(raw_stop, current * 0.97)
+        rr_ratio = (target - current) / (current - stop + 1e-9)
+
+        upside   = (target / current - 1) * 100
+        downside = (stop / current - 1) * 100
+
+        # ── 목표가 (굵은 초록 실선 + 배경) ──
         fig.add_hline(y=target,
-            line=dict(color="#00d4aa", dash="dash", width=2),
-            annotation_text=f"🎯 목표가 ₩{target:,.0f} (+{(target/current-1)*100:.1f}%)",
-            annotation_font=dict(color="#00d4aa", size=12),
-            annotation_position="top right")
-
-        # 현재가 라인 (흰색)
-        fig.add_hline(y=current,
-            line=dict(color="#ffffff", dash="dot", width=1.5),
-            annotation_text=f"📍 현재가 ₩{current:,.0f}",
-            annotation_font=dict(color="#ffffff", size=11),
-            annotation_position="top left")
-
-        # 손절가 라인 (빨강)
-        fig.add_hline(y=stop,
-            line=dict(color="#ff4b6e", dash="dash", width=2),
-            annotation_text=f"🛑 손절가 ₩{stop:,.0f} ({(stop/current-1)*100:.1f}%) | 손익비 {rr_ratio:.1f}:1",
-            annotation_font=dict(color="#ff4b6e", size=12),
-            annotation_position="bottom right")
-
-        # 목표가~현재가 구간 초록 음영
+            line=dict(color="#00ff88", width=3),
+            annotation=dict(
+                text=f"  🎯 목표가  ₩{target:,.0f}  (+{upside:.1f}%)",
+                font=dict(color="#00ff88", size=13, family="Arial Black"),
+                bgcolor="rgba(0,255,136,0.15)",
+                bordercolor="#00ff88", borderwidth=1,
+                xanchor="left", x=0.01
+            ))
         fig.add_hrect(y0=current, y1=target,
-            fillcolor="rgba(0,212,170,0.07)", line_width=0)
-        # 현재가~손절가 구간 빨강 음영
+            fillcolor="rgba(0,255,136,0.08)", line_width=0)
+
+        # ── 현재가 (흰색 굵은 점선) ──
+        fig.add_hline(y=current,
+            line=dict(color="#ffffff", width=2, dash="dot"),
+            annotation=dict(
+                text=f"  📍 진입가  ₩{current:,.0f}",
+                font=dict(color="#ffffff", size=12, family="Arial Black"),
+                bgcolor="rgba(255,255,255,0.12)",
+                bordercolor="#ffffff", borderwidth=1,
+                xanchor="left", x=0.01
+            ))
+
+        # ── 손절가 (굵은 빨간 실선 + 배경) ──
+        fig.add_hline(y=stop,
+            line=dict(color="#ff3355", width=3),
+            annotation=dict(
+                text=f"  🛑 손절가  ₩{stop:,.0f}  ({downside:.1f}%)  |  손익비 {rr_ratio:.1f}:1",
+                font=dict(color="#ff3355", size=13, family="Arial Black"),
+                bgcolor="rgba(255,51,85,0.15)",
+                bordercolor="#ff3355", borderwidth=1,
+                xanchor="left", x=0.01
+            ))
         fig.add_hrect(y0=stop, y1=current,
-            fillcolor="rgba(255,75,110,0.07)", line_width=0)
+            fillcolor="rgba(255,51,85,0.08)", line_width=0)
 
     fig.update_layout(
         title=dict(text=title, font=dict(color="#e0e6f0", size=14)),
@@ -355,7 +369,7 @@ def make_candle(data, title, ma240_series=None, cross_date=None, show_levels=Fal
         xaxis=dict(gridcolor="#1e2540", rangeslider_visible=False, fixedrange=True),
         legend=dict(bgcolor="#1e2130", bordercolor="#2d3555"),
         dragmode=False,
-        height=380, margin=dict(l=0,r=0,t=30,b=0))
+        height=420, margin=dict(l=0,r=0,t=30,b=0))
     return fig
 
 # ── 급등 예고 종목 탐지 ──────────────────────────────────────────
@@ -1042,7 +1056,7 @@ elif mode == "🎯 최적 급등 타이밍":
             prog_text.markdown(f"<span style='color:#8b92a5;font-size:13px;'>({idx+1}/{total}) {symbol} 분석 중...</span>", unsafe_allow_html=True)
             prog.progress((idx + 1) / total)
             r = calc_surge_timing_score(symbol)
-            if r and r["total_score"] >= 5:
+            if r and r["total_score"] >= 1:
                 results.append(r)
 
         prog.empty()
