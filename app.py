@@ -108,28 +108,53 @@ STOCK_NAMES = {
 st.set_page_config(page_title="한국 주식 급등 예측", page_icon="🚀", layout="wide", initial_sidebar_state="expanded")
 
 st.markdown("""<style>
-/* 모바일 뷰포트 */
-meta[name="viewport"] { content: "width=device-width, initial-scale=1.0"; }
+/* ── 뷰포트 ── */
+@viewport { width: device-width; }
 
-/* 기본 레이아웃 */
+/* ── 기본 레이아웃 ── */
 .main .block-container {
     padding: 0.5rem 0.8rem !important;
     max-width: 100% !important;
 }
 section[data-testid="stSidebar"] {
-    min-width: 260px !important;
-    max-width: 280px !important;
-}
-/* 모바일에서 사이드바 숨김 처리 */
-@media (max-width: 768px) {
-    section[data-testid="stSidebar"] { display: none !important; }
-    .main .block-container { padding: 0.3rem 0.4rem !important; }
-    h1 { font-size: 20px !important; }
-    h3 { font-size: 16px !important; }
-    .metric-card .val { font-size: 16px !important; }
-    .rank-card { padding: 10px 12px !important; }
+    min-width: 240px !important;
+    max-width: 260px !important;
 }
 
+/* ── 모바일 (768px 이하) ── */
+@media (max-width: 768px) {
+    /* 사이드바 숨김 → 상단 햄버거로 접근 */
+    section[data-testid="stSidebar"] { display: none !important; }
+    .main .block-container { padding: 0.3rem 0.3rem !important; }
+
+    /* 폰트 크기 */
+    h1 { font-size: 18px !important; }
+    h3 { font-size: 14px !important; }
+    p, span, div { font-size: 13px !important; }
+
+    /* 카드 */
+    .metric-card { padding: 10px 6px !important; margin: 2px !important; }
+    .metric-card .val { font-size: 15px !important; }
+    .metric-card .lbl { font-size: 10px !important; }
+    .rank-card { padding: 8px 10px !important; }
+
+    /* 버튼 */
+    .stButton > button { font-size: 14px !important; padding: 8px !important; }
+
+    /* 데이터프레임 스크롤 */
+    .stDataFrame { overflow-x: auto !important; }
+
+    /* 상단 헤더 */
+    .top-header { padding: 14px 16px !important; }
+}
+
+/* ── 태블릿 (1024px 이하) ── */
+@media (max-width: 1024px) and (min-width: 769px) {
+    .metric-card .val { font-size: 18px !important; }
+    .main .block-container { padding: 0.4rem 0.6rem !important; }
+}
+
+/* ── 공통 컴포넌트 ── */
 .top-header{background:linear-gradient(135deg,#1a1f35,#0e1117);padding:24px 32px;
   border-radius:16px;margin-bottom:20px;border:1px solid #2d3555;}
 .metric-card{background:linear-gradient(135deg,#1e2130,#262b3d);border:1px solid #3d4466;
@@ -143,7 +168,7 @@ section[data-testid="stSidebar"] {
 .rank-card.bronze{border-left-color:#cd7f32;}
 .bar-bg{background:#1e2130;border-radius:8px;height:8px;width:100%;}
 .bar-fill{background:linear-gradient(90deg,#4f8ef7,#00d4aa);border-radius:8px;height:8px;}
-.sec-title{font-size:20px;font-weight:700;color:#e0e6f0;margin:20px 0 10px;
+.sec-title{font-size:clamp(15px,3vw,20px);font-weight:700;color:#e0e6f0;margin:20px 0 10px;
   padding-bottom:6px;border-bottom:2px solid #2d3555;}
 .cond-box{background:#1a1f35;border:1px solid #2d3555;border-radius:10px;
   padding:12px 16px;margin-bottom:12px;font-size:13px;color:#8b92a5;}
