@@ -4,7 +4,12 @@ import plotly.graph_objects as go
 import plotly.express as px
 import yfinance as yf
 from datetime import datetime
-from stock_surge_detector import KoreanStockSurgeDetector
+
+try:
+    from stock_surge_detector import KoreanStockSurgeDetector
+except Exception as e:
+    st.error(f"Import error: {e}")
+    st.stop()
 
 STOCK_NAMES = {
     "005930.KS":"삼성전자","000660.KS":"SK하이닉스","035420.KS":"NAVER",
