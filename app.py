@@ -677,15 +677,15 @@ elif mode == "💎 우량주 RSI 70 이탈":
     st.markdown("""
     <div style='background:linear-gradient(135deg,#1a1f35,#0e1117);
          padding:20px 24px;border-radius:12px;margin-bottom:16px;border:1px solid #2d3555;'>
-      <h3 style='color:#fff;margin:0;'>💎 재무 우량주 RSI(20) 70 이탈 스캐너</h3>
+      <h3 style='color:#fff;margin:0;'>💎 재무 우량주 RSI(20) 사이클 완성 스캐너</h3>
       <p style='color:#8b92a5;margin:8px 0 0;font-size:13px;'>
-        재무 우량 + 성장성 높은 종목 중 <b style='color:#ffd700;'>RSI(20)이 70 이상 도달 후 70 이하로 이탈한 종목</b>을 탐지합니다.<br>
-        고점 확인 후 조정 → 다음 매수 타이밍 준비 신호
+        ① RSI 30 이하 (과매도) → ② RSI 30 상향돌파 → ③ RSI 70 도달 → ④ RSI 70 이탈<br>
+        <b style='color:#ffd700;'>한 사이클 완성 후 다음 매수 타이밍 준비 종목</b>
       </p>
     </div>
     """, unsafe_allow_html=True)
 
-    days_ago = st.slider("📅 최근 며칠 이내 이탈", 1, 30, 10, help="70선 이탈이 며칠 이내인지")
+    days_ago = st.slider("📅 최근 며칠 이내 70 이탈", 1, 60, 20, help="70선 이탈이 며칠 이내인지")
 
     if st.button("🔍 스캔 시작", type="primary", use_container_width=True):
         results = []
@@ -695,39 +695,64 @@ elif mode == "💎 우량주 RSI 70 이탈":
         for idx, (symbol, name) in enumerate(QUALITY_STOCKS.items()):
             prog.progress((idx + 1) / total)
             try:
-                df = yf.Ticker(symbol).history(period="1y")
+                df = yf.Ticker(symbol).history(period="2y")
                 if df is None or len(df) < 60:
                     continue
                 rsi = calc_rsi_wilder(df["Close"], 20).dropna()
-                if len(rsi) < 5:
+                if len(rsi) < 40:
                     continue
 
-                # 최근 days_ago 이내에 70 이탈 (이전 >= 70, 현재 < 70)
-                recent = rsi.tail(days_ago + 1)
-                cross_down = (recent.shift(1) >= 70) & (recent < 70)
-                if not cross_down.any():
+                # ── 사이클 탐지 ──────────────────────────────
+                # 1) RSI 30 이하 구간 존재
+                below30 = rsi[rsi <= 30]
+                if len(below30) == 0:
                     continue
+                bottom_date = below30.index[0]
+                bottom_rsi  = float(below30.min())
 
-                cross_date = cross_down[cross_down].index[-1]
-                days_since = (rsi.index[-1] - cross_date).days
+                # 2) 30 상향돌파 (bottom 이후)
+                after_bottom = rsi[rsi.index > bottom_date]
+                cross30 = after_bottom[after_bottom > 30]
+                if len(cross30) == 0:
+                    continue
+                cross30_date = cross30.index[0]
+
+                # 3) 70 도달 (30돌파 이후)
+                after_cross30 = rsi[rsi.index > cross30_date]
+                above70 = after_cross30[after_cross30 >= 70]
+                if len(above70) == 0:
+                    continue
+                peak_date = above70.index[0]
+                peak_rsi  = float(above70.max())
+
+                # 4) 70 이탈 (peak 이후) — 최근 days_ago 이내
+                after_peak = rsi[rsi.index > peak_date]
+                cross70_down = after_peak[(after_peak.shift(1) >= 70) & (after_peak < 70)]
+                if len(cross70_down) == 0:
+                    continue
+                cross70_date = cross70_down.index[-1]
+                days_since   = (rsi.index[-1] - cross70_date).days
+                if days_since > days_ago:
+                    continue
 
                 current_price = float(df["Close"].iloc[-1])
                 prev_price    = float(df["Close"].iloc[-2])
                 chg           = (current_price - prev_price) / prev_price * 100
                 current_rsi   = float(rsi.iloc[-1])
-                peak_rsi      = float(rsi[rsi.index <= cross_date].tail(20).max())
 
                 results.append({
-                    "symbol":       symbol,
-                    "name":         name,
+                    "symbol":        symbol,
+                    "name":          name,
                     "current_price": current_price,
                     "price_change_1d": chg,
-                    "current_rsi":  current_rsi,
-                    "peak_rsi":     peak_rsi,
-                    "cross_date":   str(cross_date.date()),
-                    "days_since":   days_since,
-                    "rsi_series":   rsi,
-                    "df":           df,
+                    "current_rsi":   current_rsi,
+                    "bottom_rsi":    bottom_rsi,
+                    "peak_rsi":      peak_rsi,
+                    "cross30_date":  str(cross30_date.date()),
+                    "cross70_date":  str(cross70_date.date()),
+                    "days_since":    days_since,
+                    "rsi_series":    rsi,
+                    "df":            df,
                 })
             except Exception:
                 continue
@@ -735,28 +760,28 @@ elif mode == "💎 우량주 RSI 70 이탈":
         prog.empty()
 
         if not results:
-            st.warning(f"최근 {days_ago}일 이내 RSI 70 이탈 종목이 없습니다. 기간을 늘려보세요.")
+            st.warning(f"최근 {days_ago}일 이내 RSI 사이클 완성 종목이 없습니다. 기간을 늘려보세요.")
         else:
             results.sort(key=lambda x: x["days_since"])
             st.success(f"✅ {len(results)}개 종목 발견!")
 
-            # 요약 카드
             c1, c2, c3 = st.columns(3)
             metric_card(c1, "발견 종목", f"{len(results)}개")
             metric_card(c2, "평균 현재 RSI", f"{sum(r['current_rsi'] for r in results)/len(results):.1f}")
             metric_card(c3, "최근 이탈", f"{min(r['days_since'] for r in results)}일 전")
 
-            st.markdown("<div class='sec-title'>📋 RSI 70 이탈 종목</div>", unsafe_allow_html=True)
+            st.markdown("<div class='sec-title'>📋 RSI 사이클 완성 종목</div>", unsafe_allow_html=True)
 
-            # 테이블
             df_out = pd.DataFrame([{
                 "종목명":    r["name"],
                 "종목코드":  r["symbol"],
                 "현재가":    f"₩{r['current_price']:,.0f}",
                 "등락률":    f"{'🔺' if r['price_change_1d']>0 else '🔻'}{r['price_change_1d']:.2f}%",
                 "현재RSI":   round(r["current_rsi"], 1),
+                "바닥RSI":   round(r["bottom_rsi"], 1),
                 "고점RSI":   round(r["peak_rsi"], 1),
-                "70이탈일":  r["cross_date"],
+                "30돌파일":  r["cross30_date"],
+                "70이탈일":  r["cross70_date"],
                 "경과일":    f"{r['days_since']}일",
             } for r in results])
 
@@ -767,15 +792,14 @@ elif mode == "💎 우량주 RSI 70 이탈":
                 },
                 use_container_width=True, hide_index=True)
 
-            # 종목별 RSI 차트
             st.markdown("<div class='sec-title'>📈 종목별 RSI 차트</div>", unsafe_allow_html=True)
             for r in results:
-                with st.expander(f"📊 {r['name']} ({r['symbol']}) — 현재 RSI: {r['current_rsi']:.1f} | 70이탈: {r['cross_date']}"):
+                with st.expander(f"📊 {r['name']} ({r['symbol']}) — 현재 RSI: {r['current_rsi']:.1f} | 70이탈: {r['cross70_date']}", expanded=True):
                     m1, m2, m3, m4 = st.columns(4)
-                    m1.metric("현재 RSI", f"{r['current_rsi']:.1f}")
+                    m1.metric("바닥 RSI", f"{r['bottom_rsi']:.1f}")
                     m2.metric("고점 RSI", f"{r['peak_rsi']:.1f}")
-                    m3.metric("70 이탈일", r["cross_date"])
-                    m4.metric("경과", f"{r['days_since']}일")
+                    m3.metric("현재 RSI", f"{r['current_rsi']:.1f}")
+                    m4.metric("70이탈 후", f"{r['days_since']}일")
                     st.plotly_chart(
                         make_rsi_chart(r["rsi_series"], r["df"]),
                         config={"scrollZoom": False, "displayModeBar": False},
