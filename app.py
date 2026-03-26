@@ -126,31 +126,18 @@ section[data-testid="stSidebar"] {
     max-width: 260px !important;
 }
 
-/* ── 모바일 (768px 이하) ── */
+/* ── 모바일: 사이드바 항상 표시 (숨기지 않음) ── */
 @media (max-width: 768px) {
-    /* 사이드바 숨김 → 상단 햄버거로 접근 */
-    section[data-testid="stSidebar"] { display: none !important; }
     .main .block-container { padding: 0.3rem 0.3rem !important; }
-
-    /* 폰트 크기 */
     h1 { font-size: 18px !important; }
     h3 { font-size: 14px !important; }
-    p, span, div { font-size: 13px !important; }
-
-    /* 카드 */
-    .metric-card { padding: 10px 6px !important; margin: 2px !important; }
-    .metric-card .val { font-size: 15px !important; }
+    .metric-card { padding: 8px 4px !important; margin: 2px !important; }
+    .metric-card .val { font-size: 14px !important; }
     .metric-card .lbl { font-size: 10px !important; }
     .rank-card { padding: 8px 10px !important; }
-
-    /* 버튼 */
     .stButton > button { font-size: 14px !important; padding: 8px !important; }
-
-    /* 데이터프레임 스크롤 */
     .stDataFrame { overflow-x: auto !important; }
-
-    /* 상단 헤더 */
-    .top-header { padding: 14px 16px !important; }
+    .top-header { padding: 12px 14px !important; }
 }
 
 /* ── 태블릿 (1024px 이하) ── */
@@ -188,7 +175,7 @@ st.markdown("""<div class="top-header">
 
 # ── 사이드바: 조건 설정 ──────────────────────────────────────────
 with st.sidebar:
-    mode = st.selectbox("화면", ["🎯 최적 급등 타이밍", "🔍 급등 예고 종목 탐지", "📈 개별 종목 분석"],
+    mode = st.selectbox("화면", ["🔍 급등 예고 종목 탐지", "🎯 최적 급등 타이밍", "📈 개별 종목 분석"],
                         label_visibility="collapsed")
     st.markdown("---")
     st.markdown("### ⚙️ 핵심 조건 설정")
@@ -342,14 +329,38 @@ def make_candle(data, title, ma240_series=None, cross_date=None, show_levels=Tru
     if show_levels:
         current  = float(data["Close"].iloc[-1])
         ma20_now = float(data["Close"].rolling(20).mean().iloc[-1])
+        ma60_now = float(data["Close"].rolling(60).mean().iloc[-1]) if len(data) >= 60 else ma20_now
 
-        # 목표가: 52주 고점
-        target   = float(data["High"].tail(252).max())
-        # 손절가: 최근 10일 저점 vs MA20 중 낮은 값, 단 현재가 -3% 이상
-        raw_stop = min(float(data["Low"].tail(10).min()), ma20_now)
-        stop     = min(raw_stop, current * 0.97)
+        # ── 손절가: 직전 스윙 저점 (실제 지지선) ──
+        # 최근 20일 저점 vs MA20 vs MA60 중 현재가 아래에서 가장 가까운 값
+        swing_low = float(data["Low"].tail(20).min())
+        candidates_stop = [x for x in [swing_low, ma20_now, ma60_now] if x < current]
+        stop = max(candidates_stop) if candidates_stop else current * 0.95
+        # 손절이 너무 가까우면 (1% 미만) 최소 -3% 보장
+        if (current - stop) / current < 0.01:
+            stop = current * 0.97
+
+        risk = current - stop  # 리스크 금액
+
+        # ── 목표가: 손익비 2.5:1 기준 + 직전 저항선 확인 ──
+        # 1차: 손익비 2.5배 기준 목표
+        target_rr = current + risk * 2.5
+        # 2차: 최근 60일 고점 (저항선)
+        resist_60 = float(data["High"].tail(60).max())
+        # 3차: 52주 고점
+        resist_52w = float(data["High"].tail(252).max())
+
+        # 현재가보다 위에 있는 저항선 중 가장 가까운 것
+        resist_candidates = [x for x in [resist_60, resist_52w] if x > current * 1.03]
+        nearest_resist = min(resist_candidates) if resist_candidates else target_rr
+
+        # 손익비 2:1 이상 보장되는 목표가 선택
+        target = max(target_rr, nearest_resist) if nearest_resist >= target_rr else target_rr
+        # 단, 너무 멀면 (30% 이상) 현실적인 값으로 조정
+        if (target - current) / current > 0.30:
+            target = current + risk * 3.0
+
         rr_ratio = (target - current) / (current - stop + 1e-9)
-
         upside   = (target / current - 1) * 100
         downside = (stop / current - 1) * 100
 
@@ -568,7 +579,7 @@ if mode == "🔍 급등 예고 종목 탐지":
                   </div>
                 </div>""", unsafe_allow_html=True)
 
-                with st.expander(f"🔍 {r['name']} 상세 신호 + 주가 차트"):
+                with st.expander(f"🔍 {r['name']} 상세 신호 + 주가 차트", expanded=True):
                     m1,m2,m3,m4 = st.columns(4)
                     m1.metric("RSI(20)", f"{r['rsi']:.1f}")
                     m2.metric("240선 이격", f"+{r['ma240_gap']:.1f}%")
