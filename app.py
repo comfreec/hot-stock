@@ -281,7 +281,6 @@ def make_rsi_chart(rsi_s, chart_data=None):
                    tickvals=[0,20,30,50,70,80,100], fixedrange=True),
         xaxis=dict(gridcolor="#1e2540", rangeslider_visible=False, fixedrange=True),
         height=120, margin=dict(l=40,r=40,t=20,b=5),
-        width=600,
         title=dict(text="RSI(20)", font=dict(color="#e0e6f0", size=13)),
         showlegend=False,
         dragmode=False,
@@ -509,12 +508,6 @@ if mode == "🔍 급등 예고 종목 탐지":
                   </div>
                 </div>""", unsafe_allow_html=True)
 
-                # ── RSI 차트: expander 기본 열림 (종목명 바로 아래) ──
-                rsi_s  = r["rsi_series"]
-                cd     = get_chart_data(r["symbol"], "2y")
-                with st.expander(f"📊 {r['name']} RSI(20) 차트", expanded=True):
-                    st.plotly_chart(make_rsi_chart(rsi_s, cd), config={"scrollZoom":False,"displayModeBar":False}, use_container_width=False, key=f"rsi_main_{r['symbol']}")
-
                 with st.expander(f"🔍 {r['name']} 상세 신호 + 주가 차트"):
                     m1,m2,m3,m4 = st.columns(4)
                     m1.metric("RSI(20)", f"{r['rsi']:.1f}")
@@ -551,7 +544,7 @@ if mode == "🔍 급등 예고 종목 탐지":
                             make_candle(cd, f"{r['name']} ({r['symbol']}) — 2년 차트", cross_date=cross_date),
                             config={"scrollZoom":False,"displayModeBar":False}, use_container_width=True, key=f"candle_{r['symbol']}")
                         # RSI 차트 (주가 차트와 x축 동일)
-                        st.plotly_chart(make_rsi_chart(rsi_s, cd), config={"scrollZoom":False,"displayModeBar":False}, use_container_width=False, key=f"rsi_detail_{r['symbol']}")
+                        st.plotly_chart(make_rsi_chart(rsi_s, cd), config={"scrollZoom":False,"displayModeBar":False}, use_container_width=True, key=f"rsi_detail_{r['symbol']}")
 
 # ── 개별 종목 분석 ───────────────────────────────────────────────
 elif mode == "📈 개별 종목 분석":
@@ -642,7 +635,7 @@ elif mode == "📈 개별 종목 분석":
 
                 # RSI 차트 (주가 차트와 x축 동일하게)
                 rsi_s  = result["rsi_series"]
-                st.plotly_chart(make_rsi_chart(rsi_s, data), config={"scrollZoom":False,"displayModeBar":False}, use_container_width=False, key="chart_rsi_individual")
+                st.plotly_chart(make_rsi_chart(rsi_s, data), config={"scrollZoom":False,"displayModeBar":False}, use_container_width=True, key="chart_rsi_individual")
 
             else:
                 # 핵심 조건 미충족 — 그래도 차트와 기본 정보는 보여줌
@@ -677,7 +670,7 @@ elif mode == "📈 개별 종목 분석":
                                 config={"scrollZoom":False,"displayModeBar":False}, use_container_width=True, key="chart_candle_no_cond")
                 # 조건 미충족이어도 RSI 차트 표시
                 rsi_s  = calc_rsi_wilder(data["Close"], period=20)
-                st.plotly_chart(make_rsi_chart(rsi_s, data), config={"scrollZoom":False,"displayModeBar":False}, use_container_width=False, key="chart_rsi_no_cond")
+                st.plotly_chart(make_rsi_chart(rsi_s, data), config={"scrollZoom":False,"displayModeBar":False}, use_container_width=True, key="chart_rsi_no_cond")
 
 
 # ── 우량주 RSI 70 이탈 스캐너 ────────────────────────────────────
@@ -854,7 +847,7 @@ elif mode == "💎 우량주 RSI 70 이탈":
                     st.plotly_chart(
                         make_rsi_chart(r["rsi_series"], r["df"]),
                         config={"scrollZoom": False, "displayModeBar": False},
-                        use_container_width=False, key=f"rsi_quality_{r['symbol']}")
+                        use_container_width=True, key=f"rsi_quality_{r['symbol']}")
                     st.plotly_chart(
                         make_candle(r["df"], f"{r['name']} ({r['symbol']})"),
                         config={"scrollZoom": False, "displayModeBar": False},
@@ -1175,4 +1168,4 @@ elif mode == "🎯 최적 급등 타이밍":
                     st.plotly_chart(
                         make_rsi_chart(r["rsi_series"], cd),
                         config={"scrollZoom":False,"displayModeBar":False},
-                        use_container_width=False, key=f"rsi_timing_{r['symbol']}")
+                        use_container_width=True, key=f"rsi_timing_{r['symbol']}")
