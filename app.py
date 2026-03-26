@@ -183,7 +183,7 @@ with st.sidebar:
 | 📰 긍정 뉴스 | 1~2점 |
 | 📋 호재 공시 | 2점 |""")
     st.markdown("---")
-    mode = st.selectbox("화면", ["🎯 최적 급등 타이밍", "🔍 급등 예고 종목 탐지", "📈 개별 종목 분석", "💎 우량주 RSI 70 이탈"],
+    mode = st.selectbox("화면", ["🎯 최적 급등 타이밍", "🔍 급등 예고 종목 탐지", "📈 개별 종목 분석"],
                         label_visibility="collapsed")
     st.caption("⚠️ 투자 손실에 책임지지 않습니다")
 
@@ -922,11 +922,10 @@ elif mode == "🎯 최적 급등 타이밍":
             high_120 = float(close.tail(120).max())
             recovery = (current - low_120) / (high_120 - low_120 + 1e-9)
             # 저점에서 반등 중인 구간 (0~80%)
-            signals["recovery_zone"] = recovery <= 0.75
+            signals["recovery_zone"] = 0.10 <= recovery <= 0.50
             signals["recovery_pct"]  = round(recovery * 100, 1)
-            if recovery <= 0.35:   score += 4  # 초기 반등 (최적)
-            elif recovery <= 0.55: score += 3  # 중간 반등
-            elif recovery <= 0.75: score += 1  # 후반 반등
+            if 0.10 <= recovery <= 0.30: score += 4  # 초기 반등 (최적)
+            elif 0.30 < recovery <= 0.50: score += 2  # 중간 반등
 
             # ── [조건2] 세력 매집 신호 ───────────────────────────
             # OBV 상승 + 최근 20일 가격 변화 < 거래량 변화 (매집 패턴)
@@ -943,8 +942,8 @@ elif mode == "🎯 최적 급등 타이밍":
             obv_20_chg   = (float(obv_s.iloc[-1]) - float(obv_s.iloc[-20])) / (abs(float(obv_s.iloc[-20])) + 1e-9)
             price_20_chg = (current - float(close.iloc[-20])) / float(close.iloc[-20])
             # OBV는 오르는데 가격은 횡보 = 매집
-            signals["accumulation"] = obv_20_chg > 0 and price_20_chg > -0.15
-            signals["obv_rising"]   = obv_20_chg > -0.05
+            signals["accumulation"] = obv_20_chg > 0.03 and abs(price_20_chg) < 0.08
+            signals["obv_rising"]   = obv_20_chg > 0
             if signals["accumulation"]: score += 3
             elif signals["obv_rising"]: score += 1
 
@@ -956,9 +955,9 @@ elif mode == "🎯 최적 급등 타이밍":
             bb_w_now    = float(bb_w.iloc[-1])
             bb_w_prev5  = float(bb_w.iloc[-5])
             # 현재 BB폭이 60일 최저점 근처 (수축 중)
-            signals["bb_squeeze"]    = bb_w_now <= bb_w_min_60 * 2.0
+            signals["bb_squeeze"]    = bb_w_now <= bb_w_min_60 * 1.2
             # 수축 후 확장 시작
-            signals["bb_expanding"]  = bb_w_now > bb_w_prev5 * 1.01
+            signals["bb_expanding"]  = bb_w_now > bb_w_prev5 * 1.03
             signals["bb_width"]      = round(bb_w_now, 4)
             if signals["bb_squeeze"] and signals["bb_expanding"]: score += 3
             elif signals["bb_squeeze"]:                           score += 2
@@ -969,10 +968,11 @@ elif mode == "🎯 최적 급등 타이밍":
             signals["rsi"] = round(cur_rsi, 1)
 
             # RSI 30 이하 → 30 돌파 → 현재 40~60 (건강한 상승 초기)
-            rsi_120 = rsi.tail(120).dropna()
-            had_below40  = (rsi_120 < 40).any()
-            rsi_healthy  = 40 <= cur_rsi <= 70
-            signals["rsi_cycle"]   = had_below40 and rsi_healthy
+            rsi_90 = rsi.tail(90).dropna()
+            had_below30  = (rsi_90 < 30).any()
+            crossed_30   = ((rsi_90.shift(1) <= 30) & (rsi_90 > 30)).any()
+            rsi_healthy  = 40 <= cur_rsi <= 65
+            signals["rsi_cycle"]   = had_below30 and crossed_30 and rsi_healthy
             signals["rsi_healthy"] = rsi_healthy
             if signals["rsi_cycle"]:   score += 3
             elif rsi_healthy:          score += 1
@@ -1002,8 +1002,8 @@ elif mode == "🎯 최적 급등 타이밍":
             vol_ma20 = vol.rolling(20).mean()
             vol_ratio = float(vol.iloc[-1] / vol_ma20.iloc[-1]) if vol_ma20.iloc[-1] > 0 else 0
             body_ratio = (float(close.iloc[-1]) - float(df["Open"].iloc[-1])) / (float(high.iloc[-1]) - float(low.iloc[-1]) + 1e-9)
-            big_bull   = vol_ratio >= 1.5 and body_ratio >= 0.5 and chg > 0
-            vol_surge  = vol_ratio >= 1.2
+            big_bull   = vol_ratio >= 2.0 and body_ratio >= 0.6 and chg > 0
+            vol_surge  = vol_ratio >= 1.5
             signals["big_bull_candle"] = big_bull
             signals["vol_surge"]       = vol_surge
             signals["vol_ratio"]       = round(vol_ratio, 2)
@@ -1013,8 +1013,8 @@ elif mode == "🎯 최적 급등 타이밍":
             # ── [조건8] 52주 신고가 돌파 직전 ───────────────────
             high_52w = float(high.tail(252).max())
             high_ratio = current / high_52w
-            near_high  = high_ratio >= 0.85  # 52주 고점 15% 이내
-            at_high    = high_ratio >= 0.95  # 돌파 직전
+            near_high  = high_ratio >= 0.92  # 52주 고점 8% 이내
+            at_high    = high_ratio >= 0.98  # 돌파 직전
             signals["near_52w_high"] = near_high
             signals["high_ratio"]    = round(high_ratio * 100, 1)
             if at_high:   score += 3
@@ -1056,7 +1056,7 @@ elif mode == "🎯 최적 급등 타이밍":
             prog_text.markdown(f"<span style='color:#8b92a5;font-size:13px;'>({idx+1}/{total}) {symbol} 분석 중...</span>", unsafe_allow_html=True)
             prog.progress((idx + 1) / total)
             r = calc_surge_timing_score(symbol)
-            if r and r["total_score"] >= 1:
+            if r and r["total_score"] >= 7:
                 results.append(r)
 
         prog.empty()
