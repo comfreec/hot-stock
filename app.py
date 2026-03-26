@@ -188,6 +188,9 @@ st.markdown("""<div class="top-header">
 
 # ── 사이드바: 조건 설정 ──────────────────────────────────────────
 with st.sidebar:
+    mode = st.selectbox("화면", ["🎯 최적 급등 타이밍", "🔍 급등 예고 종목 탐지", "📈 개별 종목 분석"],
+                        label_visibility="collapsed")
+    st.markdown("---")
     st.markdown("### ⚙️ 핵심 조건 설정")
     max_gap = st.slider("📍 240선 근처 범위 (%)", 1, 20, 15,
         help="현재가가 240일선 위 몇 % 이내인지 (작을수록 엄격)")
@@ -213,8 +216,6 @@ with st.sidebar:
 | 📰 긍정 뉴스 | 1~2점 |
 | 📋 호재 공시 | 2점 |""")
     st.markdown("---")
-    mode = st.selectbox("화면", ["🎯 최적 급등 타이밍", "🔍 급등 예고 종목 탐지", "📈 개별 종목 분석"],
-                        label_visibility="collapsed")
     st.caption("⚠️ 투자 손실에 책임지지 않습니다")
 
 # ── 캐시 함수 ────────────────────────────────────────────────────
