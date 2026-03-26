@@ -183,7 +183,7 @@ with st.sidebar:
 | 📰 긍정 뉴스 | 1~2점 |
 | 📋 호재 공시 | 2점 |""")
     st.markdown("---")
-    mode = st.selectbox("화면", ["🔍 급등 예고 종목 탐지", "📈 개별 종목 분석", "💎 우량주 RSI 70 이탈"],
+    mode = st.selectbox("화면", ["🔍 급등 예고 종목 탐지", "📈 개별 종목 분석", "💎 우량주 RSI 70 이탈", "🎯 최적 급등 타이밍"],
                         label_visibility="collapsed")
     st.caption("⚠️ 투자 손실에 책임지지 않습니다")
 
@@ -808,3 +808,320 @@ elif mode == "💎 우량주 RSI 70 이탈":
                         make_candle(r["df"], f"{r['name']} ({r['symbol']})"),
                         config={"scrollZoom": False, "displayModeBar": False},
                         use_container_width=True, key=f"candle_quality_{r['symbol']}")
+
+
+# ── 최적 급등 타이밍 탐지 ────────────────────────────────────────
+elif mode == "🎯 최적 급등 타이밍":
+
+    st.markdown("""
+    <div style='background:linear-gradient(135deg,#1a1f35,#0e1117);
+         padding:20px 24px;border-radius:12px;margin-bottom:16px;border:1px solid #2d3555;'>
+      <h3 style='color:#fff;margin:0;'>🎯 최적 급등 타이밍 탐지 시스템</h3>
+      <p style='color:#8b92a5;margin:8px 0 0;font-size:13px;'>
+        8가지 핵심 조건이 동시에 겹치는 순간을 포착합니다.<br>
+        <b style='color:#ffd700;'>에너지 축적 → 세력 매집 → 변동성 수축 → 돌파 직전</b> 패턴
+      </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    with st.expander("📖 8가지 핵심 조건 설명", expanded=False):
+        st.markdown("""
+| # | 조건 | 점수 | 설명 |
+|---|------|------|------|
+| 1 | 🏔 충분한 조정 후 바닥 | 최대 4점 | 120일+ 하락 조정 후 바닥 다지기 (에너지 축적) |
+| 2 | 📦 세력 매집 신호 | 3점 | OBV 상승 + 가격 횡보 (가격 안 오르는데 거래량 증가) |
+| 3 | 🔥 볼린저밴드 수축 | 3점 | BB Width 최저점 근처 (폭발 직전 에너지 압축) |
+| 4 | 💚 RSI 바닥 사이클 | 3점 | RSI 30 이하 → 30 돌파 → 50 이상 (건강한 반등) |
+| 5 | ⚡ 이평선 정배열 | 3점 | MA5 > MA20 > MA60 순서 정렬 |
+| 6 | 📊 MACD 골든크로스 | 2점 | MACD 히스토그램 0선 상향 돌파 |
+| 7 | 🕯 장대양봉 + 거래량 | 3점 | 평균 대비 2배+ 거래량에 양봉 (세력 진입 확인) |
+| 8 | 🏆 52주 신고가 돌파 직전 | 3점 | 52주 고점 5% 이내 (저항선 돌파 임박) |
+        """)
+
+    def calc_surge_timing_score(symbol):
+        """최적 급등 타이밍 종합 점수 계산"""
+        try:
+            df = yf.Ticker(symbol).history(period="2y")
+            if df is None or len(df) < 60:
+                return None
+
+            close = df["Close"]
+            high  = df["High"]
+            low   = df["Low"]
+            vol   = df["Volume"]
+            n     = len(close)
+
+            score   = 0
+            signals = {}
+
+            # ── 이동평균 ──────────────────────────────────────────
+            ma5   = close.rolling(5).mean()
+            ma20  = close.rolling(20).mean()
+            ma60  = close.rolling(60).mean()
+            ma120 = close.rolling(120).mean()
+            ma240 = close.rolling(240).mean() if n >= 240 else None
+
+            current = float(close.iloc[-1])
+            prev    = float(close.iloc[-2])
+            chg     = (current - prev) / prev * 100
+
+            # ── [조건1] 충분한 조정 후 바닥 다지기 ──────────────
+            # 최근 120일 저점 대비 현재 위치 + 저점에서 반등 중
+            low_120  = float(close.tail(120).min())
+            high_120 = float(close.tail(120).max())
+            recovery = (current - low_120) / (high_120 - low_120 + 1e-9)
+            # 저점에서 20~60% 반등 구간이 최적 (너무 많이 오르면 늦음)
+            signals["recovery_zone"] = 0.15 <= recovery <= 0.55
+            signals["recovery_pct"]  = round(recovery * 100, 1)
+            if 0.15 <= recovery <= 0.35:  score += 4  # 초기 반등 (최적)
+            elif 0.35 < recovery <= 0.55: score += 2  # 중간 반등
+
+            # ── [조건2] 세력 매집 신호 ───────────────────────────
+            # OBV 상승 + 최근 20일 가격 변화 < 거래량 변화 (매집 패턴)
+            obv = [0]
+            for i in range(1, n):
+                if close.iloc[i] > close.iloc[i-1]:
+                    obv.append(obv[-1] + vol.iloc[i])
+                elif close.iloc[i] < close.iloc[i-1]:
+                    obv.append(obv[-1] - vol.iloc[i])
+                else:
+                    obv.append(obv[-1])
+            obv_s = pd.Series(obv, index=close.index)
+
+            obv_20_chg   = (float(obv_s.iloc[-1]) - float(obv_s.iloc[-20])) / (abs(float(obv_s.iloc[-20])) + 1e-9)
+            price_20_chg = (current - float(close.iloc[-20])) / float(close.iloc[-20])
+            # OBV는 오르는데 가격은 횡보 = 매집
+            signals["accumulation"] = obv_20_chg > 0.05 and abs(price_20_chg) < 0.05
+            signals["obv_rising"]   = obv_20_chg > 0
+            if signals["accumulation"]: score += 3
+            elif signals["obv_rising"]: score += 1
+
+            # ── [조건3] 볼린저밴드 수축 ──────────────────────────
+            bb_std = close.rolling(20).std()
+            bb_mid = close.rolling(20).mean()
+            bb_w   = (4 * bb_std) / bb_mid.replace(0, np.nan)
+            bb_w_min_60 = float(bb_w.tail(60).min())
+            bb_w_now    = float(bb_w.iloc[-1])
+            bb_w_prev5  = float(bb_w.iloc[-5])
+            # 현재 BB폭이 60일 최저점 근처 (수축 중)
+            signals["bb_squeeze"]    = bb_w_now <= bb_w_min_60 * 1.15
+            # 수축 후 확장 시작
+            signals["bb_expanding"]  = bb_w_now > bb_w_prev5 * 1.05
+            signals["bb_width"]      = round(bb_w_now, 4)
+            if signals["bb_squeeze"] and signals["bb_expanding"]: score += 3
+            elif signals["bb_squeeze"]:                           score += 2
+
+            # ── [조건4] RSI 바닥 사이클 ──────────────────────────
+            rsi = calc_rsi_wilder(close, 20)
+            cur_rsi = float(rsi.iloc[-1])
+            signals["rsi"] = round(cur_rsi, 1)
+
+            # RSI 30 이하 → 30 돌파 → 현재 40~60 (건강한 상승 초기)
+            rsi_60 = rsi.tail(60).dropna()
+            had_below30  = (rsi_60 < 30).any()
+            crossed_30   = ((rsi_60.shift(1) <= 30) & (rsi_60 > 30)).any()
+            rsi_healthy  = 40 <= cur_rsi <= 65
+            signals["rsi_cycle"]   = had_below30 and crossed_30 and rsi_healthy
+            signals["rsi_healthy"] = rsi_healthy
+            if signals["rsi_cycle"]:   score += 3
+            elif rsi_healthy:          score += 1
+
+            # ── [조건5] 이평선 정배열 ────────────────────────────
+            ma_align_full = (not pd.isna(ma60.iloc[-1]) and
+                             float(ma5.iloc[-1]) > float(ma20.iloc[-1]) > float(ma60.iloc[-1]))
+            ma_align_forming = (float(ma5.iloc[-1]) > float(ma20.iloc[-1]) and
+                                float(ma20.iloc[-1]) > float(ma60.iloc[-1]) * 0.98)
+            signals["ma_align"]         = ma_align_full
+            signals["ma_align_forming"] = ma_align_forming
+            if ma_align_full:    score += 3
+            elif ma_align_forming: score += 1
+
+            # ── [조건6] MACD 골든크로스 ──────────────────────────
+            macd   = close.ewm(span=12, adjust=False).mean() - close.ewm(span=26, adjust=False).mean()
+            macd_s = macd.ewm(span=9, adjust=False).mean()
+            macd_hist = macd - macd_s
+            # 히스토그램 0선 상향 돌파 or 직전 (음→양 전환)
+            signals["macd_cross"]    = bool(macd_hist.iloc[-1] > 0 and macd_hist.iloc[-2] <= 0)
+            signals["macd_positive"] = bool(macd_hist.iloc[-1] > 0)
+            signals["macd_rising"]   = bool(macd_hist.iloc[-1] > macd_hist.iloc[-3])
+            if signals["macd_cross"]:    score += 2
+            elif signals["macd_rising"] and signals["macd_positive"]: score += 1
+
+            # ── [조건7] 장대양봉 + 거래량 급증 ──────────────────
+            vol_ma20 = vol.rolling(20).mean()
+            vol_ratio = float(vol.iloc[-1] / vol_ma20.iloc[-1]) if vol_ma20.iloc[-1] > 0 else 0
+            body_ratio = (float(close.iloc[-1]) - float(df["Open"].iloc[-1])) / (float(high.iloc[-1]) - float(low.iloc[-1]) + 1e-9)
+            big_bull   = vol_ratio >= 2.0 and body_ratio >= 0.6 and chg > 0
+            vol_surge  = vol_ratio >= 1.5
+            signals["big_bull_candle"] = big_bull
+            signals["vol_surge"]       = vol_surge
+            signals["vol_ratio"]       = round(vol_ratio, 2)
+            if big_bull:   score += 3
+            elif vol_surge: score += 1
+
+            # ── [조건8] 52주 신고가 돌파 직전 ───────────────────
+            high_52w = float(high.tail(252).max())
+            high_ratio = current / high_52w
+            near_high  = high_ratio >= 0.95  # 52주 고점 5% 이내
+            at_high    = high_ratio >= 0.99  # 돌파 직전
+            signals["near_52w_high"] = near_high
+            signals["high_ratio"]    = round(high_ratio * 100, 1)
+            if at_high:   score += 3
+            elif near_high: score += 2
+
+            # ── 보너스: 240일선 돌파 후 근처 ────────────────────
+            if ma240 is not None and not pd.isna(ma240.iloc[-1]):
+                ma240_v = float(ma240.iloc[-1])
+                ma240_gap = (current - ma240_v) / ma240_v * 100
+                signals["ma240_gap"] = round(ma240_gap, 1)
+                if 0 <= ma240_gap <= 10: score += 2
+            else:
+                signals["ma240_gap"] = None
+
+            return {
+                "symbol":        symbol,
+                "name":          STOCK_NAMES.get(symbol, symbol),
+                "current_price": current,
+                "price_change_1d": round(chg, 2),
+                "total_score":   score,
+                "max_score":     26,
+                "signals":       signals,
+                "rsi":           cur_rsi,
+                "rsi_series":    rsi,
+                "df":            df,
+            }
+        except Exception:
+            return None
+
+    if st.button("🚀 최적 타이밍 스캔", type="primary", use_container_width=True):
+        from stock_surge_detector import ALL_SYMBOLS as SCAN_SYMBOLS
+
+        results = []
+        prog      = st.progress(0)
+        prog_text = st.empty()
+        total     = len(SCAN_SYMBOLS)
+
+        for idx, symbol in enumerate(SCAN_SYMBOLS):
+            prog_text.markdown(f"<span style='color:#8b92a5;font-size:13px;'>({idx+1}/{total}) {symbol} 분석 중...</span>", unsafe_allow_html=True)
+            prog.progress((idx + 1) / total)
+            r = calc_surge_timing_score(symbol)
+            if r and r["total_score"] >= 8:
+                results.append(r)
+
+        prog.empty()
+        prog_text.empty()
+        results.sort(key=lambda x: x["total_score"], reverse=True)
+
+        if not results:
+            st.warning("현재 조건을 충족하는 종목이 없습니다.")
+        else:
+            st.success(f"✅ {len(results)}개 종목 발견!")
+
+            c1, c2, c3, c4 = st.columns(4)
+            metric_card(c1, "발견 종목", f"{len(results)}개")
+            metric_card(c2, "최고 점수", f"{results[0]['total_score']}점")
+            metric_card(c3, "평균 점수", f"{sum(r['total_score'] for r in results)/len(results):.1f}점")
+            metric_card(c4, "만점", "26점")
+
+            st.markdown("<div class='sec-title'>🏆 최적 급등 타이밍 TOP 종목</div>", unsafe_allow_html=True)
+
+            rows = []
+            for r in results:
+                s = r["signals"]
+                rows.append({
+                    "종목명":   r["name"],
+                    "현재가":   f"₩{r['current_price']:,.0f}",
+                    "등락률":   f"{'🔺' if r['price_change_1d']>0 else '🔻'}{r['price_change_1d']:.2f}%",
+                    "종합점수": r["total_score"],
+                    "RSI":      round(r["rsi"], 1),
+                    "거래량비": f"{s.get('vol_ratio',0):.1f}배",
+                    "반등위치": f"{s.get('recovery_pct',0):.0f}%",
+                    "52주고점": f"{s.get('high_ratio',0):.1f}%",
+                    "매집":     "✅" if s.get("accumulation") else "❌",
+                    "BB수축":   "✅" if s.get("bb_squeeze") else "❌",
+                    "RSI사이클":"✅" if s.get("rsi_cycle") else "❌",
+                    "정배열":   "✅" if s.get("ma_align") else "❌",
+                    "MACD":     "✅" if s.get("macd_cross") or s.get("macd_positive") else "❌",
+                    "장대양봉": "✅" if s.get("big_bull_candle") else "❌",
+                })
+            df_tbl = pd.DataFrame(rows)
+            st.dataframe(df_tbl,
+                column_config={"종합점수": st.column_config.ProgressColumn(
+                    "종합점수", min_value=0, max_value=26, format="%d점")},
+                use_container_width=True, hide_index=True)
+
+            # 상위 종목 상세
+            st.markdown("<div class='sec-title'>🔍 상위 종목 상세 분석</div>", unsafe_allow_html=True)
+            medals = ["gold","silver","bronze"]
+            icons  = ["🥇","🥈","🥉"]
+
+            for i, r in enumerate(results[:10]):
+                medal = medals[i] if i < 3 else ""
+                icon  = icons[i]  if i < 3 else f"{i+1}."
+                s     = r["signals"]
+                pct   = r["total_score"] / 26 * 100
+                color = "#00d4aa" if r["price_change_1d"] > 0 else "#ff4b6e"
+                arrow = "▲" if r["price_change_1d"] > 0 else "▼"
+
+                st.markdown(f"""<div class="rank-card {medal}">
+                  <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <div>
+                      <span style="font-size:20px;">{icon}</span>
+                      <span style="color:#fff;font-size:18px;font-weight:700;margin-left:6px;">{r["name"]}</span>
+                      <span style="color:#8b92a5;font-size:13px;margin-left:8px;">{r["symbol"]}</span>
+                    </div>
+                    <div style="text-align:right;">
+                      <span style="color:#fff;font-size:20px;font-weight:700;">₩{r["current_price"]:,.0f}</span>
+                      <span style="color:{color};font-size:14px;margin-left:8px;">{arrow} {abs(r["price_change_1d"]):.2f}%</span>
+                    </div>
+                  </div>
+                  <div style="margin-top:8px;color:#8b92a5;font-size:12px;">
+                    RSI {s.get('rsi',0):.1f} | 거래량 {s.get('vol_ratio',0):.1f}배 |
+                    반등위치 {s.get('recovery_pct',0):.0f}% | 52주고점 {s.get('high_ratio',0):.1f}%
+                    {f"| 240선 +{s['ma240_gap']:.1f}%" if s.get('ma240_gap') is not None and s['ma240_gap'] >= 0 else ""}
+                  </div>
+                  <div style="margin-top:8px;">
+                    <div style="color:#8b92a5;font-size:11px;margin-bottom:3px;">종합점수 {r["total_score"]}점 / 26점</div>
+                    <div class="bar-bg"><div class="bar-fill" style="width:{pct}%;"></div></div>
+                  </div>
+                </div>""", unsafe_allow_html=True)
+
+                with st.expander(f"📊 {r['name']} 상세 신호 + 차트", expanded=(i==0)):
+                    active, inactive = [], []
+                    checks = [
+                        (s.get("recovery_zone"),      f"🏔 최적 반등 구간 ({s.get('recovery_pct',0):.0f}%)"),
+                        (s.get("accumulation"),        "📦 세력 매집 신호 (OBV↑ + 가격횡보)"),
+                        (s.get("obv_rising"),          "📈 OBV 상승 중"),
+                        (s.get("bb_squeeze"),          f"🔥 볼린저밴드 수축 ({s.get('bb_width',0):.4f})"),
+                        (s.get("bb_expanding"),        "💥 BB 확장 시작 (폭발 직전)"),
+                        (s.get("rsi_cycle"),           f"💚 RSI 바닥 사이클 완성 ({s.get('rsi',0):.1f})"),
+                        (s.get("ma_align"),            "⚡ 이평선 완전 정배열"),
+                        (s.get("ma_align_forming"),    "⚡ 이평선 정배열 형성 중"),
+                        (s.get("macd_cross"),          "📊 MACD 골든크로스"),
+                        (s.get("macd_positive"),       "📊 MACD 양전환"),
+                        (s.get("big_bull_candle"),     f"🕯 장대양봉 + 거래량 급증 ({s.get('vol_ratio',0):.1f}배)"),
+                        (s.get("vol_surge"),           f"📦 거래량 급증 ({s.get('vol_ratio',0):.1f}배)"),
+                        (s.get("near_52w_high"),       f"🏆 52주 신고가 직전 ({s.get('high_ratio',0):.1f}%)"),
+                        (s.get("ma240_gap") is not None and 0 <= s.get("ma240_gap",999) <= 10,
+                                                       f"📍 240일선 근처 (+{s.get('ma240_gap',0):.1f}%)"),
+                    ]
+                    for flag, label in checks:
+                        (active if flag else inactive).append(label)
+
+                    ca, cb = st.columns(2)
+                    with ca:
+                        st.write("**✅ 충족 신호**")
+                        for sig in active: st.success(sig)
+                    with cb:
+                        st.write("**❌ 미충족**")
+                        for sig in inactive[:6]: st.error(sig)
+
+                    cd = r["df"]
+                    st.plotly_chart(
+                        make_candle(cd, f"{r['name']} ({r['symbol']})"),
+                        config={"scrollZoom":False,"displayModeBar":False},
+                        use_container_width=True, key=f"candle_timing_{r['symbol']}")
+                    st.plotly_chart(
+                        make_rsi_chart(r["rsi_series"], cd),
+                        config={"scrollZoom":False,"displayModeBar":False},
+                        use_container_width=False, key=f"rsi_timing_{r['symbol']}")
