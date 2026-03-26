@@ -359,12 +359,34 @@ def make_candle(data, title, ma240_series=None, cross_date=None, show_levels=Tru
         fig.add_hrect(y0=stop, y1=current,
             fillcolor="rgba(255,51,85,0.08)", line_width=0)
 
-        # ── 차트 타이틀에 요약 정보 추가 ──
-        title = (f"{title}   |   "
-                 f"<span style='color:#00ff88'>🎯 목표 ₩{target:,.0f} (+{upside:.1f}%)</span>   "
-                 f"<span style='color:#aaa'>📍 현재 ₩{current:,.0f}</span>   "
-                 f"<span style='color:#ff3355'>🛑 손절 ₩{stop:,.0f} ({downside:.1f}%)</span>   "
-                 f"<span style='color:#ffd700'>손익비 {rr_ratio:.1f}:1</span>")
+        # ── 차트 우측에 정보 박스 (annotation) ──
+        fig.add_annotation(
+            xref="paper", yref="paper",
+            x=1.01, y=1.0,
+            xanchor="left", yanchor="top",
+            text=(
+                f"<b style='color:#00ff88'>🎯 목표가</b><br>"
+                f"<b style='color:#00ff88'>₩{target:,.0f}</b><br>"
+                f"<span style='color:#00ff88'>(+{upside:.1f}%)</span><br>"
+                f"<br>"
+                f"<b style='color:#ffffff'>📍 현재가</b><br>"
+                f"<b style='color:#ffffff'>₩{current:,.0f}</b><br>"
+                f"<br>"
+                f"<b style='color:#ff3355'>🛑 손절가</b><br>"
+                f"<b style='color:#ff3355'>₩{stop:,.0f}</b><br>"
+                f"<span style='color:#ff3355'>({downside:.1f}%)</span><br>"
+                f"<br>"
+                f"<span style='color:#ffd700'>손익비</span><br>"
+                f"<b style='color:#ffd700'>{rr_ratio:.1f} : 1</b>"
+            ),
+            showarrow=False,
+            font=dict(size=12),
+            align="left",
+            bgcolor="rgba(20,25,45,0.92)",
+            bordercolor="#3d4466",
+            borderwidth=1.5,
+            borderpad=10,
+        )
 
     fig.update_layout(
         title=dict(text=title, font=dict(color="#e0e6f0", size=13)),
@@ -375,7 +397,7 @@ def make_candle(data, title, ma240_series=None, cross_date=None, show_levels=Tru
         xaxis=dict(gridcolor="#1e2540", rangeslider_visible=False, fixedrange=True),
         legend=dict(bgcolor="#1e2130", bordercolor="#2d3555"),
         dragmode=False,
-        height=420, margin=dict(l=0,r=0,t=60,b=0))
+        height=420, margin=dict(l=0,r=130,t=40,b=0))
     return fig
 
 # ── 급등 예고 종목 탐지 ──────────────────────────────────────────
