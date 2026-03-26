@@ -292,7 +292,7 @@ if mode == "🔍 급등 예고 종목 탐지":
       📍 현재 주가 240일선 위 <b style="color:#4f8ef7;">0~{max_gap}%</b> 이내
     </div>""", unsafe_allow_html=True)
 
-    if st.button("🚀 스캔 시작", type="primary", config={"scrollZoom":False,"displayModeBar":False}, use_container_width=True):
+    if st.button("🚀 스캔 시작", type="primary", use_container_width=True):
         det = KoreanStockSurgeDetector(max_gap, min_below, max_cross)
         symbols = det.all_symbols
         total = len(symbols)
