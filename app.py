@@ -253,6 +253,27 @@ def make_rsi_chart(rsi_s, chart_data=None):
     fig.add_hline(y=50, line=dict(color="#555", dash="dot", width=1))
     fig.add_hrect(y0=0,  y1=30,  fillcolor="rgba(0,212,170,0.06)",  line_width=0)
     fig.add_hrect(y0=70, y1=100, fillcolor="rgba(255,75,110,0.06)", line_width=0)
+
+    # 30 상향돌파 (이전 <= 30, 현재 > 30) → 초록 위 화살표
+    cross_up = (rsi_s.shift(1) <= 30) & (rsi_s > 30)
+    for dt, val in rsi_s[cross_up].items():
+        fig.add_annotation(
+            x=dt, y=val,
+            text="▲", showarrow=False,
+            font=dict(color="#00d4aa", size=14),
+            yshift=8
+        )
+
+    # 70 하향이탈 (이전 >= 70, 현재 < 70) → 빨간 아래 화살표
+    cross_down = (rsi_s.shift(1) >= 70) & (rsi_s < 70)
+    for dt, val in rsi_s[cross_down].items():
+        fig.add_annotation(
+            x=dt, y=val,
+            text="▼", showarrow=False,
+            font=dict(color="#ff4b6e", size=14),
+            yshift=-8
+        )
+
     fig.update_layout(
         paper_bgcolor="#0e1117", plot_bgcolor="#0e1117",
         font=dict(color="#8b92a5"),
