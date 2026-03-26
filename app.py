@@ -183,7 +183,7 @@ with st.sidebar:
 | 📰 긍정 뉴스 | 1~2점 |
 | 📋 호재 공시 | 2점 |""")
     st.markdown("---")
-    mode = st.selectbox("화면", ["🔍 급등 예고 종목 탐지", "📈 개별 종목 분석", "💎 우량주 RSI 70 이탈", "🎯 최적 급등 타이밍"],
+    mode = st.selectbox("화면", ["🎯 최적 급등 타이밍", "🔍 급등 예고 종목 탐지", "📈 개별 종목 분석", "💎 우량주 RSI 70 이탈"],
                         label_visibility="collapsed")
     st.caption("⚠️ 투자 손실에 책임지지 않습니다")
 
@@ -288,7 +288,7 @@ def make_rsi_chart(rsi_s, chart_data=None):
     )
     return fig
 
-def make_candle(data, title, ma240_series=None, cross_date=None):
+def make_candle(data, title, ma240_series=None, cross_date=None, show_levels=False):
     fig = go.Figure()
     fig.add_trace(go.Candlestick(
         x=data.index, open=data["Open"], high=data["High"],
@@ -302,13 +302,50 @@ def make_candle(data, title, ma240_series=None, cross_date=None):
             line=dict(color=c, width=2 if w==240 else 1.2)))
     if cross_date is not None:
         try:
-            import pandas as pd
             cd_ts = pd.Timestamp(cross_date).timestamp() * 1000
             fig.add_vline(x=cd_ts,
                 line=dict(color="#00d4aa", dash="dot", width=2),
                 annotation_text="240선 돌파", annotation_font_color="#00d4aa")
         except:
             pass
+
+    if show_levels:
+        current = float(data["Close"].iloc[-1])
+        # 목표가: 최근 1년 고점 (저항선)
+        target  = float(data["High"].tail(252).max())
+        # 손절가: 최근 20일 저점 or MA20 중 낮은 값
+        ma20_now = float(data["Close"].rolling(20).mean().iloc[-1])
+        stop     = min(float(data["Low"].tail(20).min()), ma20_now)
+        rr_ratio = (target - current) / (current - stop + 1e-9)  # 손익비
+
+        # 목표가 라인 (초록)
+        fig.add_hline(y=target,
+            line=dict(color="#00d4aa", dash="dash", width=2),
+            annotation_text=f"🎯 목표가 ₩{target:,.0f} (+{(target/current-1)*100:.1f}%)",
+            annotation_font=dict(color="#00d4aa", size=12),
+            annotation_position="top right")
+
+        # 현재가 라인 (흰색)
+        fig.add_hline(y=current,
+            line=dict(color="#ffffff", dash="dot", width=1.5),
+            annotation_text=f"📍 현재가 ₩{current:,.0f}",
+            annotation_font=dict(color="#ffffff", size=11),
+            annotation_position="top left")
+
+        # 손절가 라인 (빨강)
+        fig.add_hline(y=stop,
+            line=dict(color="#ff4b6e", dash="dash", width=2),
+            annotation_text=f"🛑 손절가 ₩{stop:,.0f} ({(stop/current-1)*100:.1f}%) | 손익비 {rr_ratio:.1f}:1",
+            annotation_font=dict(color="#ff4b6e", size=12),
+            annotation_position="bottom right")
+
+        # 목표가~현재가 구간 초록 음영
+        fig.add_hrect(y0=current, y1=target,
+            fillcolor="rgba(0,212,170,0.07)", line_width=0)
+        # 현재가~손절가 구간 빨강 음영
+        fig.add_hrect(y0=stop, y1=current,
+            fillcolor="rgba(255,75,110,0.07)", line_width=0)
+
     fig.update_layout(
         title=dict(text=title, font=dict(color="#e0e6f0", size=14)),
         paper_bgcolor="#0e1117", plot_bgcolor="#0e1117",
@@ -1118,7 +1155,7 @@ elif mode == "🎯 최적 급등 타이밍":
 
                     cd = r["df"]
                     st.plotly_chart(
-                        make_candle(cd, f"{r['name']} ({r['symbol']})"),
+                        make_candle(cd, f"{r['name']} ({r['symbol']})", show_levels=True),
                         config={"scrollZoom":False,"displayModeBar":False},
                         use_container_width=True, key=f"candle_timing_{r['symbol']}")
                     st.plotly_chart(
