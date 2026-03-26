@@ -437,3 +437,4 @@ elif mode == "📊 RSI 전략 (30돌파→70이탈)":
                     m2.metric("고점 RSI", f"{r['peak_rsi']:.1f}", help="과매수 구간 최고점")
                     m3.metric("현재 RSI", f"{r['current_rsi']:.1f}")
                     m4.metric("70이탈 후", f"{r['days_since_70_cross']}일 경과")
+
