@@ -226,11 +226,9 @@ def calc_rsi_wilder(close, period=20):
     return 100 - (100 / (1 + rs))
 
 def make_rsi_chart(rsi_s, chart_data=None):
-    """RSI 차트 - chart_data 인덱스에 맞춰 길이 동기화"""
+    """RSI 차트 - 이베스트증권 스타일, 확대/축소 비활성화"""
     if chart_data is not None:
         try:
-            import pandas as pd
-            # 타임존 제거 후 날짜만으로 비교
             rsi_idx   = rsi_s.index.tz_localize(None) if rsi_s.index.tz is not None else rsi_s.index
             chart_idx = chart_data.index.tz_localize(None) if chart_data.index.tz is not None else chart_data.index
             start = chart_idx[0]
@@ -243,25 +241,28 @@ def make_rsi_chart(rsi_s, chart_data=None):
     fig = go.Figure()
     fig.add_trace(go.Scatter(
         x=rsi_s.index, y=rsi_s.values,
-        name="RSI(20)", line=dict(color="#4f8ef7", width=2),
+        name="RSI(20)", line=dict(color="#4f8ef7", width=1.5),
         fill="tozeroy", fillcolor="rgba(79,142,247,0.05)"
     ))
-    fig.add_hline(y=30, line=dict(color="#00d4aa", dash="dash", width=1.5),
-                  annotation_text="과매도 30", annotation_font_color="#00d4aa",
-                  annotation_position="left")
-    fig.add_hline(y=70, line=dict(color="#ff4b6e", dash="dash", width=1.5),
-                  annotation_text="과매수 70", annotation_font_color="#ff4b6e",
-                  annotation_position="left")
+    fig.add_hline(y=30, line=dict(color="#00d4aa", dash="dash", width=1),
+                  annotation_text="30", annotation_font_color="#00d4aa",
+                  annotation_position="right")
+    fig.add_hline(y=70, line=dict(color="#ff4b6e", dash="dash", width=1),
+                  annotation_text="70", annotation_font_color="#ff4b6e",
+                  annotation_position="right")
+    fig.add_hline(y=50, line=dict(color="#555", dash="dot", width=1))
     fig.add_hrect(y0=0,  y1=30,  fillcolor="rgba(0,212,170,0.06)",  line_width=0)
     fig.add_hrect(y0=70, y1=100, fillcolor="rgba(255,75,110,0.06)", line_width=0)
     fig.update_layout(
         paper_bgcolor="#0e1117", plot_bgcolor="#0e1117",
         font=dict(color="#8b92a5"),
-        yaxis=dict(range=[0,100], gridcolor="#1e2540", title="RSI"),
-        xaxis=dict(gridcolor="#1e2540", rangeslider_visible=False),
-        height=160, margin=dict(l=40,r=5,t=25,b=5),
+        yaxis=dict(range=[0,100], gridcolor="#1e2540", title="RSI",
+                   tickvals=[0,20,30,50,70,80,100], fixedrange=True),
+        xaxis=dict(gridcolor="#1e2540", rangeslider_visible=False, fixedrange=True),
+        height=160, margin=dict(l=40,r=40,t=25,b=5),
         title=dict(text="RSI(20)", font=dict(color="#e0e6f0", size=13)),
-        showlegend=False
+        showlegend=False,
+        dragmode=False,
     )
     return fig
 
@@ -290,10 +291,11 @@ def make_candle(data, title, ma240_series=None, cross_date=None):
         title=dict(text=title, font=dict(color="#e0e6f0", size=14)),
         paper_bgcolor="#0e1117", plot_bgcolor="#0e1117",
         font=dict(color="#8b92a5"),
-        yaxis=dict(gridcolor="#1e2540"),
-        yaxis2=dict(overlaying="y", side="right", gridcolor="#1e2540"),
-        xaxis=dict(gridcolor="#1e2540", rangeslider_visible=False),
+        yaxis=dict(gridcolor="#1e2540", fixedrange=True),
+        yaxis2=dict(overlaying="y", side="right", gridcolor="#1e2540", fixedrange=True),
+        xaxis=dict(gridcolor="#1e2540", rangeslider_visible=False, fixedrange=True),
         legend=dict(bgcolor="#1e2130", bordercolor="#2d3555"),
+        dragmode=False,
         height=380, margin=dict(l=0,r=0,t=30,b=0))
     return fig
 
