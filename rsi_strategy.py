@@ -8,10 +8,25 @@ from stock_surge_detector import ALL_SYMBOLS, STOCK_NAMES
 
 
 def calc_rsi(series, period=20):
-    delta = series.diff()
-    gain = delta.clip(lower=0).rolling(period).mean()
-    loss = (-delta.clip(upper=0)).rolling(period).mean()
-    rs = gain / loss.replace(0, np.nan)
+    """Wilder's Smoothing RSI - 이베스트증권 표준 방식"""
+    d = series.diff()
+    gain = d.where(d > 0, 0.0)
+    loss = -d.where(d < 0, 0.0)
+
+    avg_gain = gain.copy() * 0.0
+    avg_loss = loss.copy() * 0.0
+
+    avg_gain.iloc[period] = gain.iloc[1:period+1].mean()
+    avg_loss.iloc[period] = loss.iloc[1:period+1].mean()
+
+    for i in range(period + 1, len(series)):
+        avg_gain.iloc[i] = (avg_gain.iloc[i-1] * (period - 1) + gain.iloc[i]) / period
+        avg_loss.iloc[i] = (avg_loss.iloc[i-1] * (period - 1) + loss.iloc[i]) / period
+
+    avg_gain.iloc[:period] = float('nan')
+    avg_loss.iloc[:period] = float('nan')
+
+    rs = avg_gain / avg_loss.replace(0, float('nan'))
     return 100 - (100 / (1 + rs))
 
 

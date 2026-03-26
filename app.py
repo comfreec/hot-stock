@@ -105,7 +105,7 @@ STOCK_NAMES = {
     "302440.KQ":"SK바이오사이언스",
 }
 
-st.set_page_config(page_title="한국 주식 급등 예측", page_icon="🚀", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="한국 주식 급등 예측", page_icon="🚀", layout="wide", initial_sidebar_state="expanded")
 
 st.markdown("""<style>
 /* 모바일 뷰포트 */
@@ -200,12 +200,28 @@ def metric_card(col, label, value):
 
 
 def calc_rsi_wilder(close, period=20):
-    """Wilder's Smoothing RSI - 증권사 표준 방식"""
+    """Wilder's Smoothing RSI - 이베스트증권 표준 방식
+    첫 period일 단순평균으로 시드값, 이후 Wilder smoothing 적용
+    """
     d = close.diff()
     gain = d.where(d > 0, 0.0)
     loss = -d.where(d < 0, 0.0)
-    avg_gain = gain.ewm(alpha=1/period, min_periods=period, adjust=False).mean()
-    avg_loss = loss.ewm(alpha=1/period, min_periods=period, adjust=False).mean()
+
+    avg_gain = gain.copy() * 0.0
+    avg_loss = loss.copy() * 0.0
+
+    # 첫 시드값: period일 단순평균
+    avg_gain.iloc[period] = gain.iloc[1:period+1].mean()
+    avg_loss.iloc[period] = loss.iloc[1:period+1].mean()
+
+    # 이후 Wilder smoothing
+    for i in range(period + 1, len(close)):
+        avg_gain.iloc[i] = (avg_gain.iloc[i-1] * (period - 1) + gain.iloc[i]) / period
+        avg_loss.iloc[i] = (avg_loss.iloc[i-1] * (period - 1) + loss.iloc[i]) / period
+
+    avg_gain.iloc[:period] = float('nan')
+    avg_loss.iloc[:period] = float('nan')
+
     rs = avg_gain / avg_loss.replace(0, float('nan'))
     return 100 - (100 / (1 + rs))
 
