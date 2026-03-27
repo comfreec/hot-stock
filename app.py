@@ -295,8 +295,23 @@ def make_sparkline(prices, color):
         pts.append(f"{x:.1f},{y:.1f}")
     return f'<svg width="{w}" height="{h}" style="display:inline-block;vertical-align:middle;"><polyline points="{" ".join(pts)}" fill="none" stroke="{color}" stroke-width="1.5"/></svg>'
 
-@st.cache_data(ttl=600)
-def get_news_headline(symbol):
+@st.cache_data(ttl=60)
+def get_realtime_price(symbol):
+    """네이버 금융에서 실시간(1~2분 지연) 현재가 가져오기"""
+    try:
+        code = symbol.replace(".KS","").replace(".KQ","")
+        url = f"https://finance.naver.com/item/main.naver?code={code}"
+        res = requests.get(url, headers={"User-Agent":"Mozilla/5.0"}, timeout=3)
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(res.text, "html.parser")
+        price_tag = soup.select_one(".no_today .blind")
+        if price_tag:
+            return int(price_tag.get_text().replace(",",""))
+    except:
+        pass
+    return None
+
+
     """종목 최신 뉴스 1건"""
     try:
         code = symbol.replace(".KS","").replace(".KQ","")
@@ -700,10 +715,12 @@ if mode == "🔍 급등 예고 종목 탐지":
                 spark_prices = get_sparkline(r["symbol"])
                 spark_svg = make_sparkline(spark_prices, color) if spark_prices else ""
                 news = get_news_headline(r["symbol"])
-                import html
-                news_safe = html.escape(news) if news else ""
+                import html as _html
+                news_safe = _html.escape(news) if news else ""
                 below_months = r["below_days"] // 20
-                news_html = f'<div style="margin-top:5px;color:#6b7280;font-size:11px;overflow:hidden;text-overflow:ellipsis;">📰 {news_safe}</div>' if news_safe else ''
+                # 실시간 가격
+                rt_price = get_realtime_price(r["symbol"])
+                display_price = rt_price if rt_price else r["current_price"]
 
                 st.markdown(f"""<div class="rank-card {medal}">
                   <div style="display:flex;justify-content:space-between;align-items:center;">
@@ -715,7 +732,7 @@ if mode == "🔍 급등 예고 종목 탐지":
                     <div style="display:flex;align-items:center;gap:12px;">
                       {spark_svg}
                       <div style="text-align:right;">
-                        <span style="color:#fff;font-size:clamp(14px,3vw,20px);font-weight:700;">₩{r["current_price"]:,.0f}</span>
+                        <span style="color:#fff;font-size:clamp(14px,3vw,20px);font-weight:700;">₩{display_price:,.0f}</span>
                         <span style="color:{color};font-size:14px;margin-left:8px;">{arrow} {abs(r["price_change_1d"]):.2f}%</span>
                       </div>
                     </div>
@@ -724,11 +741,13 @@ if mode == "🔍 급등 예고 종목 탐지":
                     240일선 ₩{r["ma240"]:,.0f} | 이격 +{r["ma240_gap"]:.1f}% |
                     조정 {r["below_days"]}일({below_months}개월) | 돌파 {r["days_since_cross"]}일 전
                   </div>
-                  {news_html}
-                  <div style="margin-top:8px;">
-                    <div style="color:#8b92a5;font-size:11px;margin-bottom:3px;">종합점수 {r["total_score"]}점</div>
-                    <div class="bar-bg"><div class="bar-fill" style="width:{pct}%;"></div></div>
-                  </div>
+                </div>""", unsafe_allow_html=True)
+                if news_safe:
+                    st.markdown(f'<div style="color:#6b7280;font-size:11px;padding:2px 8px 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">📰 {news_safe}</div>', unsafe_allow_html=True)
+                pct_str = f"{pct:.2f}"
+                st.markdown(f"""<div style="padding:4px 8px 8px;">
+                  <div style="color:#8b92a5;font-size:11px;margin-bottom:3px;">종합점수 {r["total_score"]}점</div>
+                  <div class="bar-bg"><div class="bar-fill" style="width:{pct_str}%;"></div></div>
                 </div>""", unsafe_allow_html=True)
 
                 if True:  # 바로 표시
