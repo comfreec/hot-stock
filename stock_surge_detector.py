@@ -258,6 +258,47 @@ class KoreanStockSurgeDetector:
 
     # ── 핵심 분석 ────────────────────────────────────────────────
 
+    def _market_condition(self):
+        """KOSPI 시장 상태 확인 - 상승장/하락장"""
+        try:
+            kospi = yf.Ticker("^KS11").history(period="1y")
+            close = kospi["Close"]
+            ma200 = float(close.rolling(200).mean().iloc[-1])
+            ma60  = float(close.rolling(60).mean().iloc[-1])
+            cur   = float(close.iloc[-1])
+            # 200일선 위 = 상승장, 아래 = 하락장
+            bull = cur > ma200
+            # 60일선 기울기 (모멘텀)
+            slope = (float(close.rolling(60).mean().iloc[-1]) - float(close.rolling(60).mean().iloc[-20])) / float(close.rolling(60).mean().iloc[-20]) * 100
+            return bull, round(slope, 2)
+        except:
+            return True, 0
+
+    def _sector_momentum(self, symbol):
+        """섹터 모멘텀 - 같은 섹터 ETF 기준"""
+        sector_etf = {
+            # 반도체
+            "005930.KS":"091160.KS","000660.KS":"091160.KS","011070.KS":"091160.KS",
+            # 자동차
+            "005380.KS":"091180.KS","000270.KS":"091180.KS",
+            # 바이오
+            "207940.KS":"244580.KS","068270.KS":"244580.KS","145020.KQ":"244580.KS",
+            # 2차전지
+            "006400.KS":"305720.KS","051910.KS":"305720.KS","373220.KS":"305720.KS",
+            # 방산
+            "047810.KS":"459580.KS","064350.KS":"459580.KS",
+        }
+        etf = sector_etf.get(symbol)
+        if not etf:
+            return 0
+        try:
+            df = yf.Ticker(etf).history(period="3mo")
+            close = df["Close"]
+            ret_1m = (float(close.iloc[-1]) - float(close.iloc[-20])) / float(close.iloc[-20]) * 100
+            return round(ret_1m, 2)
+        except:
+            return 0
+
     def analyze_stock(self, symbol):
         """
         필수 조건 3가지 모두 통과해야 결과 반환:
@@ -468,6 +509,50 @@ class KoreanStockSurgeDetector:
             signals["near_52w_high"] = high_ratio >= 0.95
             signals["high_ratio"] = round(high_ratio * 100, 1)
             if signals["near_52w_high"]: score += 2
+
+            # ── 시장 상태 필터 ────────────────────────────────────
+            market_bull, market_slope = self._market_condition()
+            signals["market_bull"]  = market_bull
+            signals["market_slope"] = market_slope
+            # 하락장이면 점수 패널티
+            if not market_bull:
+                score = max(0, score - 3)
+            elif market_slope > 2:
+                score += 2  # 강한 상승장 가산점
+
+            # ── 섹터 모멘텀 ──────────────────────────────────────
+            sector_ret = self._sector_momentum(symbol)
+            signals["sector_momentum"] = sector_ret
+            if sector_ret > 5:   score += 3  # 섹터 강세
+            elif sector_ret > 2: score += 1
+            elif sector_ret < -5: score = max(0, score - 2)  # 섹터 약세 패널티
+
+            # ── 거래량 패턴 정교화 ───────────────────────────────
+            # 3일 연속 거래량 증가 + 가격 상승
+            vol3 = vol.iloc[-3:]
+            close3 = close.iloc[-3:]
+            vol_rising3 = bool(
+                vol3.iloc[-1] > vol3.iloc[-2] > vol3.iloc[-3] and
+                close3.iloc[-1] > close3.iloc[-2] > close3.iloc[-3]
+            )
+            signals["vol_price_rising3"] = vol3_rising = vol_rising3
+            if vol_rising3: score += 3
+
+            # ── 눌림목 깊이 측정 ─────────────────────────────────
+            # 240선 돌파 후 최대 하락폭
+            prices_after = close.iloc[cross_idx:]
+            if len(prices_after) >= 3:
+                entry_price = float(close.iloc[cross_idx])
+                min_after   = float(prices_after.min())
+                pullback_depth = (entry_price - min_after) / entry_price * 100
+                signals["pullback_depth"] = round(pullback_depth, 1)
+                # 얕은 눌림(5~15%) = 강한 신호
+                if 3 <= pullback_depth <= 15:
+                    score += 3
+                elif pullback_depth > 25:
+                    score = max(0, score - 2)  # 깊은 눌림 패널티
+            else:
+                signals["pullback_depth"] = 0
 
             # [+1~2] 캔들 패턴
             o_s  = data["Open"]

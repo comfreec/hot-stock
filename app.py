@@ -450,6 +450,10 @@ with st.sidebar:
 | 📍 VWAP 위 | 2점 |
 | ☁️ 일목균형표 돌파 | 3점 |
 | 🏆 52주 신고가 근처 | 2점 |
+| 📈 상승장 가산 | 2점 |
+| 🔥 섹터 강세 | 최대 3점 |
+| 📦 3일 연속 거래량+가격 | 3점 |
+| 🎯 얕은 눌림목 | 3점 |
 | 🕯 캔들 패턴 | 1~2점 |
 | ⏳ 조정 기간 가산 | 1~3점 |
 | 📰 긍정 뉴스 | 1~2점 |
@@ -839,6 +843,11 @@ if mode == "🔍 급등 예고 종목 탐지":
                     if s.get("above_vwap"):             active.append("📍 VWAP 위 (매수세 우위)")
                     if s.get("ichimoku_bull"):          active.append("☁️ 일목균형표 구름대 돌파")
                     if s.get("near_52w_high"):          active.append(f"🏆 52주 신고가 근처 ({s.get('high_ratio',0):.1f}%)")
+                    if s.get("market_bull"):            active.append(f"📈 상승장 ({s.get('market_slope',0):+.1f}%)")
+                    if s.get("sector_momentum",0) > 2:  active.append(f"🔥 섹터 강세 ({s.get('sector_momentum',0):+.1f}%)")
+                    if s.get("vol_price_rising3"):      active.append("📦 3일 연속 거래량+가격 상승")
+                    pd_val = s.get("pullback_depth", 0)
+                    if 3 <= pd_val <= 15:               active.append(f"🎯 얕은 눌림목 ({pd_val:.1f}%)")
                     if s.get("hammer"):                 active.append("🔨 망치형 캔들")
                     if s.get("bullish_engulf"):         active.append("🕯 장악형 캔들")
                     if r["below_days"] >= 240:          active.append(f"⏳ 1년+ 충분한 조정 ({r['below_days']}일)")
