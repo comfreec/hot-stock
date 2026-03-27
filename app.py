@@ -21,24 +21,21 @@ if not st.session_state["authenticated"]:
     st.markdown("""
     <style>
     @keyframes fadein { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
-    @keyframes r1 { 0%{bottom:-40px;left:15%;opacity:0} 5%{opacity:1} 90%{opacity:1} 100%{bottom:120%;left:20%;opacity:0} }
-    @keyframes r2 { 0%{bottom:-40px;left:50%;opacity:0} 5%{opacity:1} 90%{opacity:1} 100%{bottom:120%;left:55%;opacity:0} }
-    @keyframes r3 { 0%{bottom:-40px;left:78%;opacity:0} 5%{opacity:1} 90%{opacity:1} 100%{bottom:120%;left:72%;opacity:0} }
+    @keyframes rocket_up {
+        0%   { transform: translateY(0px) rotate(-45deg); opacity:1; }
+        70%  { transform: translateY(-120px) rotate(-45deg); opacity:1; }
+        71%  { transform: translateY(-120px) rotate(-45deg); opacity:0; }
+        72%  { transform: translateY(20px) rotate(-45deg); opacity:0; }
+        100% { transform: translateY(0px) rotate(-45deg); opacity:1; }
+    }
     .login-box { animation: fadein 0.6s ease; }
-    .rocket-wrap { position:relative; max-width:420px; margin:80px auto; overflow:visible; }
-    .rk { position:absolute; font-size:30px; pointer-events:none; z-index:10; }
-    .rk1 { animation: r1 2.5s ease-in infinite; transform:rotate(-30deg); }
-    .rk2 { animation: r2 3.0s ease-in infinite 0.9s; transform:rotate(-45deg); }
-    .rk3 { animation: r3 2.8s ease-in infinite 1.7s; transform:rotate(-20deg); }
+    .rocket-icon { display:inline-block; animation: rocket_up 2.5s ease-in-out infinite; font-size:52px; }
     </style>
-    <div class='rocket-wrap'>
-      <span class='rk rk1'>🚀</span>
-      <span class='rk rk2'>🚀</span>
-      <span class='rk rk3'>🚀</span>
-      <div class='login-box' style='background:linear-gradient(135deg,#1a1f35,#0e1117);
+    <div class='login-box' style='max-width:420px;margin:80px auto;'>
+      <div style='background:linear-gradient(135deg,#1a1f35,#0e1117);
            padding:48px 40px;border-radius:20px;border:1px solid #2d3555;
-           box-shadow:0 20px 60px rgba(0,0,0,0.5);text-align:center;position:relative;z-index:5;'>
-        <div style='font-size:52px;margin-bottom:16px;'>🚀</div>
+           box-shadow:0 20px 60px rgba(0,0,0,0.5);text-align:center;'>
+        <div class='rocket-icon'>🚀</div>
         <h2 style='color:#fff;margin:16px 0 6px;font-size:26px;font-weight:800;letter-spacing:-0.5px;'>주식 급등 예측</h2>
         <p style='color:#4f8ef7;font-size:13px;margin:0 0 32px;font-weight:500;letter-spacing:2px;'>STOCK SURGE PREDICTOR</p>
         <div style='width:40px;height:2px;background:linear-gradient(90deg,#4f8ef7,#00d4aa);margin:0 auto 32px;border-radius:2px;'></div>
