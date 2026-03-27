@@ -380,6 +380,95 @@ class KoreanStockSurgeDetector:
             signals["ma240_turning_up"] = ma240_old_slope <= 0 and ma240_new_slope >= 0
             if signals["ma240_turning_up"]: score += 3
 
+            # [+2] MFI (Money Flow Index) - RSI에 거래량 가중
+            try:
+                tp = (high + low + close) / 3
+                mf = tp * vol
+                pos_mf = mf.where(tp > tp.shift(1), 0).rolling(14).sum()
+                neg_mf = mf.where(tp < tp.shift(1), 0).rolling(14).sum()
+                mfi = 100 - (100 / (1 + pos_mf / neg_mf.replace(0, np.nan)))
+                cur_mfi = float(mfi.iloc[-1])
+                signals["mfi"] = round(cur_mfi, 1)
+                signals["mfi_oversold_recovery"] = (
+                    float(mfi.iloc[-5:].min()) < 25 and cur_mfi > 30
+                )
+                if signals["mfi_oversold_recovery"]: score += 2
+            except:
+                signals["mfi"] = 50
+                signals["mfi_oversold_recovery"] = False
+
+            # [+2] 스토캐스틱 골든크로스 (과매도 구간에서)
+            try:
+                low14  = low.rolling(14).min()
+                high14 = high.rolling(14).max()
+                k = 100 * (close - low14) / (high14 - low14).replace(0, np.nan)
+                d = k.rolling(3).mean()
+                stoch_cross = bool(
+                    k.iloc[-1] > d.iloc[-1] and
+                    k.iloc[-2] <= d.iloc[-2] and
+                    k.iloc[-1] < 50
+                )
+                signals["stoch_k"] = round(float(k.iloc[-1]), 1)
+                signals["stoch_cross"] = stoch_cross
+                if stoch_cross: score += 2
+            except:
+                signals["stoch_k"] = 50
+                signals["stoch_cross"] = False
+
+            # [+2] ADX (추세 강도) - 25 이상이면 추세 확인
+            try:
+                tr_s = pd.concat([
+                    high - low,
+                    (high - close.shift(1)).abs(),
+                    (low  - close.shift(1)).abs()
+                ], axis=1).max(axis=1)
+                dm_plus  = (high - high.shift(1)).where((high - high.shift(1)) > (low.shift(1) - low), 0).clip(lower=0)
+                dm_minus = (low.shift(1) - low).where((low.shift(1) - low) > (high - high.shift(1)), 0).clip(lower=0)
+                atr14    = tr_s.ewm(span=14, adjust=False).mean()
+                di_plus  = 100 * dm_plus.ewm(span=14, adjust=False).mean() / atr14.replace(0, np.nan)
+                di_minus = 100 * dm_minus.ewm(span=14, adjust=False).mean() / atr14.replace(0, np.nan)
+                dx = 100 * (di_plus - di_minus).abs() / (di_plus + di_minus).replace(0, np.nan)
+                adx = dx.ewm(span=14, adjust=False).mean()
+                cur_adx = float(adx.iloc[-1])
+                signals["adx"] = round(cur_adx, 1)
+                signals["adx_strong"] = cur_adx >= 25 and float(di_plus.iloc[-1]) > float(di_minus.iloc[-1])
+                if signals["adx_strong"]: score += 2
+            except:
+                signals["adx"] = 0
+                signals["adx_strong"] = False
+
+            # [+2] VWAP 위에 있는지 (당일 매수세 우위)
+            try:
+                vwap = (close * vol).rolling(20).sum() / vol.rolling(20).sum()
+                signals["above_vwap"] = bool(current > float(vwap.iloc[-1]))
+                if signals["above_vwap"]: score += 2
+            except:
+                signals["above_vwap"] = False
+
+            # [+3] 일목균형표 - 구름대 돌파
+            try:
+                tenkan  = (high.rolling(9).max()  + low.rolling(9).min())  / 2
+                kijun   = (high.rolling(26).max() + low.rolling(26).min()) / 2
+                senkou_a = ((tenkan + kijun) / 2).shift(26)
+                senkou_b = ((high.rolling(52).max() + low.rolling(52).min()) / 2).shift(26)
+                cloud_top = pd.concat([senkou_a, senkou_b], axis=1).max(axis=1)
+                cloud_bot = pd.concat([senkou_a, senkou_b], axis=1).min(axis=1)
+                ichimoku_bull = bool(
+                    current > float(cloud_top.iloc[-1]) and
+                    float(tenkan.iloc[-1]) > float(kijun.iloc[-1])
+                )
+                signals["ichimoku_bull"] = ichimoku_bull
+                if ichimoku_bull: score += 3
+            except:
+                signals["ichimoku_bull"] = False
+
+            # [+2] 52주 신고가 근처 (5% 이내)
+            high_52w = float(high.tail(252).max())
+            high_ratio = current / high_52w
+            signals["near_52w_high"] = high_ratio >= 0.95
+            signals["high_ratio"] = round(high_ratio * 100, 1)
+            if signals["near_52w_high"]: score += 2
+
             # [+1~2] 캔들 패턴
             o_s  = data["Open"]
             body = abs(close - o_s)
@@ -428,8 +517,8 @@ class KoreanStockSurgeDetector:
                 "obv_divergence":   signals["obv_rising"],
                 "bb_squeeze":       signals["bb_squeeze_expand"],
                 "squeeze_ratio":    0,
-                "near_52w_high":    False,
-                "high_ratio":       0,
+                "near_52w_high":    signals.get("near_52w_high", False),
+                "high_ratio":       signals.get("high_ratio", 0),
                 "golden_cross_imminent": signals["ma_align"],
                 "macd_cross":       signals["macd_cross"],
                 "disparity":        round(gap_pct, 2),
