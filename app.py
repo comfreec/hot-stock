@@ -1567,6 +1567,6 @@ st.markdown("""
 <div style='text-align:center;color:#555;font-size:11px;padding:10px 0 20px;'>
 ⚠️ 본 서비스는 투자 참고용 정보 제공 목적이며, 투자 권유가 아닙니다.<br>
 주식 투자는 원금 손실 위험이 있으며, 모든 투자 결정과 책임은 투자자 본인에게 있습니다.<br>
-<span style='color:#2d3555;'>v0f1e808</span>
+<span style='color:#2d3555;'>build: 307cca1</span>
 </div>
 """, unsafe_allow_html=True)
