@@ -380,9 +380,8 @@ def make_candle(data, title, ma240_series=None, cross_date=None, show_levels=Tru
     fig.add_trace(go.Candlestick(
         x=data.index, open=data["Open"], high=data["High"],
         low=data["Low"], close=data["Close"], name="주가",
-        increasing_line_color="#00d4aa", decreasing_line_color="#ff4b6e"))
-    fig.add_trace(go.Bar(x=data.index, y=data["Volume"], name="거래량",
-        yaxis="y2", opacity=0.2, marker_color="#4f8ef7"))
+        increasing_line_color="#ff3355", decreasing_line_color="#4f8ef7",
+        increasing_fillcolor="#ff3355", decreasing_fillcolor="#4f8ef7"))
     for w,c,nm in [(20,"#ffd700","MA20"),(60,"#ff8c42","MA60"),(240,"#ff4b6e","MA240")]:
         ma = data["Close"].rolling(w).mean()
         fig.add_trace(go.Scatter(x=data.index, y=ma, name=nm,
@@ -457,7 +456,6 @@ def make_candle(data, title, ma240_series=None, cross_date=None, show_levels=Tru
         paper_bgcolor="#0e1117", plot_bgcolor="#0e1117",
         font=dict(color="#8b92a5"),
         yaxis=dict(gridcolor="#1e2540", fixedrange=True),
-        yaxis2=dict(overlaying="y", side="right", gridcolor="#1e2540", fixedrange=True),
         xaxis=dict(gridcolor="#1e2540", rangeslider_visible=False, fixedrange=True),
         legend=dict(bgcolor="#1e2130", bordercolor="#2d3555", visible=False),
         dragmode=False,
