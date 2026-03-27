@@ -676,24 +676,13 @@ if mode == "🔍 급등 예고 종목 탐지":
 
             # 차트
             if len(results) > 1:
-                col_a, col_b = st.columns(2)
-                with col_a:
-                    fig = px.bar(pd.DataFrame(results), x="name", y="total_score",
-                        color="total_score", color_continuous_scale="Greens",
-                        labels={"name":"종목명","total_score":"점수"}, title="종합 점수")
-                    fig.update_layout(paper_bgcolor="#0e1117",plot_bgcolor="#0e1117",
-                        font=dict(color="#8b92a5"),xaxis_tickangle=30,
-                        coloraxis_showscale=False,height=240,margin=dict(l=5,r=5,t=30,b=50))
-                    st.plotly_chart(fig, config={"scrollZoom":False,"displayModeBar":False,"staticPlot":True}, use_container_width=True, key="chart_score_bar")
-                with col_b:
-                    fig2 = px.scatter(pd.DataFrame(results), x="ma240_gap", y="below_days",
-                        size="total_score", color="total_score", hover_data=["name"],
-                        color_continuous_scale="RdYlGn",
-                        labels={"ma240_gap":"240선 이격(%)","below_days":"조정기간(일)"},
-                        title="이격 vs 조정기간 (크기=점수)")
-                    fig2.update_layout(paper_bgcolor="#0e1117",plot_bgcolor="#0e1117",
-                        font=dict(color="#8b92a5"),height=240,margin=dict(l=5,r=5,t=30,b=5))
-                    st.plotly_chart(fig2, config={"scrollZoom":False,"displayModeBar":False,"staticPlot":True}, use_container_width=True, key="chart_scatter")
+                fig = px.bar(pd.DataFrame(results), x="name", y="total_score",
+                    color="total_score", color_continuous_scale="Greens",
+                    labels={"name":"종목명","total_score":"점수"}, title="종합 점수")
+                fig.update_layout(paper_bgcolor="#0e1117",plot_bgcolor="#0e1117",
+                    font=dict(color="#8b92a5"),xaxis_tickangle=30,
+                    coloraxis_showscale=False,height=240,margin=dict(l=5,r=5,t=30,b=50))
+                st.plotly_chart(fig, config={"scrollZoom":False,"displayModeBar":False,"staticPlot":True}, use_container_width=True, key="chart_score_bar")
 
             # 상세 카드
             st.markdown("<div class='sec-title'>🎯 종목별 상세 분석</div>", unsafe_allow_html=True)
