@@ -473,7 +473,7 @@ def make_candle(data, title, ma240_series=None, cross_date=None, show_levels=Tru
         title=dict(text=title, font=dict(color="#e0e6f0", size=13)),
         paper_bgcolor="#0e1117", plot_bgcolor="#0e1117",
         font=dict(color="#8b92a5"),
-        yaxis=dict(gridcolor="#1e2540", fixedrange=True),
+        yaxis=dict(gridcolor="#1e2540", fixedrange=True, side="right", showticklabels=True),
         xaxis=dict(gridcolor="#1e2540", rangeslider_visible=False, fixedrange=True),
         legend=dict(bgcolor="#1e2130", bordercolor="#2d3555", visible=False),
         dragmode=False,
