@@ -475,7 +475,7 @@ def make_candle(data, title, ma240_series=None, cross_date=None, show_levels=Tru
         xaxis=dict(gridcolor="#1e2540", rangeslider_visible=False, fixedrange=True),
         legend=dict(bgcolor="#1e2130", bordercolor="#2d3555"),
         dragmode=False,
-        height=420, margin=dict(l=0,r=130,t=40,b=0))
+        height=480, margin=dict(l=0,r=160,t=40,b=0))
     return fig
 
 # ── 급등 예고 종목 탐지 ──────────────────────────────────────────
