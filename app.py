@@ -477,7 +477,7 @@ def make_candle(data, title, ma240_series=None, cross_date=None, show_levels=Tru
         xaxis=dict(gridcolor="#1e2540", rangeslider_visible=False, fixedrange=True),
         legend=dict(bgcolor="#1e2130", bordercolor="#2d3555", visible=False),
         dragmode=False,
-        height=500, margin=dict(l=0,r=10,t=30,b=0))
+        height=500, margin=dict(l=0,r=60,t=30,b=0))
     # 차트 아래 목표가/손절가 정보 박스는 호출부에서 별도 표시
     fig._price_levels = dict(target=target, current=current, stop=stop,
                              upside=upside, downside=downside, rr_ratio=rr_ratio) if show_levels else None
