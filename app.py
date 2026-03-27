@@ -704,7 +704,8 @@ if mode == "🔍 급등 예고 종목 탐지":
         symbols = det.all_symbols
         total = len(symbols)
 
-        st.markdown("<div class='sec-title'>📡 스캔 진행 중...</div>", unsafe_allow_html=True)
+        scan_title = st.empty()
+        scan_title.markdown("<div class='sec-title'>📡 스캔 진행 중...</div>", unsafe_allow_html=True)
         prog_bar  = st.progress(0)
         prog_text = st.empty()
 
@@ -723,6 +724,7 @@ if mode == "🔍 급등 예고 종목 탐지":
 
         prog_bar.empty()
         prog_text.empty()
+        scan_title.empty()
         results = sorted(results, key=lambda x: x["total_score"], reverse=True)
         results = [r for r in results if r["total_score"] >= min_score]
 
