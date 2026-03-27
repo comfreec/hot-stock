@@ -617,7 +617,7 @@ if mode == "🔍 급등 예고 종목 탐지":
                   </div>
                 </div>""", unsafe_allow_html=True)
 
-                with st.expander(f"🔍 {r['name']} 상세 신호 + 주가 차트", expanded=True):
+                if True:  # 바로 표시
                     m1,m2,m3,m4 = st.columns(4)
                     m1.metric("RSI(20)", f"{r['rsi']:.1f}")
                     m2.metric("240선 이격", f"+{r['ma240_gap']:.1f}%")
