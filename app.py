@@ -624,49 +624,42 @@ def make_candle(data, title, ma240_series=None, cross_date=None, show_levels=Tru
         ], axis=1).max(axis=1)
         atr = float(tr.rolling(14).mean().iloc[-1])
 
-        # ── 손절가: 3가지 기준 중 현재가에 가장 가까운 값 ──────
-        # 1) 직전 스윙 저점 (최근 20일 저점)
+        # ── 손절가: 직전 스윙 저점 아래 0.5 ATR (지지선 붕괴 확인) ──
+        # 근거: 스윙 저점 아래 0.5 ATR = 노이즈가 아닌 진짜 붕괴 신호
         swing_low = float(low.tail(20).min())
-        # 2) ATR 기반 손절 (ATR × 1.5 아래)
-        atr_stop  = current - atr * 1.5
-        # 3) MA60 (중기 지지선)
-        ma60_stop = ma60_now * 0.99  # MA60 1% 아래
-
-        # 현재가 아래에 있는 후보 중 가장 높은 값 (가장 타이트한 손절)
-        stop_candidates = [x for x in [swing_low, atr_stop, ma60_stop] if x < current * 0.99]
-        stop = max(stop_candidates) if stop_candidates else current * 0.95
-        # 최소 손절폭 보장 (-2%)
-        stop = min(stop, current * 0.98)
+        stop = swing_low - atr * 0.5
+        # 범위 제한: 최소 -3%, 최대 -12%
+        stop = max(stop, current * 0.88)
+        stop = min(stop, current * 0.97)
 
         risk = current - stop
 
-        # ── 목표가: 3가지 기준 중 가장 현실적인 값 ─────────────
-        # 1) 피보나치 100% 되돌림 (직전 하락폭 기준)
+        # ── 목표가: 피보나치 161.8% 확장 + 직전 고점 기반 ──────
+        # 근거1: 피보나치 161.8% = 추세 지속 시 가장 많이 도달하는 레벨
+        # 근거2: 직전 고점(100%) = 가장 명확한 저항선
+        # 근거3: ATR×4 = 한국 주식 평균 급등폭
         recent_high = float(high.tail(120).max())
         recent_low  = float(low.tail(120).min())
-        fib_100 = recent_high  # 직전 고점 = 100% 되돌림
-        fib_618 = recent_low + (recent_high - recent_low) * 0.618
+        swing_range = recent_high - recent_low
 
-        # 2) 직전 스윙 하이 (최근 60일 고점)
-        swing_high_60 = float(high.tail(60).max())
+        fib_1618 = recent_low + swing_range * 1.618  # 피보나치 161.8%
+        fib_100  = recent_high                        # 직전 고점
+        atr_x4   = current + atr * 4.0               # ATR×4
 
-        # 3) ATR 기반 목표 (ATR × 3배)
-        atr_target = current + atr * 3.0
+        # 현재가 위 후보들 중 손익비 3:1 이상 되는 것 선택
+        min_rr3 = current + risk * 3.0
+        candidates = sorted([x for x in [fib_100, fib_1618, atr_x4] if x > current * 1.03])
+        valid = [x for x in candidates if x >= min_rr3]
 
-        # 손익비 2:1 이상 보장되는 후보들
-        min_target = current + risk * 2.0
-        target_candidates = [x for x in [fib_618, swing_high_60, fib_100, atr_target]
-                             if x >= min_target and x > current * 1.02]
-
-        if target_candidates:
-            # 가장 가까운 현실적 목표가 선택
-            target = min(target_candidates)
+        if valid:
+            target = valid[0]  # 손익비 3:1 이상 중 가장 가까운 목표
+        elif candidates:
+            target = candidates[-1]  # 없으면 가장 높은 후보
         else:
-            target = current + risk * 2.5
+            target = current + risk * 3.0  # 폴백
 
-        # 목표가 상한 (현재가 +40% 초과 시 조정)
-        if (target - current) / current > 0.40:
-            target = current + risk * 3.0
+        # 상한 50% 제한
+        target = min(target, current * 1.50)
 
         rr_ratio = (target - current) / (current - stop + 1e-9)
         upside   = (target / current - 1) * 100
