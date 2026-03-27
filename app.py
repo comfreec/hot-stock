@@ -243,7 +243,7 @@ with st.sidebar:
 
 # ── 캐시 함수 ────────────────────────────────────────────────────
 @st.cache_data(ttl=300)
-def get_chart_data(symbol, period="2y"):
+def get_chart_data(symbol, period="6mo"):
     try: return yf.Ticker(symbol).history(period=period)
     except: return None
 
@@ -646,7 +646,7 @@ if mode == "🔍 급등 예고 종목 탐지":
                         st.info("추가 신호 없음 (핵심 조건만 충족)")
 
                     rsi_s = r["rsi_series"]
-                    cd    = get_chart_data(r["symbol"], "2y")
+                    cd    = get_chart_data(r["symbol"], "6mo")
                     if cd is not None:
                         cross_date = r["close_series"].index[-(r["days_since_cross"]+1)]
                         st.plotly_chart(
@@ -661,7 +661,7 @@ elif mode == "📈 개별 종목 분석":
     opts = [f"{v} ({k})" for k,v in sorted(STOCK_NAMES.items(), key=lambda x:x[1])]
     col1,col2 = st.columns([3,1])
     with col1: sel = st.selectbox("종목 선택", opts)
-    with col2: period = st.selectbox("기간", ["6mo","1y","2y"])
+    with col2: period = st.selectbox("기간", ["6mo","1y","6mo"])
     symbol = sel.split("(")[1].replace(")","").strip()
     name   = sel.split("(")[0].strip()
 
@@ -848,7 +848,7 @@ elif mode == "💎 우량주 RSI 70 이탈":
         for idx, (symbol, name) in enumerate(QUALITY_STOCKS.items()):
             prog.progress((idx + 1) / total)
             try:
-                df = yf.Ticker(symbol).history(period="2y")
+                df = yf.Ticker(symbol).history(period="6mo")
                 if df is None or len(df) < 60:
                     continue
                 rsi = calc_rsi_wilder(df["Close"], 20).dropna()
@@ -994,7 +994,7 @@ elif mode == "🎯 최적 급등 타이밍":
     def calc_surge_timing_score(symbol):
         """최적 급등 타이밍 종합 점수 계산"""
         try:
-            df = yf.Ticker(symbol).history(period="2y")
+            df = yf.Ticker(symbol).history(period="6mo")
             if df is None or len(df) < 60:
                 return None
 
