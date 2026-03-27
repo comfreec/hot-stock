@@ -435,12 +435,21 @@ def make_candle(data, title, ma240_series=None, cross_date=None, show_levels=Tru
         downside = (stop / current - 1) * 100
 
         # 목표가 수평선 (초록)
-        fig.add_hline(y=target, line=dict(color="#00ff88", width=2, dash="dash"))
+        fig.add_hline(y=target, line=dict(color="#00ff88", width=2, dash="dash"),
+            annotation_text=f"🎯 목표가 ₩{target:,.0f} (+{upside:.1f}%)",
+            annotation_font=dict(color="#00ff88", size=11),
+            annotation_position="top left")
         fig.add_hrect(y0=current, y1=target, fillcolor="rgba(0,255,136,0.08)", line_width=0)
         # 현재가 수평선 (흰색)
-        fig.add_hline(y=current, line=dict(color="#ffffff", width=1.5, dash="dot"))
+        fig.add_hline(y=current, line=dict(color="#ffffff", width=1.5, dash="dot"),
+            annotation_text=f"📍 현재가 ₩{current:,.0f}",
+            annotation_font=dict(color="#ffffff", size=11),
+            annotation_position="top left")
         # 손절가 수평선 (빨강)
-        fig.add_hline(y=stop, line=dict(color="#ff3355", width=2, dash="dash"))
+        fig.add_hline(y=stop, line=dict(color="#ff3355", width=2, dash="dash"),
+            annotation_text=f"🛑 손절가 ₩{stop:,.0f} ({downside:.1f}%) | 손익비 {rr_ratio:.1f}:1",
+            annotation_font=dict(color="#ff3355", size=11),
+            annotation_position="bottom left")
         fig.add_hrect(y0=stop, y1=current, fillcolor="rgba(255,51,85,0.08)", line_width=0)
 
     fig.update_layout(
@@ -632,8 +641,6 @@ if mode == "🔍 급등 예고 종목 탐지":
                         _c1 = make_candle(cd, f"{r['name']} ({r['symbol']})", cross_date=cross_date)
                         st.plotly_chart(_c1, config={"scrollZoom":False,"displayModeBar":False}, use_container_width=True, key=f"candle_{r['symbol']}")
                         show_price_levels(_c1)
-                        # RSI 차트 (주가 차트와 x축 동일)
-                        st.plotly_chart(make_rsi_chart(rsi_s, cd), config={"scrollZoom":False,"displayModeBar":False}, use_container_width=True, key=f"rsi_detail_{r['symbol']}")
 
 # ── 개별 종목 분석 ───────────────────────────────────────────────
 elif mode == "📈 개별 종목 분석":
@@ -722,9 +729,7 @@ elif mode == "📈 개별 종목 분석":
                 st.plotly_chart(_c2, config={"scrollZoom":False,"displayModeBar":False}, use_container_width=True)
                 show_price_levels(_c2)
 
-                # RSI 차트 (주가 차트와 x축 동일하게)
                 rsi_s  = result["rsi_series"]
-                st.plotly_chart(make_rsi_chart(rsi_s, data), config={"scrollZoom":False,"displayModeBar":False}, use_container_width=True, key="chart_rsi_individual")
 
             else:
                 # 핵심 조건 미충족 — 그래도 차트와 기본 정보는 보여줌
@@ -758,9 +763,7 @@ elif mode == "📈 개별 종목 분석":
                 _c3 = make_candle(data, f"{name} ({symbol})")
                 st.plotly_chart(_c3, config={"scrollZoom":False,"displayModeBar":False}, use_container_width=True, key="chart_candle_no_cond")
                 show_price_levels(_c3)
-                # 조건 미충족이어도 RSI 차트 표시
                 rsi_s  = calc_rsi_wilder(data["Close"], period=20)
-                st.plotly_chart(make_rsi_chart(rsi_s, data), config={"scrollZoom":False,"displayModeBar":False}, use_container_width=True, key="chart_rsi_no_cond")
 
 
 # ── 우량주 RSI 70 이탈 스캐너 ────────────────────────────────────
