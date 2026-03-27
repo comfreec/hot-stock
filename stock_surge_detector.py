@@ -267,6 +267,7 @@ class KoreanStockSurgeDetector:
         """KOSPI 시장 상태 확인 - 상승장/하락장"""
         try:
             kospi = yf.Ticker("^KS11").history(period="1y")
+            kospi = kospi.dropna(subset=["Close"])
             close = kospi["Close"]
             ma200 = float(close.rolling(200).mean().iloc[-1])
             ma60  = float(close.rolling(60).mean().iloc[-1])
@@ -298,6 +299,7 @@ class KoreanStockSurgeDetector:
             return 0
         try:
             df = yf.Ticker(etf).history(period="3mo")
+            df = df.dropna(subset=["Close"])
             close = df["Close"]
             ret_1m = (float(close.iloc[-1]) - float(close.iloc[-20])) / float(close.iloc[-20]) * 100
             return round(ret_1m, 2)
@@ -313,6 +315,7 @@ class KoreanStockSurgeDetector:
         """
         try:
             data = yf.Ticker(symbol).history(period="2y")
+            data = data.dropna(subset=["Open","High","Low","Close"])
             if len(data) < 260:
                 return None
 

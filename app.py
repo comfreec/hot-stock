@@ -250,8 +250,8 @@ st.markdown("""<div class="top-header">
 @st.cache_data(ttl=300)
 def get_market_index():
     try:
-        kospi = yf.Ticker("^KS11").history(period="2d")
-        kosdaq = yf.Ticker("^KQ11").history(period="2d")
+        kospi = yf.Ticker("^KS11").history(period="5d").dropna(subset=["Close"])
+        kosdaq = yf.Ticker("^KQ11").history(period="5d").dropna(subset=["Close"])
         results = {}
         for name, df in [("KOSPI", kospi), ("KOSDAQ", kosdaq)]:
             if len(df) >= 2:
@@ -464,51 +464,10 @@ with st.sidebar:
 # ── 캐시 함수 ────────────────────────────────────────────────────
 @st.cache_data(ttl=300)
 def get_chart_data(symbol, period="2y"):
-    try: return yf.Ticker(symbol).history(period=period)
-    except: return None
-
-@st.cache_data(ttl=300)
-def calc_rr_ratio(symbol):
-    """손익비 계산 - make_candle과 동일한 로직"""
     try:
-        data = get_chart_data(symbol, "2y")
-        if data is None:
-            return 0
-        close = data["Close"]
-        high  = data["High"]
-        low   = data["Low"]
-        current = float(close.iloc[-1])
-
-        tr = pd.concat([
-            high - low,
-            (high - close.shift(1)).abs(),
-            (low  - close.shift(1)).abs()
-        ], axis=1).max(axis=1)
-        atr = float(tr.rolling(14).mean().iloc[-1])
-
-        swing_low = float(low.tail(20).min())
-        stop = swing_low - atr * 0.5
-        stop = max(stop, current * 0.88)
-        stop = min(stop, current * 0.97)
-        risk = current - stop
-
-        recent_high = float(high.tail(120).max())
-        recent_low  = float(low.tail(120).min())
-        swing_range = recent_high - recent_low
-        fib_1618 = recent_low + swing_range * 1.618
-        fib_100  = recent_high
-        atr_x4   = current + atr * 4.0
-
-        min_rr3 = current + risk * 3.0
-        candidates = sorted([x for x in [fib_100, fib_1618, atr_x4] if x > current * 1.03])
-        valid = [x for x in candidates if x >= min_rr3]
-        target = valid[0] if valid else (candidates[-1] if candidates else current + risk * 3.0)
-        target = min(target, current * 1.50)
-
-        rr = (target - current) / (current - stop + 1e-9)
-        return round(rr, 2)
-    except:
-        return 0
+        df = yf.Ticker(symbol).history(period=period)
+        return df.dropna(subset=["Open","High","Low","Close"]) if df is not None and len(df) > 0 else None
+    except: return None
 
 def metric_card(col, label, value):
     col.markdown(f"""<div class="metric-card">
@@ -547,6 +506,10 @@ def show_price_levels(fig):
     if not hasattr(fig, '_price_levels') or fig._price_levels is None:
         return
     lv = fig._price_levels
+    # nan 방어
+    import math
+    if any(math.isnan(v) for v in [lv["target"], lv["current"], lv["stop"]] if isinstance(v, float)):
+        return
     st.markdown(f"""
     <div style='display:flex;gap:12px;margin:-8px 0 8px;'>
       <div style='flex:1;background:rgba(0,255,136,0.1);border:1px solid #00ff88;
@@ -652,12 +615,16 @@ def make_candle(data, title, ma240_series=None, cross_date=None, show_levels=Tru
         pass  # 돌파 표시 제거
 
     if show_levels:
-        current  = float(data["Close"].iloc[-1])
-        close    = data["Close"]
-        high     = data["High"]
-        low      = data["Low"]
+        # 마지막 행 nan 방어 (yfinance 당일 미완성 데이터)
+        data_clean = data.dropna(subset=["Close", "High", "Low"])
+        if len(data_clean) < 20:
+            return fig
+        current  = float(data_clean["Close"].iloc[-1])
+        close    = data_clean["Close"]
+        high     = data_clean["High"]
+        low      = data_clean["Low"]
         ma20_now = float(close.rolling(20).mean().iloc[-1])
-        ma60_now = float(close.rolling(60).mean().iloc[-1]) if len(data) >= 60 else ma20_now
+        ma60_now = float(close.rolling(60).mean().iloc[-1]) if len(data_clean) >= 60 else ma20_now
 
         # ── ATR 계산 (평균 변동폭) ──────────────────────────────
         tr = pd.concat([
@@ -665,7 +632,8 @@ def make_candle(data, title, ma240_series=None, cross_date=None, show_levels=Tru
             (high - close.shift(1)).abs(),
             (low  - close.shift(1)).abs()
         ], axis=1).max(axis=1)
-        atr = float(tr.rolling(14).mean().iloc[-1])
+        atr_series = tr.rolling(14).mean().dropna()
+        atr = float(atr_series.iloc[-1]) if len(atr_series) > 0 else float((high - low).mean())
 
         # ── 손절가: 직전 스윙 저점 아래 0.5 ATR (지지선 붕괴 확인) ──
         # 근거: 스윙 저점 아래 0.5 ATR = 노이즈가 아닌 진짜 붕괴 신호
@@ -747,8 +715,7 @@ if mode == "🔍 급등 예고 종목 탐지":
         symbols = det.all_symbols
         total = len(symbols)
 
-        scan_title = st.empty()
-        scan_title.markdown("<div class='sec-title'>📡 스캔 진행 중...</div>", unsafe_allow_html=True)
+        st.markdown("<div class='sec-title'>📡 스캔 진행 중...</div>", unsafe_allow_html=True)
         prog_bar  = st.progress(0)
         prog_text = st.empty()
 
@@ -767,13 +734,8 @@ if mode == "🔍 급등 예고 종목 탐지":
 
         prog_bar.empty()
         prog_text.empty()
-        scan_title.empty()
         results = sorted(results, key=lambda x: x["total_score"], reverse=True)
         results = [r for r in results if r["total_score"] >= min_score]
-
-        # 손익비 계산 (필터 없이 표시만)
-        for r in results:
-            r["rr_ratio"] = calc_rr_ratio(r["symbol"])
 
         if not results:
             st.warning("현재 조건을 만족하는 종목이 없습니다.")
@@ -799,7 +761,6 @@ if mode == "🔍 급등 예고 종목 탐지":
                     "종목코드":   r["symbol"],
                     "현재가":     f"₩{r['current_price']:,.0f}",
                     "등락률":     f"{'🔺' if r['price_change_1d']>0 else '🔽'}{r['price_change_1d']:.2f}%",
-                    "손익비":     f"{r.get('rr_ratio', 0):.1f}:1",
                     "240일선":    f"₩{r['ma240']:,.0f}",
                     "240선이격":  f"+{r['ma240_gap']:.1f}%",
                     "조정기간":   f"{r['below_days']}일({r['below_days']//20}개월)",
@@ -1046,9 +1007,11 @@ elif mode == "📈 개별 종목 분석":
                 </div>""", unsafe_allow_html=True)
 
                 # 미충족 이유 상세 표시
-                ma240_now = float(data["Close"].rolling(240).mean().iloc[-1]) if len(data) >= 240 else None
+                close_clean = data["Close"].dropna()
+                ma240_now = float(close_clean.rolling(240).mean().dropna().iloc[-1]) if len(close_clean) >= 240 else None
+                current_clean = float(close_clean.iloc[-1])
                 if ma240_now:
-                    gap = (current - ma240_now) / ma240_now * 100
+                    gap = (current_clean - ma240_now) / ma240_now * 100
                     c1,c2 = st.columns(2)
                     metric_card(c1,"현재 240선 이격",f"{gap:+.1f}%")
                     metric_card(c2,"240일선",f"₩{ma240_now:,.0f}")
@@ -1566,7 +1529,6 @@ st.markdown("---")
 st.markdown("""
 <div style='text-align:center;color:#555;font-size:11px;padding:10px 0 20px;'>
 ⚠️ 본 서비스는 투자 참고용 정보 제공 목적이며, 투자 권유가 아닙니다.<br>
-주식 투자는 원금 손실 위험이 있으며, 모든 투자 결정과 책임은 투자자 본인에게 있습니다.<br>
-<span style='color:#2d3555;'>build: 307cca1</span>
+주식 투자는 원금 손실 위험이 있으며, 모든 투자 결정과 책임은 투자자 본인에게 있습니다.
 </div>
 """, unsafe_allow_html=True)
