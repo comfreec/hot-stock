@@ -245,10 +245,75 @@ def get_market_index():
     except:
         return {}
 
+@st.cache_data(ttl=3600)
+def get_fear_greed():
+    """공포/탐욕 지수 - KOSPI 20일 변동성 기반 자체 계산"""
+    try:
+        df = yf.Ticker("^KS11").history(period="3mo")
+        close = df["Close"]
+        ret = close.pct_change().dropna()
+        vol = float(ret.tail(20).std() * 100)
+        rsi_val = float(calc_rsi_wilder(close, 14).iloc[-1])
+        ma20 = float(close.rolling(20).mean().iloc[-1])
+        cur = float(close.iloc[-1])
+        momentum = (cur - ma20) / ma20 * 100
+        # 점수 계산 (0~100)
+        score = 50
+        score -= (vol - 1.0) * 10   # 변동성 높으면 공포
+        score += momentum * 2        # 모멘텀 좋으면 탐욕
+        score += (rsi_val - 50) * 0.5
+        score = max(0, min(100, score))
+        if score >= 75:   label, color = "극도의 탐욕", "#ff3355"
+        elif score >= 55: label, color = "탐욕", "#ff8c42"
+        elif score >= 45: label, color = "중립", "#ffd700"
+        elif score >= 25: label, color = "공포", "#4f8ef7"
+        else:             label, color = "극도의 공포", "#00d4aa"
+        return int(score), label, color
+    except:
+        return None, None, None
+
+@st.cache_data(ttl=300)
+def get_sparkline(symbol):
+    """최근 20일 스파크라인 데이터"""
+    try:
+        df = yf.Ticker(symbol).history(period="1mo")
+        return df["Close"].tail(20).tolist()
+    except:
+        return []
+
+def make_sparkline(prices, color):
+    """미니 스파크라인 SVG"""
+    if len(prices) < 2:
+        return ""
+    mn, mx = min(prices), max(prices)
+    rng = mx - mn or 1
+    w, h = 80, 30
+    pts = []
+    for i, p in enumerate(prices):
+        x = i / (len(prices)-1) * w
+        y = h - (p - mn) / rng * h
+        pts.append(f"{x:.1f},{y:.1f}")
+    return f'<svg width="{w}" height="{h}" style="display:inline-block;vertical-align:middle;"><polyline points="{" ".join(pts)}" fill="none" stroke="{color}" stroke-width="1.5"/></svg>'
+
+@st.cache_data(ttl=600)
+def get_news_headline(symbol):
+    """종목 최신 뉴스 1건"""
+    try:
+        code = symbol.replace(".KS","").replace(".KQ","")
+        url = f"https://finance.naver.com/item/news_news.naver?code={code}&page=1"
+        res = requests.get(url, headers={"User-Agent":"Mozilla/5.0"}, timeout=3)
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(res.text, "html.parser")
+        titles = [a.get_text().strip() for a in soup.select(".title") if a.get_text().strip()]
+        return titles[0] if titles else ""
+    except:
+        return ""
+
 market = get_market_index()
+fear_score, fear_label, fear_color = get_fear_greed()
 now = datetime.now().strftime("%Y.%m.%d %H:%M")
 
-cols_m = st.columns([1,1,2])
+cols_m = st.columns([1,1,1,2])
 for i, (name, (val, chg)) in enumerate(market.items()):
     color = "#ff3355" if chg > 0 else "#4f8ef7"
     arrow = "▲" if chg > 0 else "▼"
@@ -259,7 +324,17 @@ for i, (name, (val, chg)) in enumerate(market.items()):
       <div style='color:#fff;font-size:18px;font-weight:700;'>{val:,.2f}</div>
       <div style='color:{color};font-size:13px;'>{arrow} {abs(chg):.2f}%</div>
     </div>""", unsafe_allow_html=True)
-cols_m[2].markdown(f"""
+
+if fear_score is not None:
+    cols_m[2].markdown(f"""
+    <div style='background:#1e2130;border:1px solid #2d3555;border-radius:10px;
+         padding:10px 14px;text-align:center;'>
+      <div style='color:#8b92a5;font-size:11px;'>공포/탐욕 지수</div>
+      <div style='color:{fear_color};font-size:18px;font-weight:700;'>{fear_score}</div>
+      <div style='color:{fear_color};font-size:12px;'>{fear_label}</div>
+    </div>""", unsafe_allow_html=True)
+
+cols_m[3].markdown(f"""
     <div style='background:#1e2130;border:1px solid #2d3555;border-radius:10px;
          padding:10px 14px;text-align:right;'>
       <div style='color:#8b92a5;font-size:11px;'>기준시각 (15~20분 지연)</div>
@@ -629,8 +704,13 @@ if mode == "🔍 급등 예고 종목 탐지":
                 medal = medals[i] if i < 3 else "rank-card"
                 icon  = icons[i]  if i < 3 else f"{i+1}."
                 pct   = r["total_score"] / 28 * 100
-                color = "#00d4aa" if r["price_change_1d"] > 0 else "#ff4b6e"
+                color = "#ff3355" if r["price_change_1d"] > 0 else "#4f8ef7"
                 arrow = "▲" if r["price_change_1d"] > 0 else "▼"
+
+                # 스파크라인 + 뉴스
+                spark_prices = get_sparkline(r["symbol"])
+                spark_svg = make_sparkline(spark_prices, color) if spark_prices else ""
+                news = get_news_headline(r["symbol"])
 
                 st.markdown(f"""<div class="rank-card {medal}">
                   <div style="display:flex;justify-content:space-between;align-items:center;">
@@ -639,15 +719,19 @@ if mode == "🔍 급등 예고 종목 탐지":
                       <span style="color:#fff;font-size:clamp(14px,3vw,18px);font-weight:700;margin-left:6px;">{r["name"]}</span>
                       <span style="color:#8b92a5;font-size:13px;margin-left:8px;">{r["symbol"]}</span>
                     </div>
-                    <div style="text-align:right;">
-                      <span style="color:#fff;font-size:clamp(14px,3vw,20px);font-weight:700;">₩{r["current_price"]:,.0f}</span>
-                      <span style="color:{color};font-size:14px;margin-left:8px;">{arrow} {abs(r["price_change_1d"]):.2f}%</span>
+                    <div style="display:flex;align-items:center;gap:12px;">
+                      {spark_svg}
+                      <div style="text-align:right;">
+                        <span style="color:#fff;font-size:clamp(14px,3vw,20px);font-weight:700;">₩{r["current_price"]:,.0f}</span>
+                        <span style="color:{color};font-size:14px;margin-left:8px;">{arrow} {abs(r["price_change_1d"]):.2f}%</span>
+                      </div>
                     </div>
                   </div>
                   <div style="margin-top:6px;color:#8b92a5;font-size:12px;">
                     240일선 ₩{r["ma240"]:,.0f} | 이격 +{r["ma240_gap"]:.1f}% |
                     조정 {r["below_days"]}일({r["below_days"]//20}개월) | 돌파 {r["days_since_cross"]}일 전
                   </div>
+                  {f'<div style="margin-top:5px;color:#6b7280;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">📰 {news}</div>' if news else ''}
                   <div style="margin-top:8px;">
                     <div style="color:#8b92a5;font-size:11px;margin-bottom:3px;">종합점수 {r["total_score"]}점</div>
                     <div class="bar-bg"><div class="bar-fill" style="width:{pct}%;"></div></div>
