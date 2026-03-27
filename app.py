@@ -366,7 +366,7 @@ if fear_score is not None:
 cols_m[3].markdown(f"""
     <div style='background:#1e2130;border:1px solid #2d3555;border-radius:10px;
          padding:10px 14px;text-align:right;'>
-      <div style='color:#8b92a5;font-size:11px;'>기준시각 (15~20분 지연)</div>
+      <div style='color:#8b92a5;font-size:11px;'>기준시각 (1~2분 지연)</div>
       <div style='color:#e0e6f0;font-size:16px;font-weight:700;'>{now}</div>
     </div>""", unsafe_allow_html=True)
 
