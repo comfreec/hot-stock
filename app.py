@@ -199,6 +199,25 @@ section[data-testid="stSidebar"] {
 }
 </style>""", unsafe_allow_html=True)
 
+# 차트 터치 스크롤 허용 JS
+st.markdown("""
+<script>
+function enableChartScroll() {
+    const charts = document.querySelectorAll('.js-plotly-plot');
+    charts.forEach(chart => {
+        chart.addEventListener('touchstart', function(e) {}, {passive: true});
+        chart.addEventListener('touchmove', function(e) {
+            e.stopPropagation();
+        }, {passive: true});
+    });
+}
+// DOM 변경 감지해서 새 차트에도 적용
+const observer = new MutationObserver(enableChartScroll);
+observer.observe(document.body, {childList: true, subtree: true});
+enableChartScroll();
+</script>
+""", unsafe_allow_html=True)
+
 st.markdown("""<div class="top-header">
   <h1 style="color:#fff;margin:0;font-size:clamp(18px,4vw,30px);">🚀 한국 주식 급등 예측 시스템 v3.0</h1>
   <p style="color:#8b92a5;margin:6px 0 0;font-size:13px;">
