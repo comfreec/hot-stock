@@ -311,6 +311,20 @@ def get_realtime_price(symbol):
         pass
     return None
 
+@st.cache_data(ttl=600)
+def get_news_headline(symbol):
+    """종목 최신 뉴스 1건"""
+    try:
+        code = symbol.replace(".KS","").replace(".KQ","")
+        url = f"https://finance.naver.com/item/news_news.naver?code={code}&page=1"
+        res = requests.get(url, headers={"User-Agent":"Mozilla/5.0"}, timeout=3)
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(res.text, "html.parser")
+        titles = [a.get_text().strip() for a in soup.select(".title") if a.get_text().strip()]
+        return titles[0] if titles else ""
+    except:
+        return ""
+
 
     """종목 최신 뉴스 1건"""
     try:
