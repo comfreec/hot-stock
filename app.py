@@ -27,46 +27,6 @@ if not st.session_state["authenticated"]:
     .login-box { animation: fadein 0.6s ease; }
     body { overflow: hidden; }
     </style>
-    <script>
-    (function() {
-        function launchRocket() {
-            var el = document.createElement('div');
-            el.textContent = '🚀';
-            var startX = Math.random() * 90 + 5;
-            var endX = startX + (Math.random() - 0.5) * 30;
-            var duration = 2000 + Math.random() * 2000;
-            var angle = -30 - Math.random() * 60;
-            el.style.cssText = [
-                'position:fixed',
-                'bottom:-60px',
-                'left:' + startX + '%',
-                'font-size:' + (28 + Math.random()*20) + 'px',
-                'z-index:9999',
-                'pointer-events:none',
-                'transform:rotate(' + angle + 'deg)',
-                'transition:bottom ' + duration + 'ms ease-in, left ' + duration + 'ms ease-in-out, opacity 200ms',
-                'opacity:0'
-            ].join(';');
-            document.body.appendChild(el);
-            setTimeout(function() {
-                el.style.opacity = '1';
-                el.style.bottom = '110vh';
-                el.style.left = endX + '%';
-            }, 50);
-            setTimeout(function() {
-                el.style.opacity = '0';
-            }, duration - 200);
-            setTimeout(function() {
-                el.remove();
-                launchRocket();
-            }, duration + 300);
-        }
-        // 여러 로켓 동시에
-        setTimeout(launchRocket, 100);
-        setTimeout(launchRocket, 1200);
-        setTimeout(launchRocket, 2400);
-    })();
-    </script>
     <div class='login-box' style='max-width:420px;margin:80px auto;'>
       <div style='background:linear-gradient(135deg,#1a1f35,#0e1117);
            padding:48px 40px;border-radius:20px;border:1px solid #2d3555;
@@ -93,6 +53,30 @@ if not st.session_state["authenticated"]:
                 st.rerun()
             else:
                 st.error("비밀번호가 올바르지 않습니다")
+
+    import streamlit.components.v1 as components
+    components.html("""
+    <style>body{margin:0;overflow:hidden;background:transparent;}</style>
+    <script>
+    function launchRocket() {
+        var el = document.createElement('div');
+        el.textContent = '🚀';
+        var startX = Math.random() * 80 + 10;
+        var endX = startX + (Math.random() - 0.5) * 40;
+        var duration = 2000 + Math.random() * 2000;
+        var size = 24 + Math.random() * 20;
+        var angle = -20 - Math.random() * 70;
+        el.style.cssText = 'position:fixed;bottom:-60px;left:'+startX+'%;font-size:'+size+'px;z-index:9999;pointer-events:none;transform:rotate('+angle+'deg);transition:bottom '+duration+'ms ease-in,left '+duration+'ms ease-in-out,opacity 300ms;opacity:0;';
+        document.body.appendChild(el);
+        setTimeout(function(){ el.style.opacity='1'; el.style.bottom='110vh'; el.style.left=endX+'%'; }, 50);
+        setTimeout(function(){ el.style.opacity='0'; }, duration-300);
+        setTimeout(function(){ el.remove(); launchRocket(); }, duration+400);
+    }
+    setTimeout(launchRocket, 200);
+    setTimeout(launchRocket, 1000);
+    setTimeout(launchRocket, 1800);
+    </script>
+    """, height=0)
     st.stop()
 
 STOCK_NAMES = {
