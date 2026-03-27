@@ -414,11 +414,13 @@ with st.sidebar:
     if "max_gap"   not in st.session_state: st.session_state["max_gap"]   = 10
     if "min_below" not in st.session_state: st.session_state["min_below"] = 120
     if "max_cross" not in st.session_state: st.session_state["max_cross"] = 90
+    if "min_score" not in st.session_state: st.session_state["min_score"] = 8
 
     if st.button("⚡ 최적 셋팅", use_container_width=True):
         st.session_state["max_gap"]   = 10
         st.session_state["min_below"] = 120
         st.session_state["max_cross"] = 90
+        st.session_state["min_score"] = 8
         st.rerun()
 
     max_gap   = st.slider("📍 240선 근처 범위 (%)", 1, 20, key="max_gap",
@@ -427,6 +429,8 @@ with st.sidebar:
         help="240일선 아래 최소 체류 일수 (120=6개월, 240=1년)")
     max_cross = st.slider("📈 돌파 후 최대 경과 (일)", 10, 180, key="max_cross",
         help="240일선 돌파 후 최대 경과 일수")
+    min_score = st.slider("🎯 최소 종합점수", 0, 20, key="min_score",
+        help="이 점수 이상인 종목만 표시 (0=전체, 높을수록 엄격)")
     st.markdown("---")
     st.markdown("""**📊 추가 점수 신호**
 | 신호 | 점수 |
@@ -697,6 +701,7 @@ if mode == "🔍 급등 예고 종목 탐지":
         prog_bar.empty()
         prog_text.empty()
         results = sorted(results, key=lambda x: x["total_score"], reverse=True)
+        results = [r for r in results if r["total_score"] >= min_score]
 
         if not results:
             st.warning("현재 조건을 만족하는 종목이 없습니다.")
