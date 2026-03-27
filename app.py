@@ -202,19 +202,17 @@ section[data-testid="stSidebar"] {
 # 차트 터치 스크롤 허용 JS
 st.markdown("""
 <script>
-function enableChartScroll() {
-    const charts = document.querySelectorAll('.js-plotly-plot');
-    charts.forEach(chart => {
-        chart.addEventListener('touchstart', function(e) {}, {passive: true});
-        chart.addEventListener('touchmove', function(e) {
-            e.stopPropagation();
-        }, {passive: true});
-    });
-}
-// DOM 변경 감지해서 새 차트에도 적용
-const observer = new MutationObserver(enableChartScroll);
-observer.observe(document.body, {childList: true, subtree: true});
-enableChartScroll();
+(function() {
+    function fixScroll() {
+        // plotly 내부 SVG와 드래그 레이어에 touch-action 강제 적용
+        document.querySelectorAll('.js-plotly-plot, .js-plotly-plot *, .plotly, .nsewdrag, .drag').forEach(el => {
+            el.style.touchAction = 'pan-y';
+        });
+    }
+    const obs = new MutationObserver(fixScroll);
+    obs.observe(document.body, {childList: true, subtree: true});
+    setInterval(fixScroll, 1000);
+})();
 </script>
 """, unsafe_allow_html=True)
 
@@ -404,11 +402,10 @@ def make_rsi_chart(rsi_s, chart_data=None):
 
 def make_candle(data, title, ma240_series=None, cross_date=None, show_levels=True):
     fig = go.Figure()
-    fig.add_trace(go.Candlestick(
+    fig.add_trace(go.Ohlc(
         x=data.index, open=data["Open"], high=data["High"],
         low=data["Low"], close=data["Close"], name="주가",
-        increasing_line_color="#ff3355", decreasing_line_color="#4f8ef7",
-        increasing_fillcolor="rgba(255,51,85,0)", decreasing_fillcolor="rgba(79,142,247,0)"))
+        increasing_line_color="#ff3355", decreasing_line_color="#4f8ef7"))
     for w,c,nm in [(20,"#ffd700","MA20"),(60,"#ff8c42","MA60"),(240,"#ff4b6e","MA240")]:
         ma = data["Close"].rolling(w).mean()
         fig.add_trace(go.Scatter(x=data.index, y=ma, name=nm,
