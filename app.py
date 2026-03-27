@@ -270,7 +270,7 @@ with st.sidebar:
 
 # ── 캐시 함수 ────────────────────────────────────────────────────
 @st.cache_data(ttl=300)
-def get_chart_data(symbol, period="1y"):
+def get_chart_data(symbol, period="2y"):
     try: return yf.Ticker(symbol).history(period=period)
     except: return None
 
@@ -575,7 +575,7 @@ if mode == "🔍 급등 예고 종목 탐지":
                     fig.update_layout(paper_bgcolor="#0e1117",plot_bgcolor="#0e1117",
                         font=dict(color="#8b92a5"),xaxis_tickangle=30,
                         coloraxis_showscale=False,height=240,margin=dict(l=5,r=5,t=30,b=50))
-                    st.plotly_chart(fig, config={"scrollZoom":False,"displayModeBar":False,"staticPlot":True}, use_container_width=True, key="chart_score_bar")
+                    st.plotly_chart(fig, config={"scrollZoom":False,"displayModeBar":False}, use_container_width=True, key="chart_score_bar")
                 with col_b:
                     fig2 = px.scatter(pd.DataFrame(results), x="ma240_gap", y="below_days",
                         size="total_score", color="total_score", hover_data=["name"],
@@ -584,7 +584,7 @@ if mode == "🔍 급등 예고 종목 탐지":
                         title="이격 vs 조정기간 (크기=점수)")
                     fig2.update_layout(paper_bgcolor="#0e1117",plot_bgcolor="#0e1117",
                         font=dict(color="#8b92a5"),height=240,margin=dict(l=5,r=5,t=30,b=5))
-                    st.plotly_chart(fig2, config={"scrollZoom":False,"displayModeBar":False,"staticPlot":True}, use_container_width=True, key="chart_scatter")
+                    st.plotly_chart(fig2, config={"scrollZoom":False,"displayModeBar":False}, use_container_width=True, key="chart_scatter")
 
             # 상세 카드
             st.markdown("<div class='sec-title'>🎯 종목별 상세 분석</div>", unsafe_allow_html=True)
@@ -651,11 +651,11 @@ if mode == "🔍 급등 예고 종목 탐지":
                         st.info("추가 신호 없음 (핵심 조건만 충족)")
 
                     rsi_s = r["rsi_series"]
-                    cd    = get_chart_data(r["symbol"], "1y")
+                    cd    = get_chart_data(r["symbol"], "2y")
                     if cd is not None:
                         cross_date = r["close_series"].index[-(r["days_since_cross"]+1)]
                         _c1 = make_candle(cd, f"{r['name']} ({r['symbol']})", cross_date=cross_date)
-                        st.plotly_chart(_c1, config={"scrollZoom":False,"displayModeBar":False,"staticPlot":True}, use_container_width=True, key=f"candle_{r['symbol']}")
+                        st.plotly_chart(_c1, config={"scrollZoom":False,"displayModeBar":False}, use_container_width=True, key=f"candle_{r['symbol']}")
                         show_price_levels(_c1)
 
 # ── 개별 종목 분석 ───────────────────────────────────────────────
@@ -664,7 +664,7 @@ elif mode == "📈 개별 종목 분석":
     opts = [f"{v} ({k})" for k,v in sorted(STOCK_NAMES.items(), key=lambda x:x[1])]
     col1,col2 = st.columns([3,1])
     with col1: sel = st.selectbox("종목 선택", opts)
-    with col2: period = st.selectbox("기간", ["1y","1y","1y"])
+    with col2: period = st.selectbox("기간", ["2y","2y","2y"])
     symbol = sel.split("(")[1].replace(")","").strip()
     name   = sel.split("(")[0].strip()
 
@@ -742,7 +742,7 @@ elif mode == "📈 개별 종목 분석":
                 # 주가 + 240일선 차트
                 cross_date = result["close_series"].index[-(result["days_since_cross"]+1)]
                 _c2 = make_candle(data, f"{name} ({symbol})", cross_date=cross_date)
-                st.plotly_chart(_c2, config={"scrollZoom":False,"displayModeBar":False,"staticPlot":True}, use_container_width=True)
+                st.plotly_chart(_c2, config={"scrollZoom":False,"displayModeBar":False}, use_container_width=True)
                 show_price_levels(_c2)
 
                 rsi_s  = result["rsi_series"]
@@ -777,7 +777,7 @@ elif mode == "📈 개별 종목 분석":
                         st.warning("📊 240일선 돌파 이력 또는 조정 기간 조건 미충족")
 
                 _c3 = make_candle(data, f"{name} ({symbol})")
-                st.plotly_chart(_c3, config={"scrollZoom":False,"displayModeBar":False,"staticPlot":True}, use_container_width=True, key="chart_candle_no_cond")
+                st.plotly_chart(_c3, config={"scrollZoom":False,"displayModeBar":False}, use_container_width=True, key="chart_candle_no_cond")
                 show_price_levels(_c3)
                 rsi_s  = calc_rsi_wilder(data["Close"], period=20)
 
@@ -848,7 +848,7 @@ elif mode == "💎 우량주 RSI 70 이탈":
         for idx, (symbol, name) in enumerate(QUALITY_STOCKS.items()):
             prog.progress((idx + 1) / total)
             try:
-                df = yf.Ticker(symbol).history(period="1y")
+                df = yf.Ticker(symbol).history(period="2y")
                 if df is None or len(df) < 60:
                     continue
                 rsi = calc_rsi_wilder(df["Close"], 20).dropna()
@@ -958,7 +958,7 @@ elif mode == "💎 우량주 RSI 70 이탈":
                         config={"scrollZoom": False, "displayModeBar": False},
                         use_container_width=True, key=f"rsi_quality_{r['symbol']}")
                     _c4 = make_candle(r["df"], f"{r['name']} ({r['symbol']})")
-                    st.plotly_chart(_c4, config={"scrollZoom":False,"displayModeBar":False,"staticPlot":True}, use_container_width=True, key=f"candle_quality_{r['symbol']}")
+                    st.plotly_chart(_c4, config={"scrollZoom":False,"displayModeBar":False}, use_container_width=True, key=f"candle_quality_{r['symbol']}")
                     show_price_levels(_c4)
 
 
@@ -993,7 +993,7 @@ elif mode == "🎯 최적 급등 타이밍":
     def calc_surge_timing_score(symbol):
         """최적 급등 타이밍 종합 점수 계산"""
         try:
-            df = yf.Ticker(symbol).history(period="1y")
+            df = yf.Ticker(symbol).history(period="2y")
             if df is None or len(df) < 60:
                 return None
 
@@ -1270,9 +1270,9 @@ elif mode == "🎯 최적 급등 타이밍":
 
                     cd = r["df"]
                     _c5 = make_candle(cd, f"{r['name']} ({r['symbol']})", show_levels=True)
-                    st.plotly_chart(_c5, config={"scrollZoom":False,"displayModeBar":False,"staticPlot":True}, use_container_width=True, key=f"candle_timing_{r['symbol']}")
+                    st.plotly_chart(_c5, config={"scrollZoom":False,"displayModeBar":False}, use_container_width=True, key=f"candle_timing_{r['symbol']}")
                     show_price_levels(_c5)
                     st.plotly_chart(
                         make_rsi_chart(r["rsi_series"], cd),
-                        config={"scrollZoom":False,"displayModeBar":False,"staticPlot":True},
+                        config={"scrollZoom":False,"displayModeBar":False},
                         use_container_width=True, key=f"rsi_timing_{r['symbol']}")
