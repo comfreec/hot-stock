@@ -408,7 +408,7 @@ def make_candle(data, title, ma240_series=None, cross_date=None, show_levels=Tru
         x=data.index, open=data["Open"], high=data["High"],
         low=data["Low"], close=data["Close"], name="주가",
         increasing_line_color="#ff3355", decreasing_line_color="#4f8ef7",
-        increasing_fillcolor="#ff3355", decreasing_fillcolor="#4f8ef7"))
+        increasing_fillcolor="rgba(255,51,85,0)", decreasing_fillcolor="rgba(79,142,247,0)"))
     for w,c,nm in [(20,"#ffd700","MA20"),(60,"#ff8c42","MA60"),(240,"#ff4b6e","MA240")]:
         ma = data["Close"].rolling(w).mean()
         fig.add_trace(go.Scatter(x=data.index, y=ma, name=nm,
