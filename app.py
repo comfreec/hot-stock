@@ -19,15 +19,26 @@ if "authenticated" not in st.session_state:
 
 if not st.session_state["authenticated"]:
     st.markdown("""
-    <div style='max-width:400px;margin:100px auto;background:#1e2130;
-         padding:40px;border-radius:16px;border:1px solid #3d4466;text-align:center;'>
-      <h2 style='color:#fff;margin-bottom:8px;'>🚀 주식 급등 예측</h2>
-      <p style='color:#8b92a5;margin-bottom:24px;'>허가된 사용자만 접근 가능합니다</p>
+    <div style='max-width:420px;margin:80px auto;'>
+      <div style='background:linear-gradient(135deg,#1a1f35,#0e1117);
+           padding:48px 40px;border-radius:20px;border:1px solid #2d3555;
+           box-shadow:0 20px 60px rgba(0,0,0,0.5);text-align:center;'>
+        <div style='font-size:48px;margin-bottom:16px;'>🚀</div>
+        <h2 style='color:#fff;margin:0 0 6px;font-size:26px;font-weight:800;
+             letter-spacing:-0.5px;'>주식 급등 예측</h2>
+        <p style='color:#4f8ef7;font-size:13px;margin:0 0 32px;font-weight:500;
+             letter-spacing:2px;'>STOCK SURGE PREDICTOR</p>
+        <div style='width:40px;height:2px;background:linear-gradient(90deg,#4f8ef7,#00d4aa);
+             margin:0 auto 32px;border-radius:2px;'></div>
+        <p style='color:#8b92a5;font-size:13px;margin:0 0 24px;'>
+          허가된 사용자만 접근 가능합니다
+        </p>
+      </div>
     </div>
     """, unsafe_allow_html=True)
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
-        pw = st.text_input("비밀번호", type="password", placeholder="비밀번호 입력")
+        pw = st.text_input("", type="password", placeholder="🔑  비밀번호 입력", label_visibility="collapsed")
         if st.button("로그인", type="primary", use_container_width=True):
             if pw in PASSWORDS:
                 st.session_state["authenticated"] = True
