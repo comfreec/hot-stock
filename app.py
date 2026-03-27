@@ -56,7 +56,9 @@ if not st.session_state["authenticated"]:
 
     import streamlit.components.v1 as components
     components.html("""
-    <style>body{margin:0;overflow:hidden;background:transparent;}</style>
+    <style>
+    html,body{margin:0;padding:0;overflow:hidden;background:transparent;}
+    </style>
     <script>
     function launchRocket() {
         var el = document.createElement('div');
@@ -76,7 +78,7 @@ if not st.session_state["authenticated"]:
     setTimeout(launchRocket, 1000);
     setTimeout(launchRocket, 1800);
     </script>
-    """, height=0)
+    """, height=600, scrolling=False)
     st.stop()
 
 STOCK_NAMES = {
