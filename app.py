@@ -11,6 +11,31 @@ except Exception as e:
     st.error(f"Import error: {e}")
     st.stop()
 
+# ── 접근 제어 ────────────────────────────────────────────────────
+PASSWORDS = ["hotstock2026", "vip1234", "comfreec"]  # 허가된 비밀번호 목록
+
+if "authenticated" not in st.session_state:
+    st.session_state["authenticated"] = False
+
+if not st.session_state["authenticated"]:
+    st.markdown("""
+    <div style='max-width:400px;margin:100px auto;background:#1e2130;
+         padding:40px;border-radius:16px;border:1px solid #3d4466;text-align:center;'>
+      <h2 style='color:#fff;margin-bottom:8px;'>🚀 한국 주식 급등 예측</h2>
+      <p style='color:#8b92a5;margin-bottom:24px;'>허가된 사용자만 접근 가능합니다</p>
+    </div>
+    """, unsafe_allow_html=True)
+    col1, col2, col3 = st.columns([1,2,1])
+    with col2:
+        pw = st.text_input("비밀번호", type="password", placeholder="비밀번호 입력")
+        if st.button("로그인", type="primary", use_container_width=True):
+            if pw in PASSWORDS:
+                st.session_state["authenticated"] = True
+                st.rerun()
+            else:
+                st.error("비밀번호가 올바르지 않습니다")
+    st.stop()
+
 STOCK_NAMES = {
     "005930.KS":"삼성전자","000660.KS":"SK하이닉스","035420.KS":"NAVER",
     "051910.KS":"LG화학","006400.KS":"삼성SDI","035720.KS":"카카오",
