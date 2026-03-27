@@ -440,8 +440,8 @@ def make_candle(data, title, ma240_series=None, cross_date=None, show_levels=Tru
         # ── 차트 우측에 정보 박스 (annotation) ──
         fig.add_annotation(
             xref="paper", yref="paper",
-            x=1.01, y=1.0,
-            xanchor="left", yanchor="top",
+            x=0.99, y=0.99,
+            xanchor="right", yanchor="top",
             text=(
                 f"<b style='color:#00ff88'>🎯 목표가</b><br>"
                 f"<b style='color:#00ff88'>₩{target:,.0f}</b><br>"
@@ -475,7 +475,7 @@ def make_candle(data, title, ma240_series=None, cross_date=None, show_levels=Tru
         xaxis=dict(gridcolor="#1e2540", rangeslider_visible=False, fixedrange=True),
         legend=dict(bgcolor="#1e2130", bordercolor="#2d3555"),
         dragmode=False,
-        height=480, margin=dict(l=0,r=160,t=40,b=0))
+        height=500, margin=dict(l=0,r=10,t=40,b=0))
     return fig
 
 # ── 급등 예고 종목 탐지 ──────────────────────────────────────────
