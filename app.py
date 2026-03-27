@@ -737,6 +737,7 @@ if mode == "🔍 급등 예고 종목 탐지":
                     "돌파후":     f"{r['days_since_cross']}일",
                     "RSI":        r["rsi"],
                     "종합점수":   r["total_score"],
+                    "원점수":     r.get("raw_score", r["total_score"]),
                     "거래량":     "✅" if s.get("vol_at_cross") or s.get("recent_vol") else "❌",
                     "OBV":        "✅" if s.get("obv_rising") else "❌",
                     "정배열":     "✅" if s.get("ma_align") else "❌",
@@ -752,10 +753,13 @@ if mode == "🔍 급등 예고 종목 탐지":
                 })
             df = pd.DataFrame(rows)
             st.dataframe(df,
-                column_config={"종합점수": st.column_config.ProgressColumn(
-                    "종합점수", min_value=0, max_value=39, format="%d점"),
+                column_config={
+                    "종합점수": st.column_config.ProgressColumn(
+                        "종합점수(ML보정)", min_value=0, max_value=50, format="%d점"),
+                    "원점수": st.column_config.ProgressColumn(
+                        "원점수", min_value=0, max_value=39, format="%d점"),
                     "RSI": st.column_config.ProgressColumn(
-                    "RSI", min_value=0, max_value=100, format="%.1f")},
+                        "RSI", min_value=0, max_value=100, format="%.1f")},
                 use_container_width=True, hide_index=True)
 
             # 차트
