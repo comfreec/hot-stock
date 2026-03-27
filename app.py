@@ -713,6 +713,8 @@ if mode == "🔍 급등 예고 종목 탐지":
                 news = get_news_headline(r["symbol"])
                 import html
                 news_safe = html.escape(news) if news else ""
+                below_months = r["below_days"] // 20
+                news_html = f'<div style="margin-top:5px;color:#6b7280;font-size:11px;overflow:hidden;text-overflow:ellipsis;">📰 {news_safe}</div>' if news_safe else ''
 
                 st.markdown(f"""<div class="rank-card {medal}">
                   <div style="display:flex;justify-content:space-between;align-items:center;">
@@ -731,9 +733,9 @@ if mode == "🔍 급등 예고 종목 탐지":
                   </div>
                   <div style="margin-top:6px;color:#8b92a5;font-size:12px;">
                     240일선 ₩{r["ma240"]:,.0f} | 이격 +{r["ma240_gap"]:.1f}% |
-                    조정 {r["below_days"]}일({r["below_days"]//20}개월) | 돌파 {r["days_since_cross"]}일 전
+                    조정 {r["below_days"]}일({below_months}개월) | 돌파 {r["days_since_cross"]}일 전
                   </div>
-                  {f'<div style="margin-top:5px;color:#6b7280;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">📰 {news_safe}</div>' if news_safe else ''}
+                  {news_html}
                   <div style="margin-top:8px;">
                     <div style="color:#8b92a5;font-size:11px;margin-bottom:3px;">종합점수 {r["total_score"]}점</div>
                     <div class="bar-bg"><div class="bar-fill" style="width:{pct}%;"></div></div>
