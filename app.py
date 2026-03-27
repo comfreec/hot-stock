@@ -767,18 +767,13 @@ if mode == "🔍 급등 예고 종목 탐지":
         results = sorted(results, key=lambda x: x["total_score"], reverse=True)
         results = [r for r in results if r["total_score"] >= min_score]
 
-        # 손익비 3:1 미만 종목 제외
-        filtered = []
+        # 손익비 계산 (필터 없이 표시만)
         for r in results:
             cd = get_chart_data(r["symbol"], "2y")
             if cd is not None:
-                rr = calc_rr_ratio(cd)
-                r["rr_ratio"] = rr
-                if rr >= 3.0:
-                    filtered.append(r)
+                r["rr_ratio"] = calc_rr_ratio(cd)
             else:
                 r["rr_ratio"] = 0
-        results = filtered
 
         if not results:
             st.warning("현재 조건을 만족하는 종목이 없습니다.")
