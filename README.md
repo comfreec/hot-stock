@@ -1,4 +1,13 @@
-# 🚀 한국 주식 급등 예측 프로그램
+---
+title: Hot Stock
+emoji: 🚀
+colorFrom: blue
+colorTo: green
+sdk: docker
+pinned: false
+---
+
+
 
 AI 딥러닝과 기술적 분석을 활용한 한국 주식 급등 예측 시스템입니다.
 
