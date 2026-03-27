@@ -21,16 +21,18 @@ if not st.session_state["authenticated"]:
     st.markdown("""
     <style>
     @keyframes rocket {
-        0%   { transform: translateY(0px) rotate(-45deg); }
-        50%  { transform: translateY(-18px) rotate(-45deg); }
-        100% { transform: translateY(0px) rotate(-45deg); }
+        0%   { transform: translateY(0px) rotate(-45deg); opacity:1; }
+        70%  { transform: translateY(-80px) rotate(-45deg); opacity:1; }
+        71%  { transform: translateY(-80px) rotate(-45deg); opacity:0; }
+        72%  { transform: translateY(40px) rotate(-45deg); opacity:0; }
+        100% { transform: translateY(0px) rotate(-45deg); opacity:1; }
     }
     @keyframes fadein {
         from { opacity:0; transform: translateY(20px); }
         to   { opacity:1; transform: translateY(0); }
     }
     .login-box { animation: fadein 0.6s ease; }
-    .rocket-icon { display:inline-block; animation: rocket 1.6s ease-in-out infinite; font-size:52px; }
+    .rocket-icon { display:inline-block; animation: rocket 2.2s ease-in-out infinite; font-size:52px; }
     </style>
     <div class='login-box' style='max-width:420px;margin:80px auto;'>
       <div style='background:linear-gradient(135deg,#1a1f35,#0e1117);
