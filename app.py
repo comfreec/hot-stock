@@ -143,8 +143,13 @@ st.markdown("""<style>
 
 /* ── 기본 레이아웃 ── */
 .main .block-container {
-    padding: 0.5rem 0.8rem !important;
+    padding: 0.5rem 0.5rem !important;
     max-width: 100% !important;
+}
+/* Streamlit 내부 여백 제거 */
+.main > div:first-child {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
 }
 section[data-testid="stSidebar"] {
     min-width: 240px !important;
