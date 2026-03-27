@@ -396,10 +396,26 @@ cols_m[3].markdown(f"""
       <div style='color:#e0e6f0;font-size:16px;font-weight:700;'>{now}</div>
     </div>""", unsafe_allow_html=True)
 
+# ── 상단 메뉴 탭 ─────────────────────────────────────────────────
+if "mode" not in st.session_state:
+    st.session_state["mode"] = "🔍 급등 예고 종목 탐지"
+
+tab_cols = st.columns(3)
+tab_labels = ["🔍 급등 예고 종목 탐지", "🎯 최적 급등 타이밍", "📈 개별 종목 분석"]
+for i, (col, label) in enumerate(zip(tab_cols, tab_labels)):
+    active = st.session_state["mode"] == label
+    bg = "#4f8ef7" if active else "#1e2130"
+    border = "#4f8ef7" if active else "#2d3555"
+    color = "#fff" if active else "#8b92a5"
+    if col.button(label, key=f"tab_{i}", use_container_width=True):
+        st.session_state["mode"] = label
+        st.rerun()
+
+mode = st.session_state["mode"]
+st.markdown("---")
+
 # ── 사이드바: 조건 설정 ──────────────────────────────────────────
 with st.sidebar:
-    mode = st.selectbox("화면", ["🔍 급등 예고 종목 탐지", "🎯 최적 급등 타이밍", "📈 개별 종목 분석"],
-                        label_visibility="collapsed")
     st.markdown("---")
     st.markdown("### ⚙️ 핵심 조건 설정")
 
