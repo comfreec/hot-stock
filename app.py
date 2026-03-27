@@ -19,12 +19,25 @@ if "authenticated" not in st.session_state:
 
 if not st.session_state["authenticated"]:
     st.markdown("""
-    <div style='max-width:420px;margin:80px auto;'>
+    <style>
+    @keyframes rocket {
+        0%   { transform: translateY(0px) rotate(-45deg); }
+        50%  { transform: translateY(-18px) rotate(-45deg); }
+        100% { transform: translateY(0px) rotate(-45deg); }
+    }
+    @keyframes fadein {
+        from { opacity:0; transform: translateY(20px); }
+        to   { opacity:1; transform: translateY(0); }
+    }
+    .login-box { animation: fadein 0.6s ease; }
+    .rocket-icon { display:inline-block; animation: rocket 1.6s ease-in-out infinite; font-size:52px; }
+    </style>
+    <div class='login-box' style='max-width:420px;margin:80px auto;'>
       <div style='background:linear-gradient(135deg,#1a1f35,#0e1117);
            padding:48px 40px;border-radius:20px;border:1px solid #2d3555;
            box-shadow:0 20px 60px rgba(0,0,0,0.5);text-align:center;'>
-        <div style='font-size:48px;margin-bottom:16px;'>🚀</div>
-        <h2 style='color:#fff;margin:0 0 6px;font-size:26px;font-weight:800;
+        <div class='rocket-icon'>🚀</div>
+        <h2 style='color:#fff;margin:16px 0 6px;font-size:26px;font-weight:800;
              letter-spacing:-0.5px;'>주식 급등 예측</h2>
         <p style='color:#4f8ef7;font-size:13px;margin:0 0 32px;font-weight:500;
              letter-spacing:2px;'>STOCK SURGE PREDICTOR</p>
