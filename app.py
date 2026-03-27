@@ -610,36 +610,62 @@ def make_candle(data, title, ma240_series=None, cross_date=None, show_levels=Tru
 
     if show_levels:
         current  = float(data["Close"].iloc[-1])
-        ma20_now = float(data["Close"].rolling(20).mean().iloc[-1])
-        ma60_now = float(data["Close"].rolling(60).mean().iloc[-1]) if len(data) >= 60 else ma20_now
+        close    = data["Close"]
+        high     = data["High"]
+        low      = data["Low"]
+        ma20_now = float(close.rolling(20).mean().iloc[-1])
+        ma60_now = float(close.rolling(60).mean().iloc[-1]) if len(data) >= 60 else ma20_now
 
-        # ── 손절가: 직전 스윙 저점 (실제 지지선) ──
-        # 최근 20일 저점 vs MA20 vs MA60 중 현재가 아래에서 가장 가까운 값
-        swing_low = float(data["Low"].tail(20).min())
-        candidates_stop = [x for x in [swing_low, ma20_now, ma60_now] if x < current]
-        stop = max(candidates_stop) if candidates_stop else current * 0.95
-        # 손절이 너무 가까우면 (1% 미만) 최소 -3% 보장
-        if (current - stop) / current < 0.01:
-            stop = current * 0.97
+        # ── ATR 계산 (평균 변동폭) ──────────────────────────────
+        tr = pd.concat([
+            high - low,
+            (high - close.shift(1)).abs(),
+            (low  - close.shift(1)).abs()
+        ], axis=1).max(axis=1)
+        atr = float(tr.rolling(14).mean().iloc[-1])
 
-        risk = current - stop  # 리스크 금액
+        # ── 손절가: 3가지 기준 중 현재가에 가장 가까운 값 ──────
+        # 1) 직전 스윙 저점 (최근 20일 저점)
+        swing_low = float(low.tail(20).min())
+        # 2) ATR 기반 손절 (ATR × 1.5 아래)
+        atr_stop  = current - atr * 1.5
+        # 3) MA60 (중기 지지선)
+        ma60_stop = ma60_now * 0.99  # MA60 1% 아래
 
-        # ── 목표가: 손익비 2.5:1 기준 + 직전 저항선 확인 ──
-        # 1차: 손익비 2.5배 기준 목표
-        target_rr = current + risk * 2.5
-        # 2차: 최근 60일 고점 (저항선)
-        resist_60 = float(data["High"].tail(60).max())
-        # 3차: 52주 고점
-        resist_52w = float(data["High"].tail(252).max())
+        # 현재가 아래에 있는 후보 중 가장 높은 값 (가장 타이트한 손절)
+        stop_candidates = [x for x in [swing_low, atr_stop, ma60_stop] if x < current * 0.99]
+        stop = max(stop_candidates) if stop_candidates else current * 0.95
+        # 최소 손절폭 보장 (-2%)
+        stop = min(stop, current * 0.98)
 
-        # 현재가보다 위에 있는 저항선 중 가장 가까운 것
-        resist_candidates = [x for x in [resist_60, resist_52w] if x > current * 1.03]
-        nearest_resist = min(resist_candidates) if resist_candidates else target_rr
+        risk = current - stop
 
-        # 손익비 2:1 이상 보장되는 목표가 선택
-        target = max(target_rr, nearest_resist) if nearest_resist >= target_rr else target_rr
-        # 단, 너무 멀면 (30% 이상) 현실적인 값으로 조정
-        if (target - current) / current > 0.30:
+        # ── 목표가: 3가지 기준 중 가장 현실적인 값 ─────────────
+        # 1) 피보나치 100% 되돌림 (직전 하락폭 기준)
+        recent_high = float(high.tail(120).max())
+        recent_low  = float(low.tail(120).min())
+        fib_100 = recent_high  # 직전 고점 = 100% 되돌림
+        fib_618 = recent_low + (recent_high - recent_low) * 0.618
+
+        # 2) 직전 스윙 하이 (최근 60일 고점)
+        swing_high_60 = float(high.tail(60).max())
+
+        # 3) ATR 기반 목표 (ATR × 3배)
+        atr_target = current + atr * 3.0
+
+        # 손익비 2:1 이상 보장되는 후보들
+        min_target = current + risk * 2.0
+        target_candidates = [x for x in [fib_618, swing_high_60, fib_100, atr_target]
+                             if x >= min_target and x > current * 1.02]
+
+        if target_candidates:
+            # 가장 가까운 현실적 목표가 선택
+            target = min(target_candidates)
+        else:
+            target = current + risk * 2.5
+
+        # 목표가 상한 (현재가 +40% 초과 시 조정)
+        if (target - current) / current > 0.40:
             target = current + risk * 3.0
 
         rr_ratio = (target - current) / (current - stop + 1e-9)
