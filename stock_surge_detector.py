@@ -11,6 +11,11 @@ from datetime import datetime
 import warnings
 warnings.filterwarnings("ignore")
 
+try:
+    from backtest_ml import ml_score_adjustment
+except:
+    def ml_score_adjustment(signals, base_score): return float(base_score)
+
 ALL_SYMBOLS = [
     # 코스피 200 (2024년 기준)
     "005930.KS","000660.KS","035420.KS","051910.KS","006400.KS",
@@ -585,6 +590,10 @@ class KoreanStockSurgeDetector:
             signals["disclosure_types"] = disc_types
             if has_disc: score += 2
 
+            # ── ML 점수 보정 ─────────────────────────────────────
+            ml_adjusted = ml_score_adjustment(signals, score)
+            signals["ml_adjusted_score"] = ml_adjusted
+
             return {
                 "symbol":           symbol,
                 "name":             STOCK_NAMES.get(symbol, symbol),
@@ -594,7 +603,8 @@ class KoreanStockSurgeDetector:
                 "ma240_gap":        round(gap_pct, 2),
                 "days_since_cross": days_since_cross,
                 "below_days":       below_days,
-                "total_score":      score,
+                "total_score":      int(ml_adjusted),
+                "raw_score":        score,
                 "signals":          signals,
                 "rsi":              signals["rsi"],
                 "vol_ratio":        round(recent_vr, 2),
