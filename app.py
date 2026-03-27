@@ -434,6 +434,15 @@ def make_candle(data, title, ma240_series=None, cross_date=None, show_levels=Tru
         upside   = (target / current - 1) * 100
         downside = (stop / current - 1) * 100
 
+        # 목표가 수평선 (초록)
+        fig.add_hline(y=target, line=dict(color="#00ff88", width=2, dash="dash"))
+        fig.add_hrect(y0=current, y1=target, fillcolor="rgba(0,255,136,0.08)", line_width=0)
+        # 현재가 수평선 (흰색)
+        fig.add_hline(y=current, line=dict(color="#ffffff", width=1.5, dash="dot"))
+        # 손절가 수평선 (빨강)
+        fig.add_hline(y=stop, line=dict(color="#ff3355", width=2, dash="dash"))
+        fig.add_hrect(y0=stop, y1=current, fillcolor="rgba(255,51,85,0.08)", line_width=0)
+
     fig.update_layout(
         title=dict(text=title, font=dict(color="#e0e6f0", size=13)),
         paper_bgcolor="#0e1117", plot_bgcolor="#0e1117",
