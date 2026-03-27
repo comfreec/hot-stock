@@ -340,7 +340,9 @@ def get_news_headline(symbol):
 
 market = get_market_index()
 fear_score, fear_label, fear_color = get_fear_greed()
-now = datetime.now().strftime("%Y.%m.%d %H:%M")
+from datetime import datetime, timezone, timedelta
+KST = timezone(timedelta(hours=9))
+now = datetime.now(KST).strftime("%Y.%m.%d %H:%M")
 
 cols_m = st.columns([1,1,1,2])
 for i, (name, (val, chg)) in enumerate(market.items()):
