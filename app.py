@@ -21,7 +21,7 @@ if not st.session_state["authenticated"]:
     st.markdown("""
     <div style='max-width:400px;margin:100px auto;background:#1e2130;
          padding:40px;border-radius:16px;border:1px solid #3d4466;text-align:center;'>
-      <h2 style='color:#fff;margin-bottom:8px;'>🚀 한국 주식 급등 예측</h2>
+      <h2 style='color:#fff;margin-bottom:8px;'>🚀 주식 급등 예측</h2>
       <p style='color:#8b92a5;margin-bottom:24px;'>허가된 사용자만 접근 가능합니다</p>
     </div>
     """, unsafe_allow_html=True)
