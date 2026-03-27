@@ -467,9 +467,13 @@ def get_chart_data(symbol, period="2y"):
     try: return yf.Ticker(symbol).history(period=period)
     except: return None
 
-def calc_rr_ratio(data):
+@st.cache_data(ttl=300)
+def calc_rr_ratio(symbol):
     """손익비 계산 - make_candle과 동일한 로직"""
     try:
+        data = get_chart_data(symbol, "2y")
+        if data is None:
+            return 0
         close = data["Close"]
         high  = data["High"]
         low   = data["Low"]
@@ -769,11 +773,7 @@ if mode == "🔍 급등 예고 종목 탐지":
 
         # 손익비 계산 (필터 없이 표시만)
         for r in results:
-            cd = get_chart_data(r["symbol"], "2y")
-            if cd is not None:
-                r["rr_ratio"] = calc_rr_ratio(cd)
-            else:
-                r["rr_ratio"] = 0
+            r["rr_ratio"] = calc_rr_ratio(r["symbol"])
 
         if not results:
             st.warning("현재 조건을 만족하는 종목이 없습니다.")
