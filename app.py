@@ -179,11 +179,21 @@ with st.sidebar:
                         label_visibility="collapsed")
     st.markdown("---")
     st.markdown("### ⚙️ 핵심 조건 설정")
-    max_gap = st.slider("📍 240선 근처 범위 (%)", 1, 20, 15,
+
+    # 기본값 버튼
+    if st.button("⚡ 최적 셋팅", use_container_width=True):
+        st.session_state["max_gap"]   = 10
+        st.session_state["min_below"] = 120
+        st.session_state["max_cross"] = 90
+
+    max_gap = st.slider("📍 240선 근처 범위 (%)", 1, 20,
+        st.session_state.get("max_gap", 10),
         help="현재가가 240일선 위 몇 % 이내인지 (작을수록 엄격)")
-    min_below = st.slider("📉 최소 조정 기간 (일)", 60, 300, 90,
+    min_below = st.slider("📉 최소 조정 기간 (일)", 60, 300,
+        st.session_state.get("min_below", 120),
         help="240일선 아래 최소 체류 일수 (120=6개월, 240=1년)")
-    max_cross = st.slider("📈 돌파 후 최대 경과 (일)", 10, 180, 180,
+    max_cross = st.slider("📈 돌파 후 최대 경과 (일)", 10, 180,
+        st.session_state.get("max_cross", 90),
         help="240일선 돌파 후 최대 경과 일수")
     st.markdown("---")
     st.markdown("""**📊 추가 점수 신호**
