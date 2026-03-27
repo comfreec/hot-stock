@@ -1427,7 +1427,6 @@ st.markdown("---")
 st.markdown("""
 <div style='text-align:center;color:#555;font-size:11px;padding:10px 0 20px;'>
 ⚠️ 본 서비스는 투자 참고용 정보 제공 목적이며, 투자 권유가 아닙니다.<br>
-주식 투자는 원금 손실 위험이 있으며, 모든 투자 결정과 책임은 투자자 본인에게 있습니다.<br>
-AI 분석 결과는 100% 정확하지 않으며, 반드시 다양한 정보를 종합하여 판단하시기 바랍니다.
+주식 투자는 원금 손실 위험이 있으며, 모든 투자 결정과 책임은 투자자 본인에게 있습니다.
 </div>
 """, unsafe_allow_html=True)
