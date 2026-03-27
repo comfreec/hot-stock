@@ -169,6 +169,14 @@ st.markdown("""<style>
     padding-left: 0 !important;
     padding-right: 0 !important;
 }
+/* 상단 헤더 여백 제거 */
+header[data-testid="stHeader"] {
+    height: 0 !important;
+    min-height: 0 !important;
+}
+div[data-testid="stAppViewContainer"] > section > div:first-child {
+    padding-top: 0.3rem !important;
+}
 section[data-testid="stSidebar"] {
     min-width: 240px !important;
     max-width: 260px !important;
