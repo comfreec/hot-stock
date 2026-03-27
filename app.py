@@ -20,28 +20,53 @@ if "authenticated" not in st.session_state:
 if not st.session_state["authenticated"]:
     st.markdown("""
     <style>
-    @keyframes rocket_fly {
-        0%   { bottom: -60px; left: 50%; opacity:0; }
-        5%   { opacity:1; }
-        90%  { opacity:1; }
-        100% { bottom: 110vh; left: 55%; opacity:0; }
-    }
     @keyframes fadein {
         from { opacity:0; transform: translateY(20px); }
         to   { opacity:1; transform: translateY(0); }
     }
     .login-box { animation: fadein 0.6s ease; }
-    .rocket-fly {
-        position: fixed;
-        font-size: 40px;
-        animation: rocket_fly 3s ease-in infinite;
-        z-index: 0;
-        pointer-events: none;
-        transform: rotate(-45deg);
-    }
-    body { overflow-x: hidden; }
+    body { overflow: hidden; }
     </style>
-    <div class='rocket-fly'>🚀</div>
+    <script>
+    (function() {
+        function launchRocket() {
+            var el = document.createElement('div');
+            el.textContent = '🚀';
+            var startX = Math.random() * 90 + 5;
+            var endX = startX + (Math.random() - 0.5) * 30;
+            var duration = 2000 + Math.random() * 2000;
+            var angle = -30 - Math.random() * 60;
+            el.style.cssText = [
+                'position:fixed',
+                'bottom:-60px',
+                'left:' + startX + '%',
+                'font-size:' + (28 + Math.random()*20) + 'px',
+                'z-index:9999',
+                'pointer-events:none',
+                'transform:rotate(' + angle + 'deg)',
+                'transition:bottom ' + duration + 'ms ease-in, left ' + duration + 'ms ease-in-out, opacity 200ms',
+                'opacity:0'
+            ].join(';');
+            document.body.appendChild(el);
+            setTimeout(function() {
+                el.style.opacity = '1';
+                el.style.bottom = '110vh';
+                el.style.left = endX + '%';
+            }, 50);
+            setTimeout(function() {
+                el.style.opacity = '0';
+            }, duration - 200);
+            setTimeout(function() {
+                el.remove();
+                launchRocket();
+            }, duration + 300);
+        }
+        // 여러 로켓 동시에
+        setTimeout(launchRocket, 100);
+        setTimeout(launchRocket, 1200);
+        setTimeout(launchRocket, 2400);
+    })();
+    </script>
     <div class='login-box' style='max-width:420px;margin:80px auto;'>
       <div style='background:linear-gradient(135deg,#1a1f35,#0e1117);
            padding:48px 40px;border-radius:20px;border:1px solid #2d3555;
