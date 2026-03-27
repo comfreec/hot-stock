@@ -189,6 +189,14 @@ section[data-testid="stSidebar"] {
   padding-bottom:6px;border-bottom:2px solid #2d3555;}
 .cond-box{background:#1a1f35;border:1px solid #2d3555;border-radius:10px;
   padding:12px 16px;margin-bottom:12px;font-size:13px;color:#8b92a5;}
+
+/* 차트 영역 터치 스크롤 허용 */
+.js-plotly-plot, .plotly, .plot-container {
+    touch-action: pan-y !important;
+}
+.stPlotlyChart {
+    touch-action: pan-y !important;
+}
 </style>""", unsafe_allow_html=True)
 
 st.markdown("""<div class="top-header">
