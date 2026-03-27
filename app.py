@@ -313,7 +313,7 @@ def show_price_levels(fig):
     </div>
     """, unsafe_allow_html=True)
 
-(rsi_s, chart_data=None):
+def make_rsi_chart(rsi_s, chart_data=None):
     """RSI 차트 - 이베스트증권 스타일, 확대/축소 비활성화"""
     if chart_data is not None:
         try:
