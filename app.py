@@ -400,14 +400,12 @@ cols_m[3].markdown(f"""
 if "mode" not in st.session_state:
     st.session_state["mode"] = "🔍 급등 예고 종목 탐지"
 
-tab_cols = st.columns(3)
 tab_labels = ["🔍 급등 예고 종목 탐지", "🎯 최적 급등 타이밍", "📈 개별 종목 분석"]
+tab_cols = st.columns(3)
 for i, (col, label) in enumerate(zip(tab_cols, tab_labels)):
     active = st.session_state["mode"] == label
-    bg = "#4f8ef7" if active else "#1e2130"
-    border = "#4f8ef7" if active else "#2d3555"
-    color = "#fff" if active else "#8b92a5"
-    if col.button(label, key=f"tab_{i}", use_container_width=True):
+    if col.button(label, key=f"tab_{i}", use_container_width=True,
+                  type="primary" if active else "secondary"):
         st.session_state["mode"] = label
         st.rerun()
 
