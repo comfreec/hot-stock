@@ -279,7 +279,41 @@ def calc_rsi_wilder(close, period=20):
     rs = avg_gain / avg_loss.replace(0, float('nan'))
     return 100 - (100 / (1 + rs))
 
-def make_rsi_chart(rsi_s, chart_data=None):
+def show_price_levels(fig):
+    """차트 아래에 목표가/현재가/손절가 박스 표시"""
+    if not hasattr(fig, '_price_levels') or fig._price_levels is None:
+        return
+    lv = fig._price_levels
+    st.markdown(f"""
+    <div style='display:flex;gap:12px;margin:-8px 0 8px;'>
+      <div style='flex:1;background:rgba(0,255,136,0.1);border:1px solid #00ff88;
+           border-radius:8px;padding:10px;text-align:center;'>
+        <div style='color:#8b92a5;font-size:11px;'>🎯 목표가</div>
+        <div style='color:#00ff88;font-size:16px;font-weight:700;'>₩{lv["target"]:,.0f}</div>
+        <div style='color:#00ff88;font-size:12px;'>+{lv["upside"]:.1f}%</div>
+      </div>
+      <div style='flex:1;background:rgba(255,255,255,0.05);border:1px solid #555;
+           border-radius:8px;padding:10px;text-align:center;'>
+        <div style='color:#8b92a5;font-size:11px;'>📍 현재가</div>
+        <div style='color:#fff;font-size:16px;font-weight:700;'>₩{lv["current"]:,.0f}</div>
+        <div style='color:#8b92a5;font-size:12px;'>진입가</div>
+      </div>
+      <div style='flex:1;background:rgba(255,51,85,0.1);border:1px solid #ff3355;
+           border-radius:8px;padding:10px;text-align:center;'>
+        <div style='color:#8b92a5;font-size:11px;'>🛑 손절가</div>
+        <div style='color:#ff3355;font-size:16px;font-weight:700;'>₩{lv["stop"]:,.0f}</div>
+        <div style='color:#ff3355;font-size:12px;'>{lv["downside"]:.1f}%</div>
+      </div>
+      <div style='flex:1;background:rgba(255,215,0,0.1);border:1px solid #ffd700;
+           border-radius:8px;padding:10px;text-align:center;'>
+        <div style='color:#8b92a5;font-size:11px;'>⚖️ 손익비</div>
+        <div style='color:#ffd700;font-size:16px;font-weight:700;'>{lv["rr_ratio"]:.1f} : 1</div>
+        <div style='color:#8b92a5;font-size:12px;'>Risk/Reward</div>
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+(rsi_s, chart_data=None):
     """RSI 차트 - 이베스트증권 스타일, 확대/축소 비활성화"""
     if chart_data is not None:
         try:
@@ -473,9 +507,12 @@ def make_candle(data, title, ma240_series=None, cross_date=None, show_levels=Tru
         yaxis=dict(gridcolor="#1e2540", fixedrange=True),
         yaxis2=dict(overlaying="y", side="right", gridcolor="#1e2540", fixedrange=True),
         xaxis=dict(gridcolor="#1e2540", rangeslider_visible=False, fixedrange=True),
-        legend=dict(bgcolor="#1e2130", bordercolor="#2d3555"),
+        legend=dict(bgcolor="#1e2130", bordercolor="#2d3555", visible=False),
         dragmode=False,
-        height=500, margin=dict(l=0,r=10,t=40,b=0))
+        height=500, margin=dict(l=0,r=10,t=30,b=0))
+    # 차트 아래 목표가/손절가 정보 박스는 호출부에서 별도 표시
+    fig._price_levels = dict(target=target, current=current, stop=stop,
+                             upside=upside, downside=downside, rr_ratio=rr_ratio) if show_levels else None
     return fig
 
 # ── 급등 예고 종목 탐지 ──────────────────────────────────────────
@@ -649,9 +686,9 @@ if mode == "🔍 급등 예고 종목 탐지":
                     cd    = get_chart_data(r["symbol"], "6mo")
                     if cd is not None:
                         cross_date = r["close_series"].index[-(r["days_since_cross"]+1)]
-                        st.plotly_chart(
-                            make_candle(cd, f"{r['name']} ({r['symbol']}) — 2년 차트", cross_date=cross_date),
-                            config={"scrollZoom":False,"displayModeBar":False}, use_container_width=True, key=f"candle_{r['symbol']}")
+                        _c1 = make_candle(cd, f"{r['name']} ({r['symbol']})", cross_date=cross_date)
+                        st.plotly_chart(_c1, config={"scrollZoom":False,"displayModeBar":False}, use_container_width=True, key=f"candle_{r['symbol']}")
+                        show_price_levels(_c1)
                         # RSI 차트 (주가 차트와 x축 동일)
                         st.plotly_chart(make_rsi_chart(rsi_s, cd), config={"scrollZoom":False,"displayModeBar":False}, use_container_width=True, key=f"rsi_detail_{r['symbol']}")
 
@@ -738,9 +775,9 @@ elif mode == "📈 개별 종목 분석":
 
                 # 주가 + 240일선 차트
                 cross_date = result["close_series"].index[-(result["days_since_cross"]+1)]
-                st.plotly_chart(
-                    make_candle(data, f"{name} ({symbol}) — {period} 차트", cross_date=cross_date),
-                    config={"scrollZoom":False,"displayModeBar":False}, use_container_width=True)
+                _c2 = make_candle(data, f"{name} ({symbol})", cross_date=cross_date)
+                st.plotly_chart(_c2, config={"scrollZoom":False,"displayModeBar":False}, use_container_width=True)
+                show_price_levels(_c2)
 
                 # RSI 차트 (주가 차트와 x축 동일하게)
                 rsi_s  = result["rsi_series"]
@@ -775,8 +812,9 @@ elif mode == "📈 개별 종목 분석":
                     else:
                         st.warning("📊 240일선 돌파 이력 또는 조정 기간 조건 미충족")
 
-                st.plotly_chart(make_candle(data, f"{name} ({symbol}) — {period} 차트"),
-                                config={"scrollZoom":False,"displayModeBar":False}, use_container_width=True, key="chart_candle_no_cond")
+                _c3 = make_candle(data, f"{name} ({symbol})")
+                st.plotly_chart(_c3, config={"scrollZoom":False,"displayModeBar":False}, use_container_width=True, key="chart_candle_no_cond")
+                show_price_levels(_c3)
                 # 조건 미충족이어도 RSI 차트 표시
                 rsi_s  = calc_rsi_wilder(data["Close"], period=20)
                 st.plotly_chart(make_rsi_chart(rsi_s, data), config={"scrollZoom":False,"displayModeBar":False}, use_container_width=True, key="chart_rsi_no_cond")
@@ -957,10 +995,9 @@ elif mode == "💎 우량주 RSI 70 이탈":
                         make_rsi_chart(r["rsi_series"], r["df"]),
                         config={"scrollZoom": False, "displayModeBar": False},
                         use_container_width=True, key=f"rsi_quality_{r['symbol']}")
-                    st.plotly_chart(
-                        make_candle(r["df"], f"{r['name']} ({r['symbol']})"),
-                        config={"scrollZoom": False, "displayModeBar": False},
-                        use_container_width=True, key=f"candle_quality_{r['symbol']}")
+                    _c4 = make_candle(r["df"], f"{r['name']} ({r['symbol']})")
+                    st.plotly_chart(_c4, config={"scrollZoom":False,"displayModeBar":False}, use_container_width=True, key=f"candle_quality_{r['symbol']}")
+                    show_price_levels(_c4)
 
 
 # ── 최적 급등 타이밍 탐지 ────────────────────────────────────────
@@ -1270,10 +1307,9 @@ elif mode == "🎯 최적 급등 타이밍":
                         for sig in inactive[:6]: st.error(sig)
 
                     cd = r["df"]
-                    st.plotly_chart(
-                        make_candle(cd, f"{r['name']} ({r['symbol']})", show_levels=True),
-                        config={"scrollZoom":False,"displayModeBar":False},
-                        use_container_width=True, key=f"candle_timing_{r['symbol']}")
+                    _c5 = make_candle(cd, f"{r['name']} ({r['symbol']})", show_levels=True)
+                    st.plotly_chart(_c5, config={"scrollZoom":False,"displayModeBar":False}, use_container_width=True, key=f"candle_timing_{r['symbol']}")
+                    show_price_levels(_c5)
                     st.plotly_chart(
                         make_rsi_chart(r["rsi_series"], cd),
                         config={"scrollZoom":False,"displayModeBar":False},
