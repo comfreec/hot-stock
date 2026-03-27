@@ -467,6 +467,45 @@ def get_chart_data(symbol, period="2y"):
     try: return yf.Ticker(symbol).history(period=period)
     except: return None
 
+def calc_rr_ratio(data):
+    """손익비 계산 - make_candle과 동일한 로직"""
+    try:
+        close = data["Close"]
+        high  = data["High"]
+        low   = data["Low"]
+        current = float(close.iloc[-1])
+
+        tr = pd.concat([
+            high - low,
+            (high - close.shift(1)).abs(),
+            (low  - close.shift(1)).abs()
+        ], axis=1).max(axis=1)
+        atr = float(tr.rolling(14).mean().iloc[-1])
+
+        swing_low = float(low.tail(20).min())
+        stop = swing_low - atr * 0.5
+        stop = max(stop, current * 0.88)
+        stop = min(stop, current * 0.97)
+        risk = current - stop
+
+        recent_high = float(high.tail(120).max())
+        recent_low  = float(low.tail(120).min())
+        swing_range = recent_high - recent_low
+        fib_1618 = recent_low + swing_range * 1.618
+        fib_100  = recent_high
+        atr_x4   = current + atr * 4.0
+
+        min_rr3 = current + risk * 3.0
+        candidates = sorted([x for x in [fib_100, fib_1618, atr_x4] if x > current * 1.03])
+        valid = [x for x in candidates if x >= min_rr3]
+        target = valid[0] if valid else (candidates[-1] if candidates else current + risk * 3.0)
+        target = min(target, current * 1.50)
+
+        rr = (target - current) / (current - stop + 1e-9)
+        return round(rr, 2)
+    except:
+        return 0
+
 def metric_card(col, label, value):
     col.markdown(f"""<div class="metric-card">
         <div class="lbl">{label}</div><div class="val">{value}</div>
@@ -728,6 +767,19 @@ if mode == "🔍 급등 예고 종목 탐지":
         results = sorted(results, key=lambda x: x["total_score"], reverse=True)
         results = [r for r in results if r["total_score"] >= min_score]
 
+        # 손익비 3:1 미만 종목 제외
+        filtered = []
+        for r in results:
+            cd = get_chart_data(r["symbol"], "2y")
+            if cd is not None:
+                rr = calc_rr_ratio(cd)
+                r["rr_ratio"] = rr
+                if rr >= 3.0:
+                    filtered.append(r)
+            else:
+                r["rr_ratio"] = 0
+        results = filtered
+
         if not results:
             st.warning("현재 조건을 만족하는 종목이 없습니다.")
             st.info("💡 사이드바에서 조건을 완화해보세요:\n- '240선 근처 범위'를 늘리거나\n- '최소 조정 기간'을 줄이거나\n- '돌파 후 최대 경과'를 늘려보세요")
@@ -752,6 +804,7 @@ if mode == "🔍 급등 예고 종목 탐지":
                     "종목코드":   r["symbol"],
                     "현재가":     f"₩{r['current_price']:,.0f}",
                     "등락률":     f"{'🔺' if r['price_change_1d']>0 else '🔽'}{r['price_change_1d']:.2f}%",
+                    "손익비":     f"{r.get('rr_ratio', 0):.1f}:1",
                     "240일선":    f"₩{r['ma240']:,.0f}",
                     "240선이격":  f"+{r['ma240_gap']:.1f}%",
                     "조정기간":   f"{r['below_days']}일({r['below_days']//20}개월)",
