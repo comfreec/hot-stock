@@ -228,6 +228,44 @@ st.markdown("""<div class="top-header">
   </p>
 </div>""", unsafe_allow_html=True)
 
+# ── 상단 시장 현황 ────────────────────────────────────────────────
+@st.cache_data(ttl=300)
+def get_market_index():
+    try:
+        kospi = yf.Ticker("^KS11").history(period="2d")
+        kosdaq = yf.Ticker("^KQ11").history(period="2d")
+        results = {}
+        for name, df in [("KOSPI", kospi), ("KOSDAQ", kosdaq)]:
+            if len(df) >= 2:
+                cur = float(df["Close"].iloc[-1])
+                prev = float(df["Close"].iloc[-2])
+                chg = (cur - prev) / prev * 100
+                results[name] = (cur, chg)
+        return results
+    except:
+        return {}
+
+market = get_market_index()
+now = datetime.now().strftime("%Y.%m.%d %H:%M")
+
+cols_m = st.columns([1,1,2])
+for i, (name, (val, chg)) in enumerate(market.items()):
+    color = "#ff3355" if chg > 0 else "#4f8ef7"
+    arrow = "▲" if chg > 0 else "▼"
+    cols_m[i].markdown(f"""
+    <div style='background:#1e2130;border:1px solid #2d3555;border-radius:10px;
+         padding:10px 14px;text-align:center;'>
+      <div style='color:#8b92a5;font-size:11px;'>{name}</div>
+      <div style='color:#fff;font-size:18px;font-weight:700;'>{val:,.2f}</div>
+      <div style='color:{color};font-size:13px;'>{arrow} {abs(chg):.2f}%</div>
+    </div>""", unsafe_allow_html=True)
+cols_m[2].markdown(f"""
+    <div style='background:#1e2130;border:1px solid #2d3555;border-radius:10px;
+         padding:10px 14px;text-align:right;'>
+      <div style='color:#8b92a5;font-size:11px;'>기준시각 (15~20분 지연)</div>
+      <div style='color:#e0e6f0;font-size:16px;font-weight:700;'>{now}</div>
+    </div>""", unsafe_allow_html=True)
+
 # ── 사이드바: 조건 설정 ──────────────────────────────────────────
 with st.sidebar:
     mode = st.selectbox("화면", ["🔍 급등 예고 종목 탐지", "🎯 최적 급등 타이밍", "📈 개별 종목 분석"],
@@ -1272,3 +1310,14 @@ elif mode == "🎯 최적 급등 타이밍":
                         make_rsi_chart(r["rsi_series"], cd),
                         config={"scrollZoom":False,"displayModeBar":False,"staticPlot":True},
                         use_container_width=True, key=f"rsi_timing_{r['symbol']}")
+
+
+# ── 하단 면책조항 ─────────────────────────────────────────────────
+st.markdown("---")
+st.markdown("""
+<div style='text-align:center;color:#555;font-size:11px;padding:10px 0 20px;'>
+⚠️ 본 서비스는 투자 참고용 정보 제공 목적이며, 투자 권유가 아닙니다.<br>
+주식 투자는 원금 손실 위험이 있으며, 모든 투자 결정과 책임은 투자자 본인에게 있습니다.<br>
+AI 분석 결과는 100% 정확하지 않으며, 반드시 다양한 정보를 종합하여 판단하시기 바랍니다.
+</div>
+""", unsafe_allow_html=True)
