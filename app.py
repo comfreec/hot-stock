@@ -734,11 +734,17 @@ if mode == "🔍 급등 예고 종목 탐지":
                     "BB수축":     "✅" if s.get("bb_squeeze_expand") else "❌",
                     "MACD":       "✅" if s.get("macd_cross") else "❌",
                     "240전환":    "✅" if s.get("ma240_turning_up") else "❌",
+                    "MFI":        "✅" if s.get("mfi_oversold_recovery") else "❌",
+                    "스토캐스틱": "✅" if s.get("stoch_cross") else "❌",
+                    "ADX":        "✅" if s.get("adx_strong") else "❌",
+                    "VWAP":       "✅" if s.get("above_vwap") else "❌",
+                    "일목":       "✅" if s.get("ichimoku_bull") else "❌",
+                    "52주고점":   "✅" if s.get("near_52w_high") else "❌",
                 })
             df = pd.DataFrame(rows)
             st.dataframe(df,
                 column_config={"종합점수": st.column_config.ProgressColumn(
-                    "종합점수", min_value=0, max_value=28, format="%d점"),
+                    "종합점수", min_value=0, max_value=39, format="%d점"),
                     "RSI": st.column_config.ProgressColumn(
                     "RSI", min_value=0, max_value=100, format="%.1f")},
                 use_container_width=True, hide_index=True)
