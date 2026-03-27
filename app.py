@@ -20,27 +20,29 @@ if "authenticated" not in st.session_state:
 if not st.session_state["authenticated"]:
     st.markdown("""
     <style>
-    @keyframes fadein {
-        from { opacity:0; transform: translateY(20px); }
-        to   { opacity:1; transform: translateY(0); }
-    }
+    @keyframes fadein { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
+    @keyframes r1 { 0%{bottom:-40px;left:15%;opacity:0} 5%{opacity:1} 90%{opacity:1} 100%{bottom:120%;left:20%;opacity:0} }
+    @keyframes r2 { 0%{bottom:-40px;left:50%;opacity:0} 5%{opacity:1} 90%{opacity:1} 100%{bottom:120%;left:55%;opacity:0} }
+    @keyframes r3 { 0%{bottom:-40px;left:78%;opacity:0} 5%{opacity:1} 90%{opacity:1} 100%{bottom:120%;left:72%;opacity:0} }
     .login-box { animation: fadein 0.6s ease; }
-    body { overflow: hidden; }
+    .rocket-wrap { position:relative; max-width:420px; margin:80px auto; overflow:visible; }
+    .rk { position:absolute; font-size:30px; pointer-events:none; z-index:10; }
+    .rk1 { animation: r1 2.5s ease-in infinite; transform:rotate(-30deg); }
+    .rk2 { animation: r2 3.0s ease-in infinite 0.9s; transform:rotate(-45deg); }
+    .rk3 { animation: r3 2.8s ease-in infinite 1.7s; transform:rotate(-20deg); }
     </style>
-    <div class='login-box' style='max-width:420px;margin:80px auto;'>
-      <div style='background:linear-gradient(135deg,#1a1f35,#0e1117);
+    <div class='rocket-wrap'>
+      <span class='rk rk1'>🚀</span>
+      <span class='rk rk2'>🚀</span>
+      <span class='rk rk3'>🚀</span>
+      <div class='login-box' style='background:linear-gradient(135deg,#1a1f35,#0e1117);
            padding:48px 40px;border-radius:20px;border:1px solid #2d3555;
-           box-shadow:0 20px 60px rgba(0,0,0,0.5);text-align:center;'>
+           box-shadow:0 20px 60px rgba(0,0,0,0.5);text-align:center;position:relative;z-index:5;'>
         <div style='font-size:52px;margin-bottom:16px;'>🚀</div>
-        <h2 style='color:#fff;margin:16px 0 6px;font-size:26px;font-weight:800;
-             letter-spacing:-0.5px;'>주식 급등 예측</h2>
-        <p style='color:#4f8ef7;font-size:13px;margin:0 0 32px;font-weight:500;
-             letter-spacing:2px;'>STOCK SURGE PREDICTOR</p>
-        <div style='width:40px;height:2px;background:linear-gradient(90deg,#4f8ef7,#00d4aa);
-             margin:0 auto 32px;border-radius:2px;'></div>
-        <p style='color:#8b92a5;font-size:13px;margin:0 0 24px;'>
-          허가된 사용자만 접근 가능합니다
-        </p>
+        <h2 style='color:#fff;margin:16px 0 6px;font-size:26px;font-weight:800;letter-spacing:-0.5px;'>주식 급등 예측</h2>
+        <p style='color:#4f8ef7;font-size:13px;margin:0 0 32px;font-weight:500;letter-spacing:2px;'>STOCK SURGE PREDICTOR</p>
+        <div style='width:40px;height:2px;background:linear-gradient(90deg,#4f8ef7,#00d4aa);margin:0 auto 32px;border-radius:2px;'></div>
+        <p style='color:#8b92a5;font-size:13px;margin:0 0 24px;'>허가된 사용자만 접근 가능합니다</p>
       </div>
     </div>
     """, unsafe_allow_html=True)
@@ -53,32 +55,6 @@ if not st.session_state["authenticated"]:
                 st.rerun()
             else:
                 st.error("비밀번호가 올바르지 않습니다")
-
-    import streamlit.components.v1 as components
-    components.html("""
-    <style>
-    html,body{margin:0;padding:0;overflow:hidden;background:transparent;}
-    </style>
-    <script>
-    function launchRocket() {
-        var el = document.createElement('div');
-        el.textContent = '🚀';
-        var startX = Math.random() * 80 + 10;
-        var endX = startX + (Math.random() - 0.5) * 40;
-        var duration = 2000 + Math.random() * 2000;
-        var size = 24 + Math.random() * 20;
-        var angle = -20 - Math.random() * 70;
-        el.style.cssText = 'position:fixed;bottom:-60px;left:'+startX+'%;font-size:'+size+'px;z-index:9999;pointer-events:none;transform:rotate('+angle+'deg);transition:bottom '+duration+'ms ease-in,left '+duration+'ms ease-in-out,opacity 300ms;opacity:0;';
-        document.body.appendChild(el);
-        setTimeout(function(){ el.style.opacity='1'; el.style.bottom='110vh'; el.style.left=endX+'%'; }, 50);
-        setTimeout(function(){ el.style.opacity='0'; }, duration-300);
-        setTimeout(function(){ el.remove(); launchRocket(); }, duration+400);
-    }
-    setTimeout(launchRocket, 200);
-    setTimeout(launchRocket, 1000);
-    setTimeout(launchRocket, 1800);
-    </script>
-    """, height=600, scrolling=False)
     st.stop()
 
 STOCK_NAMES = {
