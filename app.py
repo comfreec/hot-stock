@@ -425,6 +425,8 @@ for i, (col, label) in enumerate(zip(tab_cols, tab_labels)):
     if col.button(label, key=f"tab_{i}", use_container_width=True,
                   type="primary" if active else "secondary"):
         st.session_state["mode"] = label
+        if label == "⭐ 즐겨찾기":
+            st.session_state.pop("fav_loaded", None)  # 탭 진입 시 재로드
         st.rerun()
 
 mode = st.session_state["mode"]
@@ -487,24 +489,27 @@ with st.sidebar:
 
 # ── localStorage 즐겨찾기 헬퍼 ──────────────────────────────────
 def ls_get_favorites() -> dict:
-    """브라우저 localStorage에서 즐겨찾기 로드"""
-    try:
-        val = st_javascript("JSON.parse(localStorage.getItem('hotstock_favs') || '{}')")
-        if isinstance(val, dict):
-            return val
-    except:
-        pass
+    """session_state에서 즐겨찾기 로드 (localStorage는 즐겨찾기 탭에서만 동기화)"""
     return st.session_state.get("favorites", {})
 
 def ls_save_favorites(favs: dict):
-    """브라우저 localStorage에 즐겨찾기 저장"""
+    """즐겨찾기 저장 - session_state + localStorage"""
+    st.session_state["favorites"] = favs
     try:
         import json
         js_str = json.dumps(favs, ensure_ascii=False)
         st_javascript(f"localStorage.setItem('hotstock_favs', JSON.stringify({js_str}))")
     except:
         pass
-    st.session_state["favorites"] = favs
+
+def ls_load_from_browser():
+    """브라우저 localStorage에서 즐겨찾기 로드 (즐겨찾기 탭 진입 시 1회만 호출)"""
+    try:
+        val = st_javascript("JSON.parse(localStorage.getItem('hotstock_favs') || '{}')")
+        if isinstance(val, dict) and val:
+            st.session_state["favorites"] = val
+    except:
+        pass
 
 # ── 캐시 함수 ────────────────────────────────────────────────────
 @st.cache_data(ttl=300)
@@ -1628,6 +1633,11 @@ elif mode == "🎯 최적 급등 타이밍":
 # ── 즐겨찾기 탭 ──────────────────────────────────────────────────
 elif mode == "⭐ 즐겨찾기":
     st.markdown("<div class='sec-title'>⭐ 즐겨찾기 종목</div>", unsafe_allow_html=True)
+
+    # 탭 진입 시 1회만 localStorage에서 로드
+    if "fav_loaded" not in st.session_state:
+        ls_load_from_browser()
+        st.session_state["fav_loaded"] = True
 
     favs_dict = ls_get_favorites()
 
