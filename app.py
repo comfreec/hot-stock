@@ -817,7 +817,7 @@ if mode == "🔍 급등 예고 종목 탐지":
 
         results = []
         for idx, symbol in enumerate(symbols):
-            name_disp = det.all_symbols  # 진행 표시용
+            name_disp = det.all_symbols
             prog_text.markdown(
                 f"<span style='color:#8b92a5;font-size:13px;'>"
                 f"({idx+1}/{total}) {symbol} 분석 중...</span>",
@@ -833,16 +833,22 @@ if mode == "🔍 급등 예고 종목 탐지":
         results = sorted(results, key=lambda x: x["total_score"], reverse=True)
         results = [r for r in results if r["total_score"] >= min_score]
 
-        # 스캔 결과 DB 캐싱
+        # 스캔 결과 session_state에 저장 (즐겨찾기 버튼 클릭 후에도 유지)
+        st.session_state["scan_results"] = results
+
+        # DB 캐싱
         try:
             save_scan([{k: v for k, v in r.items() if k not in ("close_series", "rsi_series")} for r in results])
         except:
             pass
 
-        if not results:
-            st.warning("현재 조건을 만족하는 종목이 없습니다.")
-            st.info("💡 사이드바에서 조건을 완화해보세요:\n- '240선 근처 범위'를 늘리거나\n- '최소 조정 기간'을 줄이거나\n- '돌파 후 최대 경과'를 늘려보세요")
-        else:
+    # session_state에서 결과 로드
+    results = st.session_state.get("scan_results", [])
+
+    if not results:
+        st.warning("현재 조건을 만족하는 종목이 없습니다.")
+        st.info("💡 사이드바에서 조건을 완화해보세요:\n- '240선 근처 범위'를 늘리거나\n- '최소 조정 기간'을 줄이거나\n- '돌파 후 최대 경과'를 늘려보세요")
+    else:
             st.success(f"✅ {len(results)}개 종목이 모든 핵심 조건을 충족합니다!")
 
             # 요약 카드
