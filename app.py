@@ -16,6 +16,7 @@ try:
                           add_favorite, remove_favorite, get_favorites,
                           is_favorite, start_scheduler)
     from backtest_ml import backtest_signal, SIGNAL_WEIGHTS
+    from streamlit_javascript import st_javascript
     # 스케줄러 시작 (앱 최초 로드 시 1회)
     if "scheduler_started" not in st.session_state:
         start_scheduler()
@@ -484,6 +485,27 @@ with st.sidebar:
     st.markdown("---")
     st.caption("⚠️ 투자 손실에 책임지지 않습니다")
 
+# ── localStorage 즐겨찾기 헬퍼 ──────────────────────────────────
+def ls_get_favorites() -> dict:
+    """브라우저 localStorage에서 즐겨찾기 로드"""
+    try:
+        val = st_javascript("JSON.parse(localStorage.getItem('hotstock_favs') || '{}')")
+        if isinstance(val, dict):
+            return val
+    except:
+        pass
+    return st.session_state.get("favorites", {})
+
+def ls_save_favorites(favs: dict):
+    """브라우저 localStorage에 즐겨찾기 저장"""
+    try:
+        import json
+        js_str = json.dumps(favs, ensure_ascii=False)
+        st_javascript(f"localStorage.setItem('hotstock_favs', JSON.stringify({js_str}))")
+    except:
+        pass
+    st.session_state["favorites"] = favs
+
 # ── 캐시 함수 ────────────────────────────────────────────────────
 @st.cache_data(ttl=300)
 def get_chart_data(symbol, period="2y"):
@@ -911,19 +933,19 @@ if mode == "🔍 급등 예고 종목 탐지":
                     조정 {r["below_days"]}일({below_months}개월) | 돌파 {r["days_since_cross"]}일 전
                   </div>
                 </div>""", unsafe_allow_html=True)
-                # 즐겨찾기 버튼
+                # 즐겨찾기 버튼 (localStorage 기반 - 기기별 영구 저장)
                 _fav_col, _news_col = st.columns([1, 5])
-                try:
-                    _is_fav = is_favorite(r["symbol"])
-                    _fav_label = "⭐ 즐겨찾기 해제" if _is_fav else "☆ 즐겨찾기"
-                    if _fav_col.button(_fav_label, key=f"fav_{r['symbol']}_{i}", use_container_width=True):
-                        if _is_fav:
-                            remove_favorite(r["symbol"])
-                        else:
-                            add_favorite(r["symbol"], r["name"])
-                        st.rerun()
-                except:
-                    pass
+                _favs = ls_get_favorites()
+                _is_fav = r["symbol"] in _favs
+                _fav_label = "⭐ 즐겨찾기 해제" if _is_fav else "☆ 즐겨찾기"
+                if _fav_col.button(_fav_label, key=f"fav_{r['symbol']}_{i}", use_container_width=True):
+                    if _is_fav:
+                        _favs.pop(r["symbol"], None)
+                    else:
+                        _favs[r["symbol"]] = r["name"]
+                    ls_save_favorites(_favs)
+                    st.session_state["mode"] = "🔍 급등 예고 종목 탐지"
+                    st.rerun()
                 if news_safe:
                     st.markdown(f'<div style="color:#6b7280;font-size:11px;padding:2px 8px 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">📰 {news_safe}</div>', unsafe_allow_html=True)
                 pct_str = f"{pct:.2f}"
@@ -1606,22 +1628,18 @@ elif mode == "🎯 최적 급등 타이밍":
 # ── 즐겨찾기 탭 ──────────────────────────────────────────────────
 elif mode == "⭐ 즐겨찾기":
     st.markdown("<div class='sec-title'>⭐ 즐겨찾기 종목</div>", unsafe_allow_html=True)
-    try:
-        favs = get_favorites()
-    except:
-        favs = []
 
-    if not favs:
+    favs_dict = ls_get_favorites()
+
+    if not favs_dict:
         st.info("즐겨찾기한 종목이 없습니다. 급등 탐지 탭에서 종목 카드의 ☆ 버튼을 눌러 추가하세요.")
     else:
-        st.success(f"총 {len(favs)}개 종목")
-        for fav in favs:
-            sym = fav["symbol"]
-            name = fav["name"]
-            col1, col2, col3 = st.columns([3, 2, 1])
+        st.success(f"총 {len(favs_dict)}개 종목 (이 기기에 저장됨)")
+        for sym, name in list(favs_dict.items()):
+            col1, col2 = st.columns([4, 1])
             with col1:
                 data_f = get_chart_data(sym, "3mo")
-                if data_f is not None and len(data_f) > 0:
+                if data_f is not None and len(data_f) > 1:
                     cur_f  = float(data_f["Close"].iloc[-1])
                     prev_f = float(data_f["Close"].iloc[-2])
                     chg_f  = (cur_f - prev_f) / prev_f * 100
@@ -1636,24 +1654,17 @@ elif mode == "⭐ 즐겨찾기":
                 else:
                     st.markdown(f"**{name}** ({sym})")
             with col2:
-                added = fav["added_at"][:10] if fav.get("added_at") else ""
-                st.caption(f"추가일: {added}")
-            with col3:
                 if st.button("🗑 삭제", key=f"del_fav_{sym}"):
-                    try:
-                        remove_favorite(sym)
-                    except:
-                        pass
+                    favs_dict.pop(sym, None)
+                    ls_save_favorites(favs_dict)
                     st.rerun()
             st.markdown("")
 
-        # 즐겨찾기 종목 일괄 차트
         if st.button("📊 즐겨찾기 전체 차트 보기", type="primary"):
-            for fav in favs:
-                sym = fav["symbol"]
+            for sym, name in favs_dict.items():
                 cd = get_chart_data(sym, "2y")
                 if cd is not None:
-                    fig_f = make_candle(cd, f"{fav['name']} ({sym})")
+                    fig_f = make_candle(cd, f"{name} ({sym})")
                     st.plotly_chart(fig_f, config={"scrollZoom":False,"displayModeBar":False,"staticPlot":True},
                                     use_container_width=True, key=f"fav_chart_{sym}")
                     show_price_levels(fig_f)
@@ -1711,29 +1722,49 @@ elif mode == "📊 백테스트":
     bt_name = bt_sel.split("(")[0].strip()
 
     if st.button("🔬 백테스트 실행", type="primary"):
-        with st.spinner(f"{bt_name} 백테스트 중..."):
+        with st.spinner(f"{bt_name} 백테스트 중... (1~2분 소요)"):
             try:
-                avg_ret = backtest_signal(bt_sym)
+                bt_result = backtest_signal(bt_sym)
             except:
-                avg_ret = None
+                bt_result = None
 
-        if avg_ret is None:
+        if bt_result is None:
             st.warning("데이터 부족 또는 신호 발생 이력 없음")
         else:
+            avg_ret  = bt_result["avg_ret"]
+            win_rate = bt_result["win_rate"]
+            trades   = bt_result["trades"]
+            hold_d   = bt_result["hold_days"]
             color_bt = "#00d4aa" if avg_ret > 0 else "#ff4b6e"
-            grade = "🔥 강력" if avg_ret > 10 else "✅ 양호" if avg_ret > 3 else "⚠️ 보통" if avg_ret > 0 else "❌ 주의"
-            c1, c2, c3 = st.columns(3)
-            c1.metric("20일 평균 수익률", f"{avg_ret:+.2f}%")
-            c2.metric("전략 등급", grade)
-            c3.metric("종목", bt_name)
+            grade    = "🔥 강력" if avg_ret > 10 else "✅ 양호" if avg_ret > 3 else "⚠️ 보통" if avg_ret > 0 else "❌ 주의"
+
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric(f"{hold_d}일 평균 수익률", f"{avg_ret:+.2f}%")
+            c2.metric("승률", f"{win_rate:.1f}%")
+            c3.metric("신호 발생 횟수", f"{trades}회")
+            c4.metric("전략 등급", grade)
 
             st.markdown(f"""
             <div style='background:#1a1f35;border-radius:12px;padding:20px;border:1px solid {color_bt};margin-top:12px;text-align:center;'>
-              <div style='color:#8b92a5;font-size:13px;'>BB수축+MACD+거래량 신호 발생 후 20일 평균 수익률</div>
+              <div style='color:#8b92a5;font-size:13px;'>앱 전체 신호(10종) 가중치 합산 기준 | {hold_d}일 후 평균 수익률</div>
               <div style='color:{color_bt};font-size:48px;font-weight:800;margin:12px 0;'>{avg_ret:+.2f}%</div>
-              <div style='color:#8b92a5;font-size:12px;'>과거 2년 데이터 기준 | 슬리피지 미반영</div>
+              <div style='color:#8b92a5;font-size:12px;'>과거 2년 데이터 기준 | 슬리피지 미반영 | 5일 간격 샘플링</div>
             </div>
             """, unsafe_allow_html=True)
+
+            # 신호별 기여도
+            if bt_result.get("sig_contrib"):
+                st.markdown("#### 신호별 평균 수익률 기여도")
+                contrib_df = pd.DataFrame([
+                    {"신호": k, "평균수익률": v,
+                     "발생횟수": bt_result["sig_contrib"].get(k, 0)}
+                    for k, v in sorted(bt_result["sig_contrib"].items(), key=lambda x: -x[1])
+                ])
+                st.dataframe(contrib_df,
+                    column_config={
+                        "평균수익률": st.column_config.NumberColumn("평균수익률(%)", format="%.2f")
+                    },
+                    use_container_width=True, hide_index=True)
 
     # 과거 스캔 결과 히스토리
     st.markdown("---")

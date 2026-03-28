@@ -66,33 +66,45 @@ def list_scan_dates() -> list:
 
 # ── 즐겨찾기 ─────────────────────────────────────────────────────
 def add_favorite(symbol: str, name: str):
-    conn = _get_conn()
-    conn.execute(
-        "INSERT OR REPLACE INTO favorites VALUES (?,?,?)",
-        (symbol, name, datetime.now().isoformat())
-    )
-    conn.commit()
-    conn.close()
+    try:
+        conn = _get_conn()
+        conn.execute(
+            "INSERT OR REPLACE INTO favorites VALUES (?,?,?)",
+            (symbol, name, datetime.now().isoformat())
+        )
+        conn.commit()
+        conn.close()
+    except:
+        pass  # DB 없으면 session_state로 폴백 (호출부에서 처리)
 
 def remove_favorite(symbol: str):
-    conn = _get_conn()
-    conn.execute("DELETE FROM favorites WHERE symbol=?", (symbol,))
-    conn.commit()
-    conn.close()
+    try:
+        conn = _get_conn()
+        conn.execute("DELETE FROM favorites WHERE symbol=?", (symbol,))
+        conn.commit()
+        conn.close()
+    except:
+        pass
 
 def get_favorites() -> list:
-    conn = _get_conn()
-    rows = conn.execute(
-        "SELECT symbol, name, added_at FROM favorites ORDER BY added_at DESC"
-    ).fetchall()
-    conn.close()
-    return [{"symbol": r[0], "name": r[1], "added_at": r[2]} for r in rows]
+    try:
+        conn = _get_conn()
+        rows = conn.execute(
+            "SELECT symbol, name, added_at FROM favorites ORDER BY added_at DESC"
+        ).fetchall()
+        conn.close()
+        return [{"symbol": r[0], "name": r[1], "added_at": r[2]} for r in rows]
+    except:
+        return []
 
 def is_favorite(symbol: str) -> bool:
-    conn = _get_conn()
-    row = conn.execute("SELECT 1 FROM favorites WHERE symbol=?", (symbol,)).fetchone()
-    conn.close()
-    return row is not None
+    try:
+        conn = _get_conn()
+        row = conn.execute("SELECT 1 FROM favorites WHERE symbol=?", (symbol,)).fetchone()
+        conn.close()
+        return row is not None
+    except:
+        return False
 
 # ── 백그라운드 자동 스캔 스케줄러 ────────────────────────────────
 def _run_scan_job():
