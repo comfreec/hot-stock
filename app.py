@@ -845,7 +845,9 @@ if mode == "🔍 급등 예고 종목 탐지":
     # session_state에서 결과 로드
     results = st.session_state.get("scan_results", [])
 
-    if not results:
+    if "scan_results" not in st.session_state:
+        pass  # 스캔 전 - 아무것도 표시 안 함
+    elif not results:
         st.warning("현재 조건을 만족하는 종목이 없습니다.")
         st.info("💡 사이드바에서 조건을 완화해보세요:\n- '240선 근처 범위'를 늘리거나\n- '최소 조정 기간'을 줄이거나\n- '돌파 후 최대 경과'를 늘려보세요")
     else:
@@ -1841,6 +1843,29 @@ elif mode == "📊 백테스트":
 
 # ── 하단 면책조항 ─────────────────────────────────────────────────
 st.markdown("---")
+
+# 텔레그램 알림 사이드바 버튼
+with st.sidebar:
+    st.markdown("---")
+    st.markdown("### 📲 텔레그램 알림")
+    if st.button("🔔 지금 알림 전송", use_container_width=True):
+        try:
+            from telegram_alert import send_scan_alert, send_test_alert
+            scan_res = st.session_state.get("scan_results", [])
+            if scan_res:
+                send_scan_alert(scan_res)
+                st.success("✅ 텔레그램 전송 완료!")
+            else:
+                st.warning("스캔 결과가 없어요. 먼저 스캔을 실행하세요.")
+        except Exception as e:
+            st.error(f"전송 실패: {e}")
+    if st.button("🧪 연결 테스트", use_container_width=True):
+        try:
+            from telegram_alert import send_test_alert
+            ok = send_test_alert()
+            st.success("✅ 연결 성공!" if ok else "❌ 전송 실패")
+        except Exception as e:
+            st.error(f"오류: {e}")
 st.markdown("""
 <div style='text-align:center;color:#555;font-size:11px;padding:10px 0 20px;'>
 ⚠️ 본 서비스는 투자 참고용 정보 제공 목적이며, 투자 권유가 아닙니다.<br>

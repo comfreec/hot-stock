@@ -111,11 +111,13 @@ def _run_scan_job():
     """장 마감 후 자동 스캔 실행 (별도 스레드)"""
     try:
         from stock_surge_detector import KoreanStockSurgeDetector
+        from telegram_alert import send_scan_alert
         det = KoreanStockSurgeDetector(max_gap_pct=15, min_below_days=60, max_cross_days=90)
         results = det.analyze_all_stocks()
         if results:
             save_scan(results)
-            print(f"[스케줄러] {date.today()} 스캔 완료: {len(results)}개 종목")
+            send_scan_alert(results)
+            print(f"[스케줄러] {date.today()} 스캔 완료: {len(results)}개 종목 → 텔레그램 전송")
     except Exception as e:
         print(f"[스케줄러] 오류: {e}")
 
