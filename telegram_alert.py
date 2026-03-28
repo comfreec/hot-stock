@@ -8,8 +8,8 @@ import pandas as pd
 import numpy as np
 from datetime import date
 
-TELEGRAM_TOKEN  = "8686257393:AAGWPuisi_qy995cKC7pIWnCGqpQMljQxgc"
-TELEGRAM_CHAT_ID = "1663019049"
+TELEGRAM_TOKEN   = "8686257393:AAGWPuisi_qy995cKC7pIWnCGqpQMljQxgc"
+TELEGRAM_CHAT_ID = "-5204726592"  # 주식 급등 알림 그룹
 
 def send_telegram(message: str):
     """텔레그램 메시지 전송"""
