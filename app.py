@@ -502,39 +502,46 @@ def calc_rsi_wilder(close, period=20):
     return 100 - (100 / (1 + rs))
 
 def show_price_levels(fig):
-    """차트 아래에 목표가/현재가/손절가 박스 표시"""
+    """차트 아래에 목표가/매수가/손절가 박스 표시"""
     if not hasattr(fig, '_price_levels') or fig._price_levels is None:
         return
     lv = fig._price_levels
-    # nan 방어
     import math
     if any(math.isnan(v) for v in [lv["target"], lv["current"], lv["stop"]] if isinstance(v, float)):
         return
+
+    rr = lv["rr_ratio"]
+    rr_color = "#00ff88" if rr >= 3 else "#ffd700" if rr >= 2 else "#ff8c42"
+    rr_label = "우수" if rr >= 3 else "양호" if rr >= 2 else "주의"
+
     st.markdown(f"""
-    <div style='display:flex;gap:12px;margin:-8px 0 8px;'>
-      <div style='flex:1;background:rgba(0,255,136,0.1);border:1px solid #00ff88;
-           border-radius:8px;padding:10px;text-align:center;'>
-        <div style='color:#8b92a5;font-size:11px;'>🎯 목표가</div>
-        <div style='color:#00ff88;font-size:16px;font-weight:700;'>₩{lv["target"]:,.0f}</div>
+    <div style='display:flex;gap:8px;margin:-8px 0 4px;'>
+      <div style='flex:1.2;background:rgba(0,255,136,0.08);border:1px solid #00ff88;
+           border-radius:10px;padding:12px;text-align:center;'>
+        <div style='color:#8b92a5;font-size:10px;letter-spacing:1px;'>🎯 목표가</div>
+        <div style='color:#00ff88;font-size:18px;font-weight:700;margin:4px 0;'>₩{lv["target"]:,.0f}</div>
         <div style='color:#00ff88;font-size:12px;'>+{lv["upside"]:.1f}%</div>
+        <div style='color:#4a5568;font-size:10px;margin-top:4px;'>Fib×ATR 가중평균</div>
       </div>
-      <div style='flex:1;background:rgba(255,255,255,0.05);border:1px solid #555;
-           border-radius:8px;padding:10px;text-align:center;'>
-        <div style='color:#8b92a5;font-size:11px;'>📍 현재가</div>
-        <div style='color:#fff;font-size:16px;font-weight:700;'>₩{lv["current"]:,.0f}</div>
-        <div style='color:#8b92a5;font-size:12px;'>진입가</div>
+      <div style='flex:1;background:rgba(100,160,255,0.08);border:1px solid #4a90d9;
+           border-radius:10px;padding:12px;text-align:center;'>
+        <div style='color:#8b92a5;font-size:10px;letter-spacing:1px;'>📍 매수가</div>
+        <div style='color:#a0c4ff;font-size:18px;font-weight:700;margin:4px 0;'>₩{lv["current"]:,.0f}</div>
+        <div style='color:#8b92a5;font-size:12px;'>시장가 진입</div>
+        <div style='color:#4a5568;font-size:10px;margin-top:4px;'>현재가 기준</div>
       </div>
-      <div style='flex:1;background:rgba(255,51,85,0.1);border:1px solid #ff3355;
-           border-radius:8px;padding:10px;text-align:center;'>
-        <div style='color:#8b92a5;font-size:11px;'>🛑 손절가</div>
-        <div style='color:#ff3355;font-size:16px;font-weight:700;'>₩{lv["stop"]:,.0f}</div>
+      <div style='flex:1;background:rgba(255,51,85,0.08);border:1px solid #ff3355;
+           border-radius:10px;padding:12px;text-align:center;'>
+        <div style='color:#8b92a5;font-size:10px;letter-spacing:1px;'>🛑 손절가</div>
+        <div style='color:#ff3355;font-size:18px;font-weight:700;margin:4px 0;'>₩{lv["stop"]:,.0f}</div>
         <div style='color:#ff3355;font-size:12px;'>{lv["downside"]:.1f}%</div>
+        <div style='color:#4a5568;font-size:10px;margin-top:4px;'>스윙저점+ATR×1.5</div>
       </div>
-      <div style='flex:1;background:rgba(255,215,0,0.1);border:1px solid #ffd700;
-           border-radius:8px;padding:10px;text-align:center;'>
-        <div style='color:#8b92a5;font-size:11px;'>⚖️ 손익비</div>
-        <div style='color:#ffd700;font-size:16px;font-weight:700;'>{lv["rr_ratio"]:.1f} : 1</div>
-        <div style='color:#8b92a5;font-size:12px;'>Risk/Reward</div>
+      <div style='flex:0.8;background:rgba(255,215,0,0.08);border:1px solid {rr_color};
+           border-radius:10px;padding:12px;text-align:center;'>
+        <div style='color:#8b92a5;font-size:10px;letter-spacing:1px;'>⚖️ 손익비</div>
+        <div style='color:{rr_color};font-size:22px;font-weight:700;margin:4px 0;'>{rr:.1f}:1</div>
+        <div style='color:{rr_color};font-size:11px;'>{rr_label}</div>
       </div>
     </div>
     """, unsafe_allow_html=True)
@@ -623,10 +630,9 @@ def make_candle(data, title, ma240_series=None, cross_date=None, show_levels=Tru
         close    = data_clean["Close"]
         high     = data_clean["High"]
         low      = data_clean["Low"]
-        ma20_now = float(close.rolling(20).mean().iloc[-1])
-        ma60_now = float(close.rolling(60).mean().iloc[-1]) if len(data_clean) >= 60 else ma20_now
+        vol      = data_clean["Volume"] if "Volume" in data_clean.columns else None
 
-        # ── ATR 계산 (평균 변동폭) ──────────────────────────────
+        # ── ATR(14) 계산 ─────────────────────────────────────────
         tr = pd.concat([
             high - low,
             (high - close.shift(1)).abs(),
@@ -635,43 +641,74 @@ def make_candle(data, title, ma240_series=None, cross_date=None, show_levels=Tru
         atr_series = tr.rolling(14).mean().dropna()
         atr = float(atr_series.iloc[-1]) if len(atr_series) > 0 else float((high - low).mean())
 
-        # ── 손절가: 직전 스윙 저점 아래 0.5 ATR (지지선 붕괴 확인) ──
-        # 근거: 스윙 저점 아래 0.5 ATR = 노이즈가 아닌 진짜 붕괴 신호
-        swing_low = float(low.tail(20).min())
-        stop = swing_low - atr * 0.5
-        # 범위 제한: 최소 -3%, 최대 -12%
+        # ── 매수가: 현재가 (시장가 기준) ─────────────────────────
+        entry = current
+
+        # ── 손절가: Van Tharp 방식 ────────────────────────────────
+        # 근거: 스윙 저점(20일) 아래 1.5 ATR = 진짜 추세 붕괴 신호
+        # 단순 % 손절보다 변동성 기반이 훨씬 정교함
+        swing_low_20 = float(low.tail(20).min())
+        stop_atr     = swing_low_20 - atr * 1.5
+
+        # 보조: MA20 아래 1 ATR (지지선 이탈 확인)
+        ma20 = float(close.rolling(20).mean().dropna().iloc[-1])
+        stop_ma  = ma20 - atr * 1.0
+
+        # 두 손절 중 더 보수적인(높은) 값 선택 → 리스크 최소화
+        stop = max(stop_atr, stop_ma)
+        # 범위 제한: -4% ~ -12% (너무 타이트/루즈 방지)
         stop = max(stop, current * 0.88)
-        stop = min(stop, current * 0.97)
+        stop = min(stop, current * 0.96)
+        risk = max(current - stop, current * 0.01)
 
-        risk = current - stop
-
-        # ── 목표가: 피보나치 161.8% 확장 + 직전 고점 기반 ──────
-        # 근거1: 피보나치 161.8% = 추세 지속 시 가장 많이 도달하는 레벨
-        # 근거2: 직전 고점(100%) = 가장 명확한 저항선
-        # 근거3: ATR×4 = 한국 주식 평균 급등폭
+        # ── 목표가: 다중 기법 합산 ───────────────────────────────
         recent_high = float(high.tail(120).max())
         recent_low  = float(low.tail(120).min())
-        swing_range = recent_high - recent_low
+        swing_range = max(recent_high - recent_low, current * 0.01)
 
-        fib_1618 = recent_low + swing_range * 1.618  # 피보나치 161.8%
-        fib_100  = recent_high                        # 직전 고점
-        atr_x4   = current + atr * 4.0               # ATR×4
+        # 1) 피보나치 확장 (스윙 저점 기준)
+        fib_1272 = recent_low + swing_range * 1.272   # 보수적 목표
+        fib_1618 = recent_low + swing_range * 1.618   # 표준 목표
+        fib_2000 = recent_low + swing_range * 2.000   # 공격적 목표
 
-        # 현재가 위 후보들 중 손익비 3:1 이상 되는 것 선택
+        # 2) 직전 고점 돌파 후 저항 → 지지 전환
+        prev_high      = recent_high
+        prev_high_ext  = recent_high * 1.05  # 고점 돌파 후 +5% 저항
+
+        # 3) ATR 멀티플 (변동성 기반)
+        atr_x3 = current + atr * 3.0
+        atr_x5 = current + atr * 5.0
+
+        # 4) 볼린저밴드 상단 (2σ) - 과열 저항선
+        ma20_s  = close.rolling(20).mean()
+        std20   = close.rolling(20).std()
+        bb_upper = float((ma20_s + std20 * 2.0).dropna().iloc[-1])
+
+        # 후보 중 현재가 +3% 이상, 손익비 2:1 이상인 것만
+        min_rr2 = current + risk * 2.0
         min_rr3 = current + risk * 3.0
-        candidates = sorted([x for x in [fib_100, fib_1618, atr_x4] if x > current * 1.03])
-        valid = [x for x in candidates if x >= min_rr3]
+        all_cands = sorted([
+            x for x in [fib_1272, fib_1618, fib_2000,
+                         prev_high, prev_high_ext,
+                         atr_x3, atr_x5, bb_upper]
+            if x > current * 1.03
+        ])
 
-        if valid:
-            target = valid[0]  # 손익비 3:1 이상 중 가장 가까운 목표
-        elif candidates:
-            target = candidates[-1]  # 없으면 가장 높은 후보
+        valid_3 = [x for x in all_cands if x >= min_rr3]
+        valid_2 = [x for x in all_cands if x >= min_rr2]
+
+        if valid_3:
+            # 3:1 이상 후보들의 가중 평균 (가장 가까운 것에 가중치)
+            weights = [1 / (x - current) for x in valid_3]
+            target = sum(x * w for x, w in zip(valid_3, weights)) / sum(weights)
+        elif valid_2:
+            target = valid_2[-1]
+        elif all_cands:
+            target = all_cands[-1]
         else:
-            target = current + risk * 3.0  # 폴백
+            target = current + risk * 3.0
 
-        # 상한 50% 제한
-        target = min(target, current * 1.50)
-
+        target   = min(target, current * 2.0)  # 상한 100%
         rr_ratio = (target - current) / (current - stop + 1e-9)
         upside   = (target / current - 1) * 100
         downside = (stop / current - 1) * 100
@@ -695,7 +732,7 @@ def make_candle(data, title, ma240_series=None, cross_date=None, show_levels=Tru
         dragmode=False,
         height=500, margin=dict(l=0,r=50,t=30,b=0))
     # 차트 아래 목표가/손절가 정보 박스는 호출부에서 별도 표시
-    fig._price_levels = dict(target=target, current=current, stop=stop,
+    fig._price_levels = dict(target=target, current=current, entry=entry, stop=stop,
                              upside=upside, downside=downside, rr_ratio=rr_ratio) if show_levels else None
     return fig
 
