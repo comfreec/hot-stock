@@ -489,25 +489,34 @@ with st.sidebar:
 
 # ── localStorage 즐겨찾기 헬퍼 ──────────────────────────────────
 def ls_get_favorites() -> dict:
-    """session_state에서 즐겨찾기 로드 (localStorage는 즐겨찾기 탭에서만 동기화)"""
-    return st.session_state.get("favorites", {})
+    """session_state에서 즐겨찾기 로드"""
+    if "favorites" not in st.session_state:
+        st.session_state["favorites"] = {}
+    return st.session_state["favorites"]
 
 def ls_save_favorites(favs: dict):
-    """즐겨찾기 저장 - session_state + localStorage"""
+    """즐겨찾기 저장 - session_state"""
     st.session_state["favorites"] = favs
-    try:
-        import json
-        js_str = json.dumps(favs, ensure_ascii=False)
-        st_javascript(f"localStorage.setItem('hotstock_favs', JSON.stringify({js_str}))")
-    except:
-        pass
 
 def ls_load_from_browser():
     """브라우저 localStorage에서 즐겨찾기 로드 (즐겨찾기 탭 진입 시 1회만 호출)"""
     try:
         val = st_javascript("JSON.parse(localStorage.getItem('hotstock_favs') || '{}')")
         if isinstance(val, dict) and val:
-            st.session_state["favorites"] = val
+            # 기존 session_state와 병합
+            existing = st.session_state.get("favorites", {})
+            existing.update(val)
+            st.session_state["favorites"] = existing
+    except:
+        pass
+
+def ls_persist_to_browser():
+    """즐겨찾기를 localStorage에 동기화 (즐겨찾기 탭에서 호출)"""
+    try:
+        import json
+        favs = st.session_state.get("favorites", {})
+        js_str = json.dumps(favs, ensure_ascii=False)
+        st_javascript(f"localStorage.setItem('hotstock_favs', JSON.stringify({js_str}))")
     except:
         pass
 
@@ -949,8 +958,7 @@ if mode == "🔍 급등 예고 종목 탐지":
                     else:
                         _favs[r["symbol"]] = r["name"]
                     ls_save_favorites(_favs)
-                    st.session_state["mode"] = "🔍 급등 예고 종목 탐지"
-                    st.rerun()
+                    st.toast("⭐ 즐겨찾기에 추가됐어요!" if not _is_fav else "즐겨찾기에서 제거됐어요")
                 if news_safe:
                     st.markdown(f'<div style="color:#6b7280;font-size:11px;padding:2px 8px 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">📰 {news_safe}</div>', unsafe_allow_html=True)
                 pct_str = f"{pct:.2f}"
@@ -1023,115 +1031,136 @@ elif mode == "📈 개별 종목 분석":
             det = KoreanStockSurgeDetector(max_gap, min_below, max_cross)
             result = det.analyze_stock(symbol)
             data = get_chart_data(symbol, period)
+        # 결과를 session_state에 저장 (즐겨찾기 버튼 클릭 후에도 유지)
+        st.session_state["indiv_result"] = result
+        st.session_state["indiv_data"]   = data
+        st.session_state["indiv_symbol"] = symbol
+        st.session_state["indiv_name"]   = name
 
-        if data is not None:
-            current = float(data["Close"].iloc[-1])
-            prev    = float(data["Close"].iloc[-2])
-            chg     = (current - prev) / prev * 100
-            color   = "#00d4aa" if chg > 0 else "#ff4b6e"
-            arrow   = "▲" if chg > 0 else "▼"
+    # session_state에서 결과 로드
+    result = st.session_state.get("indiv_result") if st.session_state.get("indiv_symbol") == symbol else None
+    data   = st.session_state.get("indiv_data")   if st.session_state.get("indiv_symbol") == symbol else None
 
-            if result:
-                pct = result["total_score"] / 28 * 100
-                st.markdown(f"""<div class="rank-card gold" style="margin-bottom:16px;">
-                  <div style="display:flex;justify-content:space-between;align-items:center;">
-                    <div>
-                      <span style="color:#fff;font-size:24px;font-weight:700;">✅ {name}</span>
-                      <span style="color:#00d4aa;font-size:13px;margin-left:10px;">핵심 조건 충족</span>
-                    </div>
-                    <div style="text-align:right;">
-                      <span style="color:#fff;font-size:24px;font-weight:700;">₩{current:,.0f}</span>
-                      <span style="color:{color};font-size:15px;margin-left:8px;">{arrow} {abs(chg):.2f}%</span>
-                    </div>
-                  </div>
-                  <div style="margin-top:10px;">
-                    <div style="color:#8b92a5;font-size:12px;margin-bottom:3px;">종합점수 {result["total_score"]}점 / 28점</div>
-                    <div class="bar-bg"><div class="bar-fill" style="width:{pct}%;"></div></div>
-                  </div>
-                </div>""", unsafe_allow_html=True)
+    if data is not None:
+        current = float(data["Close"].iloc[-1])
+        prev    = float(data["Close"].iloc[-2])
+        chg     = (current - prev) / prev * 100
+        color   = "#00d4aa" if chg > 0 else "#ff4b6e"
+        arrow   = "▲" if chg > 0 else "▼"
 
-                # 핵심 지표 카드
-                c1,c2,c3,c4 = st.columns(4)
-                metric_card(c1,"RSI(20)",f"{result['rsi']:.1f}")
-                metric_card(c2,"240선 이격",f"+{result['ma240_gap']:.1f}%")
-                metric_card(c3,"조정 기간",f"{result['below_days']}일({result['below_days']//20}개월)")
-                metric_card(c4,"돌파 후",f"{result['days_since_cross']}일")
+        if result:
+            pct = result["total_score"] / 28 * 100
+            st.markdown(f"""<div class="rank-card gold" style="margin-bottom:16px;">
+              <div style="display:flex;justify-content:space-between;align-items:center;">
+                <div>
+                  <span style="color:#fff;font-size:24px;font-weight:700;">✅ {name}</span>
+                  <span style="color:#00d4aa;font-size:13px;margin-left:10px;">핵심 조건 충족</span>
+                </div>
+                <div style="text-align:right;">
+                  <span style="color:#fff;font-size:24px;font-weight:700;">₩{current:,.0f}</span>
+                  <span style="color:{color};font-size:15px;margin-left:8px;">{arrow} {abs(chg):.2f}%</span>
+                </div>
+              </div>
+              <div style="margin-top:10px;">
+                <div style="color:#8b92a5;font-size:12px;margin-bottom:3px;">종합점수 {result["total_score"]}점 / 28점</div>
+                <div class="bar-bg"><div class="bar-fill" style="width:{pct}%;"></div></div>
+              </div>
+            </div>""", unsafe_allow_html=True)
 
-                # 신호 분석
-                st.markdown("<div class='sec-title'>📊 신호 분석</div>", unsafe_allow_html=True)
-                s = result["signals"]
-                active, inactive = [], []
-                checks = [
-                    (s.get("vol_at_cross"),          f"📦 돌파 시 거래량 급증 ({s.get('cross_vol_ratio',0):.1f}배)"),
-                    (s.get("recent_vol"),             f"📊 최근 거래량 증가 ({s.get('recent_vol_ratio',0):.1f}배)"),
-                    (s.get("obv_rising"),             "📈 OBV 지속 상승 (매집 진행 중)"),
-                    (s.get("ma_align"),               "⚡ 이평선 정배열 (MA5>MA20>MA60)"),
-                    (s.get("pullback_recovery"),      "🔄 눌림목 후 재상승"),
-                    (s.get("rsi_healthy"),            f"💚 RSI 건강 구간 ({s.get('rsi',0):.1f})"),
-                    (s.get("bb_squeeze_expand"),      "🔥 볼린저밴드 수축→확장 (폭발 직전)"),
-                    (s.get("macd_cross"),             "📊 MACD 골든크로스"),
-                    (s.get("ma240_turning_up"),       "🔼 240일선 하락→상승 전환"),
-                    (s.get("hammer"),                 "🔨 망치형 캔들"),
-                    (s.get("bullish_engulf"),         "🕯 장악형 캔들"),
-                    (result["below_days"] >= 240,     f"⏳ 1년+ 충분한 조정 ({result['below_days']}일)"),
-                    (s.get("news_sentiment",0) > 0,   f"📰 긍정 뉴스 {s.get('pos_news',0)}건"),
-                    (s.get("has_disclosure"),         f"📋 호재 공시: {', '.join(s.get('disclosure_types',[]))}"),
-                ]
-                for flag, label in checks:
-                    (active if flag else inactive).append(label)
+            c1,c2,c3,c4 = st.columns(4)
+            metric_card(c1,"RSI(20)",f"{result['rsi']:.1f}")
+            metric_card(c2,"240선 이격",f"+{result['ma240_gap']:.1f}%")
+            metric_card(c3,"조정 기간",f"{result['below_days']}일({result['below_days']//20}개월)")
+            metric_card(c4,"돌파 후",f"{result['days_since_cross']}일")
 
-                ca, cb = st.columns(2)
-                with ca:
-                    st.write("**✅ 충족 신호**")
-                    for sig in active: st.success(sig)
-                    if not active: st.info("추가 신호 없음")
-                with cb:
-                    st.write("**❌ 미충족 신호**")
-                    for sig in inactive: st.error(sig)
+            st.markdown("<div class='sec-title'>📊 신호 분석</div>", unsafe_allow_html=True)
+            s = result["signals"]
+            active, inactive = [], []
+            checks = [
+                (s.get("vol_at_cross"),         f"📦 돌파 시 거래량 급증 ({s.get('cross_vol_ratio',0):.1f}배)"),
+                (s.get("recent_vol"),            f"📊 최근 거래량 증가 ({s.get('recent_vol_ratio',0):.1f}배)"),
+                (s.get("obv_rising"),            "📈 OBV 지속 상승 (매집 진행 중)"),
+                (s.get("ma_align"),              "⚡ 이평선 정배열 (MA5>MA20>MA60)"),
+                (s.get("pullback_recovery"),     "🔄 눌림목 후 재상승"),
+                (s.get("rsi_healthy"),           f"💚 RSI 건강 구간 ({s.get('rsi',0):.1f})"),
+                (s.get("bb_squeeze_expand"),     "🔥 볼린저밴드 수축→확장 (폭발 직전)"),
+                (s.get("macd_cross"),            "📊 MACD 골든크로스"),
+                (s.get("ma240_turning_up"),      "🔼 240일선 하락→상승 전환"),
+                (s.get("hammer"),                "🔨 망치형 캔들"),
+                (s.get("bullish_engulf"),        "🕯 장악형 캔들"),
+                (result["below_days"] >= 240,    f"⏳ 1년+ 충분한 조정 ({result['below_days']}일)"),
+                (s.get("news_sentiment",0) > 0,  f"📰 긍정 뉴스 {s.get('pos_news',0)}건"),
+                (s.get("has_disclosure"),        f"📋 호재 공시: {', '.join(s.get('disclosure_types',[]))}"),
+            ]
+            for flag, label in checks:
+                (active if flag else inactive).append(label)
 
-                # 주가 + 240일선 차트
-                cross_date = result["close_series"].index[-(result["days_since_cross"]+1)]
-                _c2 = make_candle(data, f"{name} ({symbol})", cross_date=cross_date)
-                st.plotly_chart(_c2, config={"scrollZoom":False,"displayModeBar":False,"staticPlot":True}, use_container_width=True)
-                show_price_levels(_c2)
+            ca, cb = st.columns(2)
+            with ca:
+                st.write("**✅ 충족 신호**")
+                for sig in active: st.success(sig)
+                if not active: st.info("추가 신호 없음")
+            with cb:
+                st.write("**❌ 미충족 신호**")
+                for sig in inactive: st.error(sig)
 
-                rsi_s  = result["rsi_series"]
+            cross_date = result["close_series"].index[-(result["days_since_cross"]+1)]
+            _c2 = make_candle(data, f"{name} ({symbol})", cross_date=cross_date)
+            st.plotly_chart(_c2, config={"scrollZoom":False,"displayModeBar":False,"staticPlot":True}, use_container_width=True)
+            show_price_levels(_c2)
 
-            else:
-                # 핵심 조건 미충족 — 그래도 차트와 기본 정보는 보여줌
-                st.markdown(f"""<div class="rank-card" style="margin-bottom:16px;">
-                  <div style="display:flex;justify-content:space-between;align-items:center;">
-                    <div>
-                      <span style="color:#fff;font-size:24px;font-weight:700;">⚠️ {name}</span>
-                      <span style="color:#ff4b6e;font-size:13px;margin-left:10px;">핵심 조건 미충족</span>
-                    </div>
-                    <div style="text-align:right;">
-                      <span style="color:#fff;font-size:24px;font-weight:700;">₩{current:,.0f}</span>
-                      <span style="color:{color};font-size:15px;margin-left:8px;">{arrow} {abs(chg):.2f}%</span>
-                    </div>
-                  </div>
-                </div>""", unsafe_allow_html=True)
+            _favs2 = ls_get_favorites()
+            _is_fav2 = symbol in _favs2
+            if st.button("⭐ 즐겨찾기 해제" if _is_fav2 else "☆ 즐겨찾기 추가", key=f"fav_indiv_{symbol}"):
+                if _is_fav2: _favs2.pop(symbol, None)
+                else: _favs2[symbol] = name
+                ls_save_favorites(_favs2)
+                st.toast("⭐ 추가됐어요!" if not _is_fav2 else "즐겨찾기에서 제거됐어요")
 
-                # 미충족 이유 상세 표시
-                close_clean = data["Close"].dropna()
-                ma240_now = float(close_clean.rolling(240).mean().dropna().iloc[-1]) if len(close_clean) >= 240 else None
-                current_clean = float(close_clean.iloc[-1])
-                if ma240_now:
-                    gap = (current_clean - ma240_now) / ma240_now * 100
-                    c1,c2 = st.columns(2)
-                    metric_card(c1,"현재 240선 이격",f"{gap:+.1f}%")
-                    metric_card(c2,"240일선",f"₩{ma240_now:,.0f}")
-                    if gap < 0:
-                        st.warning(f"📉 현재 주가가 240일선 아래 ({gap:.1f}%) — 아직 조정 중")
-                    elif gap > max_gap:
-                        st.warning(f"📈 240일선 위 {gap:.1f}% — 이미 많이 올라 근처 범위({max_gap}%) 초과")
-                    else:
-                        st.warning("📊 240일선 돌파 이력 또는 조정 기간 조건 미충족")
+            rsi_s = result["rsi_series"]
 
-                _c3 = make_candle(data, f"{name} ({symbol})")
-                st.plotly_chart(_c3, config={"scrollZoom":False,"displayModeBar":False,"staticPlot":True}, use_container_width=True, key="chart_candle_no_cond")
-                show_price_levels(_c3)
-                rsi_s  = calc_rsi_wilder(data["Close"], period=20)
+        else:
+            st.markdown(f"""<div class="rank-card" style="margin-bottom:16px;">
+              <div style="display:flex;justify-content:space-between;align-items:center;">
+                <div>
+                  <span style="color:#fff;font-size:24px;font-weight:700;">⚠️ {name}</span>
+                  <span style="color:#ff4b6e;font-size:13px;margin-left:10px;">핵심 조건 미충족</span>
+                </div>
+                <div style="text-align:right;">
+                  <span style="color:#fff;font-size:24px;font-weight:700;">₩{current:,.0f}</span>
+                  <span style="color:{color};font-size:15px;margin-left:8px;">{arrow} {abs(chg):.2f}%</span>
+                </div>
+              </div>
+            </div>""", unsafe_allow_html=True)
+
+            close_clean = data["Close"].dropna()
+            ma240_now = float(close_clean.rolling(240).mean().dropna().iloc[-1]) if len(close_clean) >= 240 else None
+            current_clean = float(close_clean.iloc[-1])
+            if ma240_now:
+                gap = (current_clean - ma240_now) / ma240_now * 100
+                c1,c2 = st.columns(2)
+                metric_card(c1,"현재 240선 이격",f"{gap:+.1f}%")
+                metric_card(c2,"240일선",f"₩{ma240_now:,.0f}")
+                if gap < 0:
+                    st.warning(f"📉 현재 주가가 240일선 아래 ({gap:.1f}%) — 아직 조정 중")
+                elif gap > max_gap:
+                    st.warning(f"📈 240일선 위 {gap:.1f}% — 이미 많이 올라 근처 범위({max_gap}%) 초과")
+                else:
+                    st.warning("📊 240일선 돌파 이력 또는 조정 기간 조건 미충족")
+
+            _c3 = make_candle(data, f"{name} ({symbol})")
+            st.plotly_chart(_c3, config={"scrollZoom":False,"displayModeBar":False,"staticPlot":True}, use_container_width=True, key="chart_candle_no_cond")
+            show_price_levels(_c3)
+
+            _favs3 = ls_get_favorites()
+            _is_fav3 = symbol in _favs3
+            if st.button("⭐ 즐겨찾기 해제" if _is_fav3 else "☆ 즐겨찾기 추가", key=f"fav_indiv_nc_{symbol}"):
+                if _is_fav3: _favs3.pop(symbol, None)
+                else: _favs3[symbol] = name
+                ls_save_favorites(_favs3)
+                st.toast("⭐ 추가됐어요!" if not _is_fav3 else "즐겨찾기에서 제거됐어요")
+
+            rsi_s = calc_rsi_wilder(data["Close"], period=20)
 
 
 # ── 우량주 RSI 70 이탈 스캐너 ────────────────────────────────────
@@ -1638,6 +1667,9 @@ elif mode == "⭐ 즐겨찾기":
     if "fav_loaded" not in st.session_state:
         ls_load_from_browser()
         st.session_state["fav_loaded"] = True
+
+    # 현재 즐겨찾기를 localStorage에 동기화
+    ls_persist_to_browser()
 
     favs_dict = ls_get_favorites()
 
