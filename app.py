@@ -11,6 +11,18 @@ except Exception as e:
     st.error(f"Import error: {e}")
     st.stop()
 
+try:
+    from cache_db import (save_scan, load_scan, list_scan_dates,
+                          add_favorite, remove_favorite, get_favorites,
+                          is_favorite, start_scheduler)
+    from backtest_ml import backtest_signal, SIGNAL_WEIGHTS
+    # 스케줄러 시작 (앱 최초 로드 시 1회)
+    if "scheduler_started" not in st.session_state:
+        start_scheduler()
+        st.session_state["scheduler_started"] = True
+except Exception as e:
+    st.warning(f"캐시/백테스트 모듈 로드 실패: {e}")
+
 # ── 접근 제어 ────────────────────────────────────────────────────
 PASSWORDS = ["hotstock2026", "vip1234", "comfreec"]  # 허가된 비밀번호 목록
 
@@ -183,9 +195,20 @@ section[data-testid="stSidebar"] {
     .metric-card .val { font-size: 14px !important; }
     .metric-card .lbl { font-size: 10px !important; }
     .rank-card { padding: 8px 10px !important; }
-    .stButton > button { font-size: 14px !important; padding: 8px !important; }
-    .stDataFrame { overflow-x: auto !important; }
+    .stButton > button { font-size: 12px !important; padding: 6px 4px !important; }
+    .stDataFrame { overflow-x: auto !important; -webkit-overflow-scrolling: touch !important; }
+    .stDataFrame table { min-width: 600px !important; }
     .top-header { padding: 12px 14px !important; }
+    /* 탭 버튼 모바일 줄바꿈 */
+    div[data-testid="column"] > div > div > button {
+        font-size: 11px !important;
+        padding: 6px 2px !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+    }
+    /* 가격 레벨 박스 세로 배치 */
+    .price-levels-wrap { flex-direction: column !important; }
 }
 
 /* ── 태블릿 (1024px 이하) ── */
@@ -394,8 +417,8 @@ cols_m[3].markdown(f"""
 if "mode" not in st.session_state:
     st.session_state["mode"] = "🔍 급등 예고 종목 탐지"
 
-tab_labels = ["🔍 급등 예고 종목 탐지", "🎯 최적 급등 타이밍", "📈 개별 종목 분석"]
-tab_cols = st.columns(3)
+tab_labels = ["🔍 급등 예고 종목 탐지", "🎯 최적 급등 타이밍", "📈 개별 종목 분석", "⭐ 즐겨찾기", "📊 백테스트"]
+tab_cols = st.columns(5)
 for i, (col, label) in enumerate(zip(tab_cols, tab_labels)):
     active = st.session_state["mode"] == label
     if col.button(label, key=f"tab_{i}", use_container_width=True,
@@ -774,6 +797,12 @@ if mode == "🔍 급등 예고 종목 탐지":
         results = sorted(results, key=lambda x: x["total_score"], reverse=True)
         results = [r for r in results if r["total_score"] >= min_score]
 
+        # 스캔 결과 DB 캐싱
+        try:
+            save_scan([{k: v for k, v in r.items() if k not in ("close_series", "rsi_series")} for r in results])
+        except:
+            pass
+
         if not results:
             st.warning("현재 조건을 만족하는 종목이 없습니다.")
             st.info("💡 사이드바에서 조건을 완화해보세요:\n- '240선 근처 범위'를 늘리거나\n- '최소 조정 기간'을 줄이거나\n- '돌파 후 최대 경과'를 늘려보세요")
@@ -882,6 +911,19 @@ if mode == "🔍 급등 예고 종목 탐지":
                     조정 {r["below_days"]}일({below_months}개월) | 돌파 {r["days_since_cross"]}일 전
                   </div>
                 </div>""", unsafe_allow_html=True)
+                # 즐겨찾기 버튼
+                _fav_col, _news_col = st.columns([1, 5])
+                try:
+                    _is_fav = is_favorite(r["symbol"])
+                    _fav_label = "⭐ 즐겨찾기 해제" if _is_fav else "☆ 즐겨찾기"
+                    if _fav_col.button(_fav_label, key=f"fav_{r['symbol']}_{i}", use_container_width=True):
+                        if _is_fav:
+                            remove_favorite(r["symbol"])
+                        else:
+                            add_favorite(r["symbol"], r["name"])
+                        st.rerun()
+                except:
+                    pass
                 if news_safe:
                     st.markdown(f'<div style="color:#6b7280;font-size:11px;padding:2px 8px 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">📰 {news_safe}</div>', unsafe_allow_html=True)
                 pct_str = f"{pct:.2f}"
@@ -1560,6 +1602,163 @@ elif mode == "🎯 최적 급등 타이밍":
                         config={"scrollZoom":False,"displayModeBar":False,"staticPlot":True},
                         use_container_width=True, key=f"rsi_timing_{r['symbol']}")
 
+
+# ── 즐겨찾기 탭 ──────────────────────────────────────────────────
+elif mode == "⭐ 즐겨찾기":
+    st.markdown("<div class='sec-title'>⭐ 즐겨찾기 종목</div>", unsafe_allow_html=True)
+    try:
+        favs = get_favorites()
+    except:
+        favs = []
+
+    if not favs:
+        st.info("즐겨찾기한 종목이 없습니다. 급등 탐지 탭에서 종목 카드의 ☆ 버튼을 눌러 추가하세요.")
+    else:
+        st.success(f"총 {len(favs)}개 종목")
+        for fav in favs:
+            sym = fav["symbol"]
+            name = fav["name"]
+            col1, col2, col3 = st.columns([3, 2, 1])
+            with col1:
+                data_f = get_chart_data(sym, "3mo")
+                if data_f is not None and len(data_f) > 0:
+                    cur_f  = float(data_f["Close"].iloc[-1])
+                    prev_f = float(data_f["Close"].iloc[-2])
+                    chg_f  = (cur_f - prev_f) / prev_f * 100
+                    color_f = "#00d4aa" if chg_f > 0 else "#ff4b6e"
+                    st.markdown(f"""
+                    <div style='background:#1a1f35;border-radius:10px;padding:14px 16px;border:1px solid #2d3555;'>
+                      <span style='color:#fff;font-weight:700;font-size:16px;'>{name}</span>
+                      <span style='color:#8b92a5;font-size:12px;margin-left:8px;'>{sym}</span><br>
+                      <span style='color:#fff;font-size:18px;font-weight:700;'>₩{cur_f:,.0f}</span>
+                      <span style='color:{color_f};font-size:13px;margin-left:8px;'>{"▲" if chg_f>0 else "▼"} {abs(chg_f):.2f}%</span>
+                    </div>""", unsafe_allow_html=True)
+                else:
+                    st.markdown(f"**{name}** ({sym})")
+            with col2:
+                added = fav["added_at"][:10] if fav.get("added_at") else ""
+                st.caption(f"추가일: {added}")
+            with col3:
+                if st.button("🗑 삭제", key=f"del_fav_{sym}"):
+                    try:
+                        remove_favorite(sym)
+                    except:
+                        pass
+                    st.rerun()
+            st.markdown("")
+
+        # 즐겨찾기 종목 일괄 차트
+        if st.button("📊 즐겨찾기 전체 차트 보기", type="primary"):
+            for fav in favs:
+                sym = fav["symbol"]
+                cd = get_chart_data(sym, "2y")
+                if cd is not None:
+                    fig_f = make_candle(cd, f"{fav['name']} ({sym})")
+                    st.plotly_chart(fig_f, config={"scrollZoom":False,"displayModeBar":False,"staticPlot":True},
+                                    use_container_width=True, key=f"fav_chart_{sym}")
+                    show_price_levels(fig_f)
+
+# ── 백테스트 탭 ───────────────────────────────────────────────────
+elif mode == "📊 백테스트":
+    st.markdown("<div class='sec-title'>📊 전략 백테스트 결과</div>", unsafe_allow_html=True)
+
+    st.markdown("""
+    <div style='background:#1a1f35;border-radius:12px;padding:16px;border:1px solid #2d3555;margin-bottom:16px;'>
+      <div style='color:#e0e6f0;font-size:14px;font-weight:600;margin-bottom:8px;'>📌 백테스트 방법론</div>
+      <div style='color:#8b92a5;font-size:13px;line-height:1.8;'>
+        • 과거 2년 데이터에서 신호 발생 시점 탐지<br>
+        • 신호 발생 후 <b style='color:#ffd700;'>20일 수익률</b> 측정<br>
+        • BB수축+MACD+거래량 3종 세트 동시 발생 시점 기준<br>
+        • 슬리피지/수수료 미반영 (참고용)
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # 신호 가중치 표
+    st.markdown("#### 신호별 가중치 (백테스팅 기반)")
+    try:
+        weight_df = pd.DataFrame([
+            {"신호": k, "가중치": v,
+             "설명": {
+                "bb_squeeze_expand": "볼린저밴드 수축→확장 (폭발 직전)",
+                "vol_price_rising3": "3일 연속 거래량+가격 상승",
+                "ichimoku_bull": "일목균형표 상승 신호",
+                "ma240_turning_up": "240일선 하락→상승 전환",
+                "vol_at_cross": "240선 돌파 시 거래량 급증",
+                "ma_align": "이동평균선 정배열",
+                "macd_cross": "MACD 골든크로스",
+                "pullback_recovery": "눌림목 회복",
+                "mfi_oversold_recovery": "MFI 과매도 반등",
+                "near_52w_high": "52주 신고가 근처",
+             }.get(k, k)}
+            for k, v in sorted(SIGNAL_WEIGHTS.items(), key=lambda x: -x[1])
+        ])
+        st.dataframe(weight_df,
+            column_config={
+                "가중치": st.column_config.ProgressColumn("가중치", min_value=0, max_value=2.5, format="%.1f")
+            },
+            use_container_width=True, hide_index=True)
+    except:
+        st.warning("백테스트 모듈을 불러올 수 없습니다.")
+
+    st.markdown("---")
+    st.markdown("#### 종목별 백테스트 실행")
+    st.caption("선택 종목의 과거 신호 발생 시점 → 20일 후 평균 수익률 계산")
+
+    bt_opts = [f"{v} ({k})" for k, v in sorted(STOCK_NAMES.items(), key=lambda x: x[1])]
+    bt_sel  = st.selectbox("종목 선택", bt_opts, key="bt_symbol")
+    bt_sym  = bt_sel.split("(")[1].replace(")", "").strip()
+    bt_name = bt_sel.split("(")[0].strip()
+
+    if st.button("🔬 백테스트 실행", type="primary"):
+        with st.spinner(f"{bt_name} 백테스트 중..."):
+            try:
+                avg_ret = backtest_signal(bt_sym)
+            except:
+                avg_ret = None
+
+        if avg_ret is None:
+            st.warning("데이터 부족 또는 신호 발생 이력 없음")
+        else:
+            color_bt = "#00d4aa" if avg_ret > 0 else "#ff4b6e"
+            grade = "🔥 강력" if avg_ret > 10 else "✅ 양호" if avg_ret > 3 else "⚠️ 보통" if avg_ret > 0 else "❌ 주의"
+            c1, c2, c3 = st.columns(3)
+            c1.metric("20일 평균 수익률", f"{avg_ret:+.2f}%")
+            c2.metric("전략 등급", grade)
+            c3.metric("종목", bt_name)
+
+            st.markdown(f"""
+            <div style='background:#1a1f35;border-radius:12px;padding:20px;border:1px solid {color_bt};margin-top:12px;text-align:center;'>
+              <div style='color:#8b92a5;font-size:13px;'>BB수축+MACD+거래량 신호 발생 후 20일 평균 수익률</div>
+              <div style='color:{color_bt};font-size:48px;font-weight:800;margin:12px 0;'>{avg_ret:+.2f}%</div>
+              <div style='color:#8b92a5;font-size:12px;'>과거 2년 데이터 기준 | 슬리피지 미반영</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+    # 과거 스캔 결과 히스토리
+    st.markdown("---")
+    st.markdown("#### 📅 과거 스캔 결과 히스토리")
+    try:
+        scan_dates = list_scan_dates()
+        if not scan_dates:
+            st.info("저장된 스캔 결과가 없습니다. 급등 탐지 탭에서 스캔을 실행하면 자동 저장됩니다.")
+        else:
+            date_opts = [d["date"] for d in scan_dates]
+            sel_date  = st.selectbox("날짜 선택", date_opts)
+            cached    = load_scan(sel_date)
+            if cached:
+                st.success(f"{sel_date} — {len(cached)}개 종목")
+                hist_df = pd.DataFrame([{
+                    "종목명": r.get("name",""),
+                    "종목코드": r.get("symbol",""),
+                    "현재가": f"₩{r.get('current_price',0):,.0f}",
+                    "240선이격": f"+{r.get('ma240_gap',0):.1f}%",
+                    "조정기간": f"{r.get('below_days',0)}일",
+                    "종합점수": r.get("total_score", 0),
+                } for r in cached])
+                st.dataframe(hist_df, use_container_width=True, hide_index=True)
+    except:
+        st.info("히스토리 기능을 사용하려면 먼저 스캔을 실행하세요.")
 
 # ── 하단 면책조항 ─────────────────────────────────────────────────
 st.markdown("---")
