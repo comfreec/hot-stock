@@ -9,7 +9,7 @@ import numpy as np
 from datetime import date
 
 TELEGRAM_TOKEN   = "8686257393:AAGWPuisi_qy995cKC7pIWnCGqpQMljQxgc"
-TELEGRAM_CHAT_ID = "-5204726592"  # 주식 급등 알림 그룹
+TELEGRAM_CHAT_ID = "-1003815975342"  # 주식 급등 알림 채널
 
 def send_telegram(message: str):
     """텔레그램 메시지 전송"""
