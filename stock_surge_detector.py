@@ -659,6 +659,95 @@ class KoreanStockSurgeDetector:
             signals["disclosure_types"] = disc_types
             if has_disc: score += 2
 
+            # ── 1. 세력 매집 감지 (조용한 거래량 증가) ──────────
+            # 주가 횡보 + 거래량 꾸준히 증가 = 세력 매집 패턴
+            try:
+                price_std_20  = float(close.tail(20).std() / close.tail(20).mean())  # 가격 변동성
+                vol_trend_20  = float(vol.tail(20).mean() / vol.tail(40).mean())      # 거래량 증가율
+                # 가격은 조용하고(변동성 낮음) 거래량은 늘어남 = 매집
+                signals["stealth_accumulation"] = price_std_20 < 0.05 and vol_trend_20 > 1.2
+                if signals["stealth_accumulation"]: score += 3
+            except:
+                signals["stealth_accumulation"] = False
+
+            # ── 2. 눌림목 타이밍 정교화 ─────────────────────────
+            # 240선 돌파 후 첫 번째 눌림목에서 반등 중인지 확인
+            try:
+                prices_after = close.iloc[cross_idx:]
+                if len(prices_after) >= 5:
+                    # 최근 5일 저점 대비 반등 중
+                    recent_low5  = float(close.tail(5).min())
+                    recent_high5 = float(close.tail(5).max())
+                    bounce_pct   = (current - recent_low5) / (recent_low5 + 1e-9) * 100
+                    # 저점 대비 2% 이상 반등 + 고점 갱신 중
+                    signals["pullback_bounce"] = bounce_pct >= 2.0 and current >= recent_high5 * 0.98
+                    if signals["pullback_bounce"]: score += 3
+                else:
+                    signals["pullback_bounce"] = False
+            except:
+                signals["pullback_bounce"] = False
+
+            # ── 3. 복합 신호 승수 (강한 조합 = 배율 적용) ───────
+            # BB수축 + MACD + 거래량 3종 세트 = 최강 조합
+            triple_combo = (
+                signals.get("bb_squeeze_expand") and
+                signals.get("macd_cross") and
+                (signals.get("vol_at_cross") or signals.get("recent_vol"))
+            )
+            if triple_combo:
+                score = int(score * 1.3)  # 30% 가산
+
+            # 이평선 정배열 + 일목균형표 + ADX = 추세 확인 조합
+            trend_combo = (
+                signals.get("ma_align") and
+                signals.get("ichimoku_bull") and
+                signals.get("adx_strong")
+            )
+            if trend_combo:
+                score = int(score * 1.2)  # 20% 가산
+
+            # 세력 매집 + OBV 상승 + 눌림목 반등 = 매집 완료 신호
+            accumulation_combo = (
+                signals.get("stealth_accumulation") and
+                signals.get("obv_rising") and
+                signals.get("pullback_bounce")
+            )
+            if accumulation_combo:
+                score = int(score * 1.25)  # 25% 가산
+
+            # ── 4. 섹터 모멘텀 강화 ─────────────────────────────
+            # 같은 섹터 상위 3개 종목 동반 상승 여부 체크
+            try:
+                sector_peers = {
+                    "005930.KS": ["000660.KS","011070.KS"],  # 반도체
+                    "000660.KS": ["005930.KS","011070.KS"],
+                    "005380.KS": ["000270.KS","012330.KS"],  # 자동차
+                    "000270.KS": ["005380.KS","012330.KS"],
+                    "006400.KS": ["051910.KS","373220.KS"],  # 2차전지
+                    "051910.KS": ["006400.KS","373220.KS"],
+                    "207940.KS": ["068270.KS","196170.KQ"],  # 바이오
+                    "068270.KS": ["207940.KS","196170.KQ"],
+                }
+                peers = sector_peers.get(symbol, [])
+                if peers:
+                    peer_up_count = 0
+                    for peer in peers:
+                        try:
+                            peer_data = yf.Ticker(peer).history(period="5d").dropna(subset=["Close"])
+                            if len(peer_data) >= 2:
+                                peer_ret = (float(peer_data["Close"].iloc[-1]) - float(peer_data["Close"].iloc[-5])) / float(peer_data["Close"].iloc[-5]) * 100
+                                if peer_ret > 2:
+                                    peer_up_count += 1
+                        except:
+                            pass
+                    signals["peer_momentum"] = peer_up_count
+                    if peer_up_count >= 2: score += 3   # 동종 섹터 동반 상승
+                    elif peer_up_count == 1: score += 1
+                else:
+                    signals["peer_momentum"] = 0
+            except:
+                signals["peer_momentum"] = 0
+
             # ── ML 점수 보정 ─────────────────────────────────────
             ml_adjusted = ml_score_adjustment(signals, score)
             signals["ml_adjusted_score"] = ml_adjusted

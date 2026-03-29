@@ -7,26 +7,30 @@ import pandas as pd
 import warnings
 warnings.filterwarnings("ignore")
 
-# 신호별 가중치 (백테스팅 기반)
+# 신호별 가중치 (백테스팅 + 실전 검증 기반으로 재조정)
 SIGNAL_WEIGHTS = {
-    "vol_at_cross":         1.8,
-    "recent_vol":           1.2,
-    "obv_rising":           1.1,
-    "ma_align":             1.5,
-    "pullback_recovery":    1.3,
-    "rsi_healthy":          1.0,
-    "bb_squeeze_expand":    2.0,
-    "macd_cross":           1.4,
-    "ma240_turning_up":     1.6,
-    "mfi_oversold_recovery":1.3,
-    "stoch_cross":          1.2,
-    "adx_strong":           1.1,
-    "above_vwap":           0.9,
-    "ichimoku_bull":        1.7,
-    "near_52w_high":        1.4,
-    "vol_price_rising3":    1.8,
-    "hammer":               0.8,
-    "bullish_engulf":       1.1,
+    # 핵심 강력 신호 (실전 수익률 높음)
+    "bb_squeeze_expand":    2.5,  # BB수축→확장: 폭발 직전 가장 강력
+    "stealth_accumulation": 2.3,  # 세력 매집: 조용한 거래량 증가
+    "vol_price_rising3":    2.2,  # 3일 연속 거래량+가격 상승
+    "vol_at_cross":         2.0,  # 돌파 시 거래량 급증
+    "pullback_bounce":      2.0,  # 눌림목 반등: 최적 진입 타이밍
+    "ichimoku_bull":        1.9,  # 일목균형표: 추세 확인
+    "ma240_turning_up":     1.8,  # 240선 상승 전환: 장기 추세 전환
+    # 보조 신호
+    "ma_align":             1.6,  # 이평선 정배열
+    "macd_cross":           1.5,  # MACD 골든크로스
+    "obv_rising":           1.4,  # OBV 상승: 매집 확인
+    "near_52w_high":        1.4,  # 52주 신고가 근처
+    "pullback_recovery":    1.3,  # 눌림목 회복
+    "mfi_oversold_recovery":1.3,  # MFI 과매도 반등
+    "adx_strong":           1.2,  # ADX 추세 강도
+    "stoch_cross":          1.2,  # 스토캐스틱 골든크로스
+    "recent_vol":           1.2,  # 최근 거래량 증가
+    "rsi_healthy":          1.0,  # RSI 건강 구간
+    "above_vwap":           0.9,  # VWAP 위
+    "hammer":               0.8,  # 망치형 캔들
+    "bullish_engulf":       1.1,  # 장악형 캔들
 }
 
 

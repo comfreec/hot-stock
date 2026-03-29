@@ -1045,6 +1045,9 @@ if mode == "🔍 급등 예고 종목 탐지":
                     if s.get("bb_squeeze_expand"):      active.append("🔥 볼린저밴드 수축→확장 (폭발 직전)")
                     if s.get("macd_cross"):             active.append("📊 MACD 골든크로스")
                     if s.get("ma240_turning_up"):       active.append("🔼 240일선 하락→상승 전환")
+                    if s.get("stealth_accumulation"):   active.append("🕵️ 세력 매집 감지 (조용한 거래량 증가)")
+                    if s.get("pullback_bounce"):        active.append("🎯 눌림목 반등 (최적 진입 타이밍)")
+                    if s.get("peer_momentum", 0) >= 2: active.append(f"🔗 동종 섹터 동반 상승 ({s.get('peer_momentum')}개)")
                     if s.get("mfi_oversold_recovery"):  active.append(f"💰 MFI 과매도 반등 ({s.get('mfi',0):.0f})")
                     if s.get("stoch_cross"):            active.append(f"📉 스토캐스틱 골든크로스 ({s.get('stoch_k',0):.0f})")
                     if s.get("adx_strong"):             active.append(f"💪 ADX 강한 추세 ({s.get('adx',0):.0f})")
@@ -1161,6 +1164,8 @@ elif mode == "📈 개별 종목 분석":
             checks = [
                 (s.get("vol_at_cross"),         f"📦 돌파 시 거래량 급증 ({s.get('cross_vol_ratio',0):.1f}배)"),
                 (s.get("recent_vol"),            f"📊 최근 거래량 증가 ({s.get('recent_vol_ratio',0):.1f}배)"),
+                (s.get("stealth_accumulation"),  "🕵️ 세력 매집 감지 (조용한 거래량 증가)"),
+                (s.get("pullback_bounce"),       "🎯 눌림목 반등 (최적 진입 타이밍)"),
                 (s.get("obv_rising"),            "📈 OBV 지속 상승 (매집 진행 중)"),
                 (s.get("ma_align"),              "⚡ 이평선 정배열 (MA5>MA20>MA60)"),
                 (s.get("pullback_recovery"),     "🔄 눌림목 후 재상승"),
@@ -1168,6 +1173,7 @@ elif mode == "📈 개별 종목 분석":
                 (s.get("bb_squeeze_expand"),     "🔥 볼린저밴드 수축→확장 (폭발 직전)"),
                 (s.get("macd_cross"),            "📊 MACD 골든크로스"),
                 (s.get("ma240_turning_up"),      "🔼 240일선 하락→상승 전환"),
+                (s.get("peer_momentum",0) >= 2,  f"🔗 동종 섹터 동반 상승 ({s.get('peer_momentum',0)}개)"),
                 (s.get("hammer"),                "🔨 망치형 캔들"),
                 (s.get("bullish_engulf"),        "🕯 장악형 캔들"),
                 (result["below_days"] >= 240,    f"⏳ 1년+ 충분한 조정 ({result['below_days']}일)"),
