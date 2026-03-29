@@ -83,9 +83,11 @@ def make_chart_image(symbol: str, name: str, price_levels: dict = None) -> bytes
 
         # ── 목표가 / 현재가 / 손절가 수평선 ──
         if price_levels:
-            target = price_levels.get("target")
-            stop   = price_levels.get("stop")
-            upside = price_levels.get("upside", 0)
+            target  = price_levels.get("target")
+            stop    = price_levels.get("stop")
+            entry   = price_levels.get("entry", current)
+            entry_label = price_levels.get("entry_label", "매수")
+            upside  = price_levels.get("upside", 0)
             downside = price_levels.get("downside", 0)
 
             if target:
@@ -93,8 +95,14 @@ def make_chart_image(symbol: str, name: str, price_levels: dict = None) -> bytes
                 ax1.text(len(df)-1, target, f" 목표 ₩{target:,.0f} (+{upside:.1f}%)",
                          color="#00ff88", fontsize=7, va="bottom", ha="right",
                          fontproperties=_get_korean_font())
-                # 현재~목표 구간 음영
-                ax1.axhspan(current, target, alpha=0.05, color="#00ff88")
+                ax1.axhspan(entry, target, alpha=0.05, color="#00ff88")
+
+            # 매수가 (240선 근거)
+            if entry < current:
+                ax1.axhline(y=entry, color="#ffd700", linewidth=1.5, linestyle="-.", alpha=0.9)
+                ax1.text(len(df)-1, entry, f" 매수({entry_label}) ₩{entry:,.0f}",
+                         color="#ffd700", fontsize=7, va="bottom", ha="right",
+                         fontproperties=_get_korean_font())
 
             ax1.axhline(y=current, color="#ffffff", linewidth=1.0, linestyle="--", alpha=0.6)
             ax1.text(len(df)-1, current, f" 현재 ₩{current:,.0f}",
@@ -106,8 +114,7 @@ def make_chart_image(symbol: str, name: str, price_levels: dict = None) -> bytes
                 ax1.text(len(df)-1, stop, f" 손절 ₩{stop:,.0f} ({downside:.1f}%)",
                          color="#ff3355", fontsize=7, va="top", ha="right",
                          fontproperties=_get_korean_font())
-                # 손절~현재 구간 음영
-                ax1.axhspan(stop, current, alpha=0.05, color="#ff3355")
+                ax1.axhspan(stop, entry, alpha=0.05, color="#ff3355")
         else:
             ax1.axhline(y=current, color="#ffffff", linewidth=0.8, linestyle="--", alpha=0.5)
 
@@ -182,7 +189,7 @@ def get_financial_data(symbol: str) -> dict:
 
 
 def calc_price_levels(symbol: str) -> dict:
-    """목표가/손절가/손익비 계산"""
+    """목표가/손절가/손익비 + 근거 있는 매수가 계산"""
     try:
         import yfinance as yf
         df = yf.Ticker(symbol).history(period="2y")
@@ -195,6 +202,7 @@ def calc_price_levels(symbol: str) -> dict:
         low   = df["Low"]
         current = float(close.iloc[-1])
 
+        # ATR
         tr = pd.concat([
             high - low,
             (high - close.shift(1)).abs(),
@@ -203,16 +211,43 @@ def calc_price_levels(symbol: str) -> dict:
         atr_s = tr.rolling(14).mean().dropna()
         atr = float(atr_s.iloc[-1]) if len(atr_s) > 0 else current * 0.02
 
-        swing_low = float(low.tail(20).min())
-        ma20 = float(close.rolling(20).mean().dropna().iloc[-1])
-        stop = max(swing_low - atr * 1.5, ma20 - atr * 1.0)
-        stop = max(stop, current * 0.88)
-        stop = min(stop, current * 0.95)
-        risk = max(current - stop, current * 0.01)
+        # ── 매수가: 240선 근처 근거 있는 진입가 ──────────────────
+        ma240 = close.rolling(240).mean()
+        ma20  = float(close.rolling(20).mean().iloc[-1])
+        ma240_v = float(ma240.iloc[-1]) if not pd.isna(ma240.iloc[-1]) else None
+        swing_low_20 = float(low.tail(20).min())
 
+        # 후보 매수가 목록 (현재가 이하 + 240선 위)
+        entry_candidates = []
+        if ma240_v:
+            entry_candidates.append(("240선+버퍼", ma240_v * 1.005))  # 240선 0.5% 위
+        entry_candidates.append(("MA20", ma20))
+        entry_candidates.append(("스윙저점", swing_low_20))
+
+        # 현재가 이하이면서 240선 위인 후보 중 가장 높은 값 선택
+        valid = [
+            (label, price) for label, price in entry_candidates
+            if price < current and (ma240_v is None or price >= ma240_v * 0.995)
+        ]
+        if valid:
+            entry_label, entry = max(valid, key=lambda x: x[1])
+        else:
+            # 후보가 없으면 현재가 그대로
+            entry_label, entry = "현재가", current
+
+        # 손절가
+        stop = max(
+            swing_low_20 - atr * 1.5,
+            ma20 - atr * 1.0
+        )
+        stop = max(stop, current * 0.88)
+        stop = min(stop, current * 0.96)
+        risk = max(entry - stop, entry * 0.01)
+
+        # 목표가
         recent_high = float(high.tail(120).max())
         recent_low  = float(low.tail(120).min())
-        swing_range = max(recent_high - recent_low, current * 0.01)
+        swing_range = max(recent_high - recent_low, entry * 0.01)
 
         candidates = sorted([
             x for x in [
@@ -220,31 +255,33 @@ def calc_price_levels(symbol: str) -> dict:
                 recent_low + swing_range * 1.618,
                 recent_low + swing_range * 2.0,
                 recent_high * 1.05,
-                current + atr * 3.0,
-                current + atr * 5.0,
-            ] if x > current * 1.03
+                entry + atr * 3.0,
+                entry + atr * 5.0,
+            ] if x > entry * 1.03
         ])
 
-        min_rr3 = current + risk * 3.0
-        valid = [x for x in candidates if x >= min_rr3]
-        if valid:
-            weights = [1 / (x - current) for x in valid]
-            target = sum(x * w for x, w in zip(valid, weights)) / sum(weights)
+        min_rr3 = entry + risk * 3.0
+        valid_t = [x for x in candidates if x >= min_rr3]
+        if valid_t:
+            weights = [1 / (x - entry) for x in valid_t]
+            target = sum(x * w for x, w in zip(valid_t, weights)) / sum(weights)
         elif candidates:
             target = candidates[-1]
         else:
-            target = current + risk * 3.0
+            target = entry + risk * 3.0
 
-        target = min(target, current * 2.0)
-        rr = (target - current) / (current - stop + 1e-9)
+        target = min(target, entry * 2.0)
+        rr = (target - entry) / (entry - stop + 1e-9)
 
         return {
-            "current": current,
-            "target":  target,
-            "stop":    stop,
-            "rr":      rr,
-            "upside":  (target / current - 1) * 100,
-            "downside": (stop / current - 1) * 100,
+            "current":     current,
+            "entry":       entry,
+            "entry_label": entry_label,
+            "target":      target,
+            "stop":        stop,
+            "rr":          rr,
+            "upside":      (target / entry - 1) * 100,
+            "downside":    (stop / entry - 1) * 100,
         }
     except:
         return {}
@@ -284,7 +321,7 @@ def send_scan_alert(results: list, send_charts: bool = True):
         s   = r.get("signals", {})
         sig_str = format_signals(s)
 
-        entry      = f"₩{lv['current']:,.0f}" if lv else f"₩{r['current_price']:,.0f}"
+        entry      = f"₩{lv['entry']:,.0f} ({lv['entry_label']})" if lv else f"₩{r['current_price']:,.0f}"
         target_str = f"₩{lv['target']:,.0f}  (+{lv['upside']:.1f}%)" if lv else "-"
         stop_str   = f"₩{lv['stop']:,.0f}  ({lv['downside']:.1f}%)" if lv else "-"
         rr_str     = f"{lv['rr']:.1f} : 1" if lv else "-"
@@ -329,12 +366,15 @@ def send_scan_alert(results: list, send_charts: bool = True):
             lv = calc_price_levels(r["symbol"])
             img = make_chart_image(r["symbol"], r["name"], price_levels=lv)
             if img:
-                caption = (
-                    f"<b>{r['name']}</b> ⭐{r['total_score']}점\n"
-                    f"매수 ₩{r['current_price']:,.0f}  "
-                    f"목표 ₩{lv['target']:,.0f}(+{lv['upside']:.1f}%)  "
-                    f"손절 ₩{lv['stop']:,.0f}" if lv else f"<b>{r['name']}</b>"
-                )
+                if lv:
+                    caption = (
+                        f"<b>{r['name']}</b> ⭐{r['total_score']}점\n"
+                        f"매수({lv['entry_label']}) ₩{lv['entry']:,.0f}  "
+                        f"목표 ₩{lv['target']:,.0f}(+{lv['upside']:.1f}%)  "
+                        f"손절 ₩{lv['stop']:,.0f}({lv['downside']:.1f}%)"
+                    )
+                else:
+                    caption = f"<b>{r['name']}</b>"
                 send_photo(img, caption)
 
 
