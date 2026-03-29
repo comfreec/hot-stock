@@ -306,6 +306,39 @@ class KoreanStockSurgeDetector:
         except:
             return False, []
 
+    def _institutional_flow(self, symbol):
+        """기관/외국인 순매수 크롤링 (네이버 금융)
+        Returns: (inst_net: int, foreign_net: int)  단위: 주
+        """
+        code = symbol.replace(".KS","").replace(".KQ","")
+        try:
+            url = f"https://finance.naver.com/item/frgn.naver?code={code}"
+            res = requests.get(url, headers={"User-Agent":"Mozilla/5.0"}, timeout=5)
+            soup = BeautifulSoup(res.text, "html.parser")
+            rows = soup.select("table.type2 tr")
+            inst_net    = 0
+            foreign_net = 0
+            count = 0
+            for row in rows[1:6]:  # 최근 5거래일
+                cols = row.select("td")
+                if len(cols) < 5:
+                    continue
+                try:
+                    # 외국인 순매수
+                    f_val = cols[4].get_text(strip=True).replace(",","").replace("+","")
+                    if f_val and f_val != "-":
+                        foreign_net += int(f_val)
+                    # 기관 순매수 (컬럼 위치: 5번째)
+                    i_val = cols[5].get_text(strip=True).replace(",","").replace("+","") if len(cols) > 5 else "0"
+                    if i_val and i_val != "-":
+                        inst_net += int(i_val)
+                    count += 1
+                except:
+                    pass
+            return inst_net, foreign_net
+        except:
+            return 0, 0
+
     # ── 핵심 분석 ────────────────────────────────────────────────
 
     def _market_condition(self):
@@ -365,13 +398,15 @@ class KoreanStockSurgeDetector:
             if len(data) < 260:
                 return None
 
-            # ── 재무 자동 검증 ────────────────────────────────────
+            # ── 재무 자동 검증 (강화) ─────────────────────────────
             try:
                 info = ticker.info
-                market_cap = info.get("marketCap", 0) or 0
-                per = info.get("trailingPE") or info.get("forwardPE") or 0
+                market_cap       = info.get("marketCap", 0) or 0
+                per              = info.get("trailingPE") or info.get("forwardPE") or 0
                 operating_income = info.get("operatingIncome") or 0
-                revenue = info.get("totalRevenue") or 0
+                revenue          = info.get("totalRevenue") or 0
+                revenue_growth   = info.get("revenueGrowth") or None   # 전년비 매출 성장률 (소수)
+                earnings_growth  = info.get("earningsGrowth") or None  # 전년비 이익 성장률
 
                 # 시총 1000억 미만 제외
                 if market_cap > 0 and market_cap < 100_000_000_000:
@@ -382,6 +417,12 @@ class KoreanStockSurgeDetector:
                 # PER 비정상 제외 (음수 or 200 초과)
                 if per and (per < 0 or per > 200):
                     return None
+                # ▶ 추가: 매출 성장률 마이너스 제외 (데이터 있을 때만)
+                if revenue_growth is not None and revenue_growth < -0.05:
+                    return None  # 매출 5% 이상 역성장 제외
+                # ▶ 추가: 이익 성장률 심각한 역성장 제외
+                if earnings_growth is not None and earnings_growth < -0.30:
+                    return None  # 이익 30% 이상 역성장 제외
             except:
                 pass  # 재무 데이터 없으면 통과 (데이터 누락 방어)
 
@@ -404,6 +445,7 @@ class KoreanStockSurgeDetector:
             ma240_v = float(ma240.iloc[-1])
 
             # ── 필수 조건 1: 현재 주가가 240선 근처 (0 ~ max_gap_pct%) ──
+            # → 먼저 이격 체크해서 이미 많이 오른 종목은 즉시 제외 (불필요한 연산 방지)
             gap_pct = (current - ma240_v) / ma240_v * 100
             if not (0 <= gap_pct <= self.max_gap_pct):
                 return None
@@ -418,30 +460,83 @@ class KoreanStockSurgeDetector:
             if cross_idx is None:
                 return None
 
+            # ── 가짜 돌파 방지: 돌파 후 3일 이상 240선 위 유지 ──
+            confirm_end = min(cross_idx + 4, n)
+            days_above_after = sum(
+                1 for i in range(cross_idx, confirm_end)
+                if float(close.iloc[i]) > float(ma240.iloc[i])
+            )
+            if days_above_after < 3:
+                return None  # 3일 미만 유지 = 가짜 돌파
+
+            # ── 돌파 강도 확인: 돌파 당일 종가가 240선 위 0.5% 이상 ──
+            cross_gap = (float(close.iloc[cross_idx]) - float(ma240.iloc[cross_idx])) / float(ma240.iloc[cross_idx]) * 100
+            if cross_gap < 0.5:
+                return None  # 0.5% 미만 돌파 = 신뢰도 낮음
+
             days_since_cross = n - 1 - cross_idx
 
-            # ── 필수 조건 3: 돌파 이전 min_below_days 이상 240선 아래 ──
-            below_days = sum(
-                1 for i in range(cross_idx)
-                if not pd.isna(ma240.iloc[i]) and close.iloc[i] < ma240.iloc[i]
-            )
+            # ── 필수 조건 3: 돌파 직전 연속 하락 기간이 min_below_days 이상 ──
+            # 연속 기간 우선, 부족하면 전체 기간으로 fallback
+            below_days = 0
+            for i in range(cross_idx - 1, -1, -1):
+                if not pd.isna(ma240.iloc[i]) and close.iloc[i] < ma240.iloc[i]:
+                    below_days += 1
+                else:
+                    break
+            # 연속 기간이 부족하면 cross_idx 이전 전체 기간으로 재계산
+            if below_days < self.min_below_days:
+                below_days = sum(
+                    1 for i in range(cross_idx)
+                    if not pd.isna(ma240.iloc[i]) and close.iloc[i] < ma240.iloc[i]
+                )
             if below_days < self.min_below_days:
                 return None
+
+            # ── 필수 조건 4: 240선 기울기 확인 (급격한 하락 추세만 제외) ──
+            ma240_at_cross     = float(ma240.iloc[cross_idx])
+            ma240_20d_before   = float(ma240.iloc[cross_idx - 20]) if cross_idx >= 20 else ma240_at_cross
+            ma240_slope_at_cross = (ma240_at_cross - ma240_20d_before) / ma240_20d_before * 100
+            if ma240_slope_at_cross < -3.0:
+                return None  # 20일간 3% 이상 급락 중인 240선 돌파만 제외 (기준 완화: -1.5 → -3.0)
+
+            # ── 필수 조건 5: 돌파 후 240선 아래 재이탈 횟수 제한 ──
+            # 단 하루도 허용 안 하면 종목이 거의 없음 → 3일 이상 연속 이탈만 제외
+            rebreak_count = 0
+            consecutive = 0
+            for i in range(cross_idx + 1, n):
+                if float(close.iloc[i]) < float(ma240.iloc[i]):
+                    consecutive += 1
+                    if consecutive >= 3:  # 3일 연속 이탈 = 진짜 추세 붕괴
+                        return None
+                else:
+                    consecutive = 0
 
             # ── 여기까지 통과 = 핵심 조건 충족 ─────────────────────
             score   = 0
             signals = {}
 
-            # [+3] 돌파 시 거래량 급증
+            # [+3] 돌파 시 거래량 급증 (기준 강화: 3배 이상 = 강한 신호)
             vol_ma20 = vol.rolling(20).mean()
             cross_vr = float(vol.iloc[cross_idx] / vol_ma20.iloc[cross_idx]) if vol_ma20.iloc[cross_idx] > 0 else 0
             recent_vr = float(vol.iloc[-5:].mean() / vol_ma20.iloc[-1]) if vol_ma20.iloc[-1] > 0 else 0
-            signals["vol_at_cross"]   = cross_vr >= 2.0
-            signals["recent_vol"]     = recent_vr >= 1.5
+            signals["vol_at_cross"]     = cross_vr >= 2.0
+            signals["vol_strong_cross"] = cross_vr >= 3.0   # ▶ 추가: 강한 돌파 (3배 이상)
+            signals["recent_vol"]       = recent_vr >= 1.5
             signals["cross_vol_ratio"]  = round(cross_vr, 2)
             signals["recent_vol_ratio"] = round(recent_vr, 2)
-            if signals["vol_at_cross"]: score += 3
-            if signals["recent_vol"]:   score += 2
+            if signals["vol_strong_cross"]: score += 4   # 3배 이상 = 4점
+            elif signals["vol_at_cross"]:   score += 3   # 2배 이상 = 3점
+            if signals["recent_vol"]:       score += 2
+
+            # ▶ 추가: 돌파 전후 5일 평균 거래량 증가 확인
+            try:
+                vol_before5 = float(vol.iloc[cross_idx-5:cross_idx].mean())
+                vol_after5  = float(vol.iloc[cross_idx:cross_idx+5].mean())
+                signals["vol_surge_sustained"] = vol_after5 > vol_before5 * 1.5
+                if signals["vol_surge_sustained"]: score += 2
+            except:
+                signals["vol_surge_sustained"] = False
 
             # [+2] OBV 지속 상승
             obv = self._obv(data)
@@ -748,6 +843,32 @@ class KoreanStockSurgeDetector:
             except:
                 signals["peer_momentum"] = 0
 
+            # ── 기관/외국인 수급 ─────────────────────────────────
+            inst_net, foreign_net = self._institutional_flow(symbol)
+            signals["inst_net_buy"]    = inst_net
+            signals["foreign_net_buy"] = foreign_net
+            signals["smart_money_in"]  = inst_net > 0 or foreign_net > 0
+            signals["both_buying"]     = inst_net > 0 and foreign_net > 0
+            if signals["both_buying"]:     score += 4  # 기관+외국인 동시 순매수 = 강한 신호
+            elif signals["smart_money_in"]: score += 2  # 둘 중 하나라도 순매수
+
+            # ── 필수 신호 최소 개수 조건 ─────────────────────────
+            # 핵심 신호 중 최소 2개 이상 충족해야 통과
+            core_signals = [
+                signals.get("ma_align"),           # 이평선 정배열
+                signals.get("obv_rising"),          # OBV 상승
+                signals.get("vol_at_cross"),        # 돌파 시 거래량
+                signals.get("vol_surge_sustained"), # 거래량 지속
+                signals.get("macd_cross"),          # MACD 골든크로스
+                signals.get("ichimoku_bull"),       # 일목균형표
+                signals.get("adx_strong"),          # ADX 추세
+                signals.get("smart_money_in"),      # 기관/외국인 수급
+            ]
+            core_count = sum(1 for s in core_signals if s)
+            signals["core_signal_count"] = core_count
+            if core_count < 2:
+                return None  # 핵심 신호 2개 미만 = 제외
+
             # ── ML 점수 보정 ─────────────────────────────────────
             ml_adjusted = ml_score_adjustment(signals, score)
             signals["ml_adjusted_score"] = ml_adjusted
@@ -786,6 +907,12 @@ class KoreanStockSurgeDetector:
                 "neg_news":         neg_n,
                 "has_disclosure":   has_disc,
                 "disclosure_types": disc_types,
+                "inst_net_buy":     inst_net,
+                "foreign_net_buy":  foreign_net,
+                "smart_money_in":   signals["smart_money_in"],
+                "both_buying":      signals["both_buying"],
+                "core_signal_count": signals["core_signal_count"],
+                "cross_gap_pct":    round(cross_gap, 2),
                 "close_series":     close,
                 "ma240_series":     ma240,
                 "ma60_series":      ma60,

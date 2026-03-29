@@ -437,16 +437,16 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("### ⚙️ 핵심 조건 설정")
 
-    if "max_gap"   not in st.session_state: st.session_state["max_gap"]   = 10
+    if "max_gap"   not in st.session_state: st.session_state["max_gap"]   = 15
     if "min_below" not in st.session_state: st.session_state["min_below"] = 120
-    if "max_cross" not in st.session_state: st.session_state["max_cross"] = 90
-    if "min_score" not in st.session_state: st.session_state["min_score"] = 12
+    if "max_cross" not in st.session_state: st.session_state["max_cross"] = 120
+    if "min_score" not in st.session_state: st.session_state["min_score"] = 10
 
     if st.button("⚡ 최적 셋팅", use_container_width=True):
-        st.session_state["max_gap"]   = 10
-        st.session_state["min_below"] = 120
-        st.session_state["max_cross"] = 90
-        st.session_state["min_score"] = 12
+        st.session_state["max_gap"]   = 15   # 240선 근처 15% 이내
+        st.session_state["min_below"] = 120  # 최소 6개월 조정
+        st.session_state["max_cross"] = 120  # 돌파 후 6개월 이내
+        st.session_state["min_score"] = 10   # 종합점수 10점 이상
         st.rerun()
 
     max_gap   = st.slider("📍 240선 근처 범위 (%)", 1, 20, key="max_gap",
@@ -461,8 +461,12 @@ with st.sidebar:
     st.markdown("""**📊 추가 점수 신호**
 | 신호 | 점수 |
 |------|------|
-| 📦 돌파 시 거래량 급증 | 3점 |
+| 🚀 돌파 시 거래량 폭발(3배+) | 4점 |
+| 📦 돌파 시 거래량 급증(2배+) | 3점 |
+| 📊 돌파 전후 거래량 지속 | 2점 |
 | 📊 최근 거래량 증가 | 2점 |
+| 🔥 기관+외국인 동시 순매수 | 4점 |
+| ✅ 기관 또는 외국인 순매수 | 2점 |
 | 📈 OBV 지속 상승 | 2점 |
 | ⚡ 이평선 정배열 | 3점 |
 | 🔄 눌림목 후 재상승 | 2점 |
@@ -478,12 +482,16 @@ with st.sidebar:
 | 🏆 52주 신고가 근처 | 2점 |
 | 📈 상승장 가산 | 2점 |
 | 🔥 섹터 강세 | 최대 3점 |
+| 🔗 동종 섹터 동반 상승 | 최대 3점 |
 | 📦 3일 연속 거래량+가격 | 3점 |
-| 🎯 얕은 눌림목 | 3점 |
+| 🎯 얕은 눌림목(3~15%) | 3점 |
+| 🕵️ 세력 매집 감지 | 3점 |
+| 🎯 눌림목 반등 | 3점 |
 | 🕯 캔들 패턴 | 1~2점 |
 | ⏳ 조정 기간 가산 | 1~3점 |
 | 📰 긍정 뉴스 | 1~2점 |
-| 📋 호재 공시 | 2점 |""")
+| 📋 호재 공시 | 2점 |
+| 🔀 복합 신호 승수 | ×1.2~1.3 |""")
     st.markdown("---")
     st.caption("⚠️ 투자 손실에 책임지지 않습니다")
 
@@ -915,10 +923,13 @@ if mode == "🔍 급등 예고 종목 탐지":
                     "240선이격":  f"+{r['ma240_gap']:.1f}%",
                     "조정기간":   f"{r['below_days']}일({r['below_days']//20}개월)",
                     "돌파후":     f"{r['days_since_cross']}일",
+                    "돌파강도":   f"{r.get('cross_gap_pct', 0):.1f}%",
                     "RSI":        r["rsi"],
                     "종합점수":   r["total_score"],
                     "원점수":     r.get("raw_score", r["total_score"]),
-                    "거래량":     "✅" if s.get("vol_at_cross") or s.get("recent_vol") else "❌",
+                    "핵심신호":   f"{r.get('core_signal_count', 0)}개",
+                    "거래량":     "✅" if s.get("vol_strong_cross") else ("🔶" if s.get("vol_at_cross") else "❌"),
+                    "수급":       "🔥" if r.get("both_buying") else ("✅" if r.get("smart_money_in") else "❌"),
                     "OBV":        "✅" if s.get("obv_rising") else "❌",
                     "정배열":     "✅" if s.get("ma_align") else "❌",
                     "BB수축":     "✅" if s.get("bb_squeeze_expand") else "❌",
@@ -939,7 +950,10 @@ if mode == "🔍 급등 예고 종목 탐지":
                     "원점수": st.column_config.ProgressColumn(
                         "원점수", min_value=0, max_value=39, format="%d점"),
                     "RSI": st.column_config.ProgressColumn(
-                        "RSI", min_value=0, max_value=100, format="%.1f")},
+                        "RSI", min_value=0, max_value=100, format="%.1f"),
+                    "수급": st.column_config.TextColumn("기관/외국인", help="🔥=동시매수 ✅=한쪽매수 ❌=없음"),
+                    "거래량": st.column_config.TextColumn("거래량", help="✅=3배이상 🔶=2배이상 ❌=미달"),
+                },
                 use_container_width=True, hide_index=True)
 
             # 차트
@@ -992,7 +1006,8 @@ if mode == "🔍 급등 예고 종목 탐지":
                   </div>
                   <div style="margin-top:6px;color:#8b92a5;font-size:12px;">
                     240일선 ₩{r["ma240"]:,.0f} | 이격 +{r["ma240_gap"]:.1f}% |
-                    조정 {r["below_days"]}일({below_months}개월) | 돌파 {r["days_since_cross"]}일 전
+                    조정 {r["below_days"]}일({below_months}개월) | 돌파 {r["days_since_cross"]}일 전 | 돌파강도 {r.get("cross_gap_pct",0):.1f}% |
+                    수급 {"🔥기관+외국인" if r.get("both_buying") else ("✅수급있음" if r.get("smart_money_in") else "❌수급없음")} | 핵심신호 {r.get("core_signal_count",0)}개
                   </div>
                 </div>""", unsafe_allow_html=True)
                 # 즐겨찾기 버튼 (localStorage 기반 - 기기별 영구 저장)
@@ -1021,23 +1036,19 @@ if mode == "🔍 급등 예고 종목 탐지":
                     m2.metric("240선 이격", f"+{r['ma240_gap']:.1f}%")
                     m3.metric("조정 기간", f"{r['below_days']}일")
                     m4.metric("돌파 후", f"{r['days_since_cross']}일")
-                    # AI 예측 (캐시)
-                    cache_key = f"ai_pred_{r['symbol']}"
-                    if cache_key not in st.session_state:
-                        try:
-                            from ml_predictor import train_and_predict
-                            st.session_state[cache_key] = train_and_predict(r["symbol"])
-                        except:
-                            st.session_state[cache_key] = None
-                    pred = st.session_state.get(cache_key)
-                    if pred:
-                        m5.metric("AI 상승확률", f"{pred['prob_up']}%")
-                    m4.metric("돌파 후", f"{r['days_since_cross']}일")
+                    m5.metric("돌파강도", f"{r.get('cross_gap_pct',0):.1f}%")
+                    # 수급 정보
+                    supply_label = "🔥 기관+외국인" if r.get("both_buying") else ("✅ 수급있음" if r.get("smart_money_in") else "❌ 수급없음")
+                    st.caption(f"수급: {supply_label}  |  핵심신호: {r.get('core_signal_count',0)}개  |  거래량배수: {r.get('vol_ratio',0):.1f}배")
 
                     s = r["signals"]
                     active = []
-                    if s.get("vol_at_cross"):           active.append(f"📦 돌파 시 거래량 급증 ({s['cross_vol_ratio']:.1f}배)")
+                    if s.get("vol_strong_cross"):       active.append(f"🚀 돌파 시 거래량 폭발 ({s['cross_vol_ratio']:.1f}배 - 강한 돌파)")
+                    elif s.get("vol_at_cross"):         active.append(f"📦 돌파 시 거래량 급증 ({s['cross_vol_ratio']:.1f}배)")
+                    if s.get("vol_surge_sustained"):    active.append("📊 돌파 전후 거래량 지속 증가")
                     if s.get("recent_vol"):             active.append(f"📊 최근 거래량 증가 ({s['recent_vol_ratio']:.1f}배)")
+                    if r.get("both_buying"):            active.append("🔥 기관+외국인 동시 순매수 (강한 수급)")
+                    elif r.get("smart_money_in"):       active.append("✅ 기관 또는 외국인 순매수")
                     if s.get("obv_rising"):             active.append("📈 OBV 지속 상승 (매집 진행 중)")
                     if s.get("ma_align"):               active.append("⚡ 이평선 정배열 (MA5>MA20>MA60)")
                     if s.get("pullback_recovery"):      active.append("🔄 눌림목 후 재상승")
@@ -1207,33 +1218,6 @@ elif mode == "📈 개별 종목 분석":
 
             rsi_s = result["rsi_series"]
 
-            # ── AI 예측 점수 ──────────────────────────────────────
-            with st.expander("🤖 AI 상승 확률 예측 (ML)", expanded=False):
-                with st.spinner("ML 모델 학습 중..."):
-                    try:
-                        from ml_predictor import train_and_predict
-                        pred = train_and_predict(symbol)
-                    except:
-                        pred = None
-
-                if pred:
-                    prob = pred["prob_up"]
-                    conf = pred["confidence"]
-                    acc  = pred["model_accuracy"]
-                    exp_ret = pred["expected_return"]
-                    hold = pred["hold_days"]
-
-                    prob_color = "#00d4aa" if prob >= 65 else "#ffd700" if prob >= 55 else "#ff4b6e"
-                    st.markdown(f"""
-                    <div style='background:#1a1f35;border-radius:12px;padding:20px;border:1px solid {prob_color};text-align:center;'>
-                      <div style='color:#8b92a5;font-size:13px;'>{hold}일 후 상승 확률 (RandomForest + GradientBoosting 앙상블)</div>
-                      <div style='color:{prob_color};font-size:48px;font-weight:800;margin:8px 0;'>{prob}%</div>
-                      <div style='color:#8b92a5;font-size:12px;'>신뢰도: <b style='color:{prob_color};'>{conf}</b> | 모델 정확도: {acc}% | 유사 구간 평균 수익률: {exp_ret:+.1f}%</div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                else:
-                    st.info("데이터 부족으로 예측 불가")
-
         else:
             st.markdown(f"""<div class="rank-card" style="margin-bottom:16px;">
               <div style="display:flex;justify-content:space-between;align-items:center;">
@@ -1276,27 +1260,6 @@ elif mode == "📈 개별 종목 분석":
                 st.toast("⭐ 추가됐어요!" if not _is_fav3 else "즐겨찾기에서 제거됐어요")
 
             rsi_s = calc_rsi_wilder(data["Close"], period=20)
-
-            # ── AI 예측 점수 (조건 미충족 종목도 표시) ───────────
-            with st.expander("🤖 AI 상승 확률 예측 (ML)", expanded=False):
-                with st.spinner("ML 모델 학습 중..."):
-                    try:
-                        from ml_predictor import train_and_predict
-                        pred = train_and_predict(symbol)
-                    except:
-                        pred = None
-                if pred:
-                    prob = pred["prob_up"]
-                    prob_color = "#00d4aa" if prob >= 65 else "#ffd700" if prob >= 55 else "#ff4b6e"
-                    st.markdown(f"""
-                    <div style='background:#1a1f35;border-radius:12px;padding:20px;border:1px solid {prob_color};text-align:center;'>
-                      <div style='color:#8b92a5;font-size:13px;'>{pred['hold_days']}일 후 상승 확률</div>
-                      <div style='color:{prob_color};font-size:48px;font-weight:800;margin:8px 0;'>{prob}%</div>
-                      <div style='color:#8b92a5;font-size:12px;'>신뢰도: <b style='color:{prob_color};'>{pred['confidence']}</b> | 모델 정확도: {pred['model_accuracy']}% | 유사 구간 평균 수익률: {pred['expected_return']:+.1f}%</div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                else:
-                    st.info("데이터 부족으로 예측 불가")
 
 
 # ── 우량주 RSI 70 이탈 스캐너 ────────────────────────────────────
@@ -1493,7 +1456,7 @@ elif mode == "🎯 최적 급등 타이밍":
     </div>
     """, unsafe_allow_html=True)
 
-    with st.expander("📖 8가지 핵심 조건 설명", expanded=False):
+    with st.expander("📖 9가지 핵심 조건 설명", expanded=False):
         st.markdown("""
 | # | 조건 | 점수 | 설명 |
 |---|------|------|------|
@@ -1505,14 +1468,37 @@ elif mode == "🎯 최적 급등 타이밍":
 | 6 | 📊 MACD 골든크로스 | 2점 | MACD 히스토그램 0선 상향 돌파 |
 | 7 | 🕯 장대양봉 + 거래량 | 3점 | 평균 대비 2배+ 거래량에 양봉 (세력 진입 확인) |
 | 8 | 🏆 52주 신고가 돌파 직전 | 3점 | 52주 고점 5% 이내 (저항선 돌파 임박) |
+| 9 | 📈 240선 확인 돌파 | 최대 4점 | 가짜 돌파 없음 + 기울기 정상 + 재이탈 없음 |
         """)
 
     def calc_surge_timing_score(symbol):
         """최적 급등 타이밍 종합 점수 계산"""
         try:
-            df = yf.Ticker(symbol).history(period="2y")
+            ticker = yf.Ticker(symbol)
+            df = ticker.history(period="2y")
             if df is None or len(df) < 60:
                 return None
+
+            # ── 재무 필터 (급등 탐지와 동일 기준) ───────────────
+            try:
+                info             = ticker.info
+                market_cap       = info.get("marketCap", 0) or 0
+                operating_income = info.get("operatingIncome") or 0
+                per              = info.get("trailingPE") or info.get("forwardPE") or 0
+                revenue_growth   = info.get("revenueGrowth") or None
+                earnings_growth  = info.get("earningsGrowth") or None
+                if market_cap > 0 and market_cap < 100_000_000_000:
+                    return None
+                if operating_income != 0 and operating_income < 0:
+                    return None
+                if per and (per < 0 or per > 200):
+                    return None
+                if revenue_growth is not None and revenue_growth < -0.05:
+                    return None
+                if earnings_growth is not None and earnings_growth < -0.30:
+                    return None
+            except:
+                pass
 
             close = df["Close"]
             high  = df["High"]
@@ -1638,14 +1624,43 @@ elif mode == "🎯 최적 급등 타이밍":
             if at_high:   score += 3
             elif near_high: score += 2
 
-            # ── 보너스: 240일선 돌파 후 근처 ────────────────────
+            # ── 보너스: 240일선 돌파 후 근처 + 강화된 조건 ────────
             if ma240 is not None and not pd.isna(ma240.iloc[-1]):
                 ma240_v = float(ma240.iloc[-1])
                 ma240_gap = (current - ma240_v) / ma240_v * 100
                 signals["ma240_gap"] = round(ma240_gap, 1)
-                if 0 <= ma240_gap <= 10: score += 2
+
+                if 0 <= ma240_gap <= 10:
+                    # 가짜 돌파 방지: 최근 3일 연속 240선 위 유지 확인
+                    days_above = sum(1 for i in range(-3, 0) if float(close.iloc[i]) > float(ma240.iloc[i]))
+                    signals["ma240_confirmed"] = days_above >= 3
+
+                    # 240선 기울기: 수평 또는 상승 전환 중이어야 함
+                    ma240_slope = (float(ma240.iloc[-1]) - float(ma240.iloc[-20])) / float(ma240.iloc[-20]) * 100 if n >= 20 else 0
+                    signals["ma240_slope"] = round(ma240_slope, 2)
+                    signals["ma240_healthy_slope"] = ma240_slope >= -1.5
+
+                    # 돌파 후 240선 재이탈 없음 확인 (최근 60일 기준)
+                    cross_found = False
+                    broke_below = False
+                    for i in range(n-2, max(n-61, 0), -1):
+                        if float(close.iloc[i]) > float(ma240.iloc[i]) and float(close.iloc[i-1]) <= float(ma240.iloc[i-1]):
+                            cross_found = True
+                            # 돌파 이후 재이탈 체크
+                            broke_below = any(float(close.iloc[j]) < float(ma240.iloc[j]) for j in range(i+1, n))
+                            break
+                    signals["ma240_no_rebreak"] = cross_found and not broke_below
+
+                    if signals["ma240_confirmed"] and signals["ma240_healthy_slope"] and signals["ma240_no_rebreak"]:
+                        score += 4  # 모든 조건 충족 = 강한 신호
+                    elif signals["ma240_confirmed"] and signals["ma240_healthy_slope"]:
+                        score += 2
+                    elif 0 <= ma240_gap <= 10:
+                        score += 1
             else:
                 signals["ma240_gap"] = None
+                signals["ma240_confirmed"] = False
+                signals["ma240_no_rebreak"] = False
 
             return {
                 "symbol":        symbol,
@@ -1653,7 +1668,7 @@ elif mode == "🎯 최적 급등 타이밍":
                 "current_price": current,
                 "price_change_1d": round(chg, 2),
                 "total_score":   score,
-                "max_score":     26,
+                "max_score":     30,  # 만점 업데이트 (240선 보너스 4점 추가)
                 "signals":       signals,
                 "rsi":           cur_rsi,
                 "rsi_series":    rsi,
@@ -1674,7 +1689,7 @@ elif mode == "🎯 최적 급등 타이밍":
             prog_text.markdown(f"<span style='color:#8b92a5;font-size:13px;'>({idx+1}/{total}) {symbol} 분석 중...</span>", unsafe_allow_html=True)
             prog.progress((idx + 1) / total)
             r = calc_surge_timing_score(symbol)
-            if r and r["total_score"] >= 7:
+            if r and r["total_score"] >= 12:  # 기준 상향: 7 → 12점
                 results.append(r)
 
         prog.empty()
@@ -1690,7 +1705,7 @@ elif mode == "🎯 최적 급등 타이밍":
             metric_card(c1, "발견 종목", f"{len(results)}개")
             metric_card(c2, "최고 점수", f"{results[0]['total_score']}점")
             metric_card(c3, "평균 점수", f"{sum(r['total_score'] for r in results)/len(results):.1f}점")
-            metric_card(c4, "만점", "26점")
+            metric_card(c4, "만점", "30점")
 
             st.markdown("<div class='sec-title'>🏆 최적 급등 타이밍 TOP 종목</div>", unsafe_allow_html=True)
 
@@ -1706,6 +1721,7 @@ elif mode == "🎯 최적 급등 타이밍":
                     "거래량비": f"{s.get('vol_ratio',0):.1f}배",
                     "반등위치": f"{s.get('recovery_pct',0):.0f}%",
                     "52주고점": f"{s.get('high_ratio',0):.1f}%",
+                    "240선":    "🔥" if s.get("ma240_confirmed") and s.get("ma240_no_rebreak") else ("✅" if s.get("ma240_gap") is not None and 0 <= (s.get("ma240_gap") or -1) <= 10 else "❌"),
                     "매집":     "✅" if s.get("accumulation") else "❌",
                     "BB수축":   "✅" if s.get("bb_squeeze") else "❌",
                     "RSI사이클":"✅" if s.get("rsi_cycle") else "❌",
@@ -1715,8 +1731,11 @@ elif mode == "🎯 최적 급등 타이밍":
                 })
             df_tbl = pd.DataFrame(rows)
             st.dataframe(df_tbl,
-                column_config={"종합점수": st.column_config.ProgressColumn(
-                    "종합점수", min_value=0, max_value=26, format="%d점")},
+                column_config={
+                    "종합점수": st.column_config.ProgressColumn(
+                        "종합점수", min_value=0, max_value=30, format="%d점"),
+                    "240선": st.column_config.TextColumn("240선 확인", help="🔥=완전확인 ✅=근처 ❌=해당없음"),
+                },
                 use_container_width=True, hide_index=True)
 
             # 상위 종목 상세
@@ -1728,7 +1747,7 @@ elif mode == "🎯 최적 급등 타이밍":
                 medal = medals[i] if i < 3 else ""
                 icon  = icons[i]  if i < 3 else f"{i+1}."
                 s     = r["signals"]
-                pct   = r["total_score"] / 26 * 100
+                pct   = r["total_score"] / 30 * 100
                 color = "#00d4aa" if r["price_change_1d"] > 0 else "#ff4b6e"
                 arrow = "▲" if r["price_change_1d"] > 0 else "▼"
 
@@ -1750,7 +1769,7 @@ elif mode == "🎯 최적 급등 타이밍":
                     {f"| 240선 +{s['ma240_gap']:.1f}%" if s.get('ma240_gap') is not None and s['ma240_gap'] >= 0 else ""}
                   </div>
                   <div style="margin-top:8px;">
-                    <div style="color:#8b92a5;font-size:11px;margin-bottom:3px;">종합점수 {r["total_score"]}점 / 26점</div>
+                    <div style="color:#8b92a5;font-size:11px;margin-bottom:3px;">종합점수 {r["total_score"]}점 / 30점</div>
                     <div class="bar-bg"><div class="bar-fill" style="width:{pct}%;"></div></div>
                   </div>
                 </div>""", unsafe_allow_html=True)
@@ -1771,7 +1790,9 @@ elif mode == "🎯 최적 급등 타이밍":
                         (s.get("big_bull_candle"),     f"🕯 장대양봉 + 거래량 급증 ({s.get('vol_ratio',0):.1f}배)"),
                         (s.get("vol_surge"),           f"📦 거래량 급증 ({s.get('vol_ratio',0):.1f}배)"),
                         (s.get("near_52w_high"),       f"🏆 52주 신고가 직전 ({s.get('high_ratio',0):.1f}%)"),
-                        (s.get("ma240_gap") is not None and 0 <= s.get("ma240_gap",999) <= 10,
+                        (s.get("ma240_confirmed") and s.get("ma240_no_rebreak"),
+                                                       f"🔥 240선 완전 확인 돌파 (+{s.get('ma240_gap',0):.1f}%)"),
+                        (s.get("ma240_gap") is not None and 0 <= s.get("ma240_gap",999) <= 10 and not s.get("ma240_confirmed"),
                                                        f"📍 240일선 근처 (+{s.get('ma240_gap',0):.1f}%)"),
                     ]
                     for flag, label in checks:
