@@ -235,13 +235,15 @@ def calc_price_levels(symbol: str) -> dict:
             # 후보가 없으면 현재가 그대로
             entry_label, entry = "현재가", current
 
-        # 손절가
-        stop = max(
-            swing_low_20 - atr * 1.5,
-            ma20 - atr * 1.0
-        )
-        stop = max(stop, current * 0.88)
-        stop = min(stop, current * 0.96)
+        # ── 손절가: 매수가 기준 근거 있는 손절 ──────────────────
+        stop_candidates = []
+        if ma240_v:
+            stop_candidates.append(ma240_v * 0.995)        # 240선 아래 0.5%
+        stop_candidates.append(swing_low_20 - atr * 1.0)  # 스윙저점 - ATR
+
+        stop = max(stop_candidates) if stop_candidates else entry * 0.93
+        stop = max(stop, entry * 0.88)
+        stop = min(stop, entry * 0.95)
         risk = max(entry - stop, entry * 0.01)
 
         # 목표가

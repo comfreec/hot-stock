@@ -790,12 +790,12 @@ def show_price_levels(fig):
         <div style='color:#00ff88;font-size:12px;'>+{lv["upside"]:.1f}%</div>
         <div style='color:#4a5568;font-size:10px;margin-top:4px;'>Fib×ATR 가중평균</div>
       </div>
-      <div style='flex:1;background:rgba(100,160,255,0.08);border:1px solid #4a90d9;
+      <div style='flex:1;background:rgba(255,215,0,0.08);border:1px solid #ffd700;
            border-radius:10px;padding:12px;text-align:center;'>
         <div style='color:#8b92a5;font-size:10px;letter-spacing:1px;'>📍 매수가</div>
-        <div style='color:#a0c4ff;font-size:18px;font-weight:700;margin:4px 0;'>₩{lv["current"]:,.0f}</div>
-        <div style='color:#8b92a5;font-size:12px;'>시장가 진입</div>
-        <div style='color:#4a5568;font-size:10px;margin-top:4px;'>현재가 기준</div>
+        <div style='color:#ffd700;font-size:18px;font-weight:700;margin:4px 0;'>₩{lv["entry"]:,.0f}</div>
+        <div style='color:#ffd700;font-size:12px;'>{lv.get("entry_label","근거가") } 기준</div>
+        <div style='color:#4a5568;font-size:10px;margin-top:4px;'>240선 근거 진입가</div>
       </div>
       <div style='flex:1;background:rgba(255,51,85,0.08);border:1px solid #ff3355;
            border-radius:10px;padding:12px;text-align:center;'>
@@ -908,25 +908,42 @@ def make_candle(data, title, ma240_series=None, cross_date=None, show_levels=Tru
         atr_series = tr.rolling(14).mean().dropna()
         atr = float(atr_series.iloc[-1]) if len(atr_series) > 0 else float((high - low).mean())
 
-        # ── 매수가: 현재가 (시장가 기준) ─────────────────────────
-        entry = current
-
-        # ── 손절가: Van Tharp 방식 ────────────────────────────────
-        # 근거: 스윙 저점(20일) 아래 1.5 ATR = 진짜 추세 붕괴 신호
-        # 단순 % 손절보다 변동성 기반이 훨씬 정교함
+        # ── 매수가: 240선 근거 진입가 ───────────────────────────
+        ma240 = close.rolling(240).mean()
+        ma240_v = float(ma240.iloc[-1]) if not pd.isna(ma240.iloc[-1]) else None
         swing_low_20 = float(low.tail(20).min())
-        stop_atr     = swing_low_20 - atr * 1.5
-
-        # 보조: MA20 아래 1 ATR (지지선 이탈 확인)
         ma20 = float(close.rolling(20).mean().dropna().iloc[-1])
-        stop_ma  = ma20 - atr * 1.0
 
-        # 두 손절 중 더 보수적인(높은) 값 선택 → 리스크 최소화
-        stop = max(stop_atr, stop_ma)
-        # 범위 제한: -4% ~ -12% (너무 타이트/루즈 방지)
-        stop = max(stop, current * 0.88)
-        stop = min(stop, current * 0.96)
-        risk = max(current - stop, current * 0.01)
+        entry_candidates = []
+        if ma240_v:
+            entry_candidates.append(("240선", ma240_v * 1.005))
+        entry_candidates.append(("MA20", ma20))
+        entry_candidates.append(("스윙저점", swing_low_20))
+
+        valid_entries = [
+            (label, price) for label, price in entry_candidates
+            if price < current and (ma240_v is None or price >= ma240_v * 0.995)
+        ]
+        if valid_entries:
+            entry_label, entry = max(valid_entries, key=lambda x: x[1])
+        else:
+            entry_label, entry = "현재가", current
+
+        # ── 손절가: 매수가 기준 근거 있는 손절 ──────────────────
+        # 매수가(entry) 아래에서 근거 있는 지지선 이탈 기준
+        # 1) 240선 아래 0.5% = 240선 지지 붕괴
+        # 2) 스윙 저점(20일) - ATR×1.0 = 추세 붕괴
+        # 3) entry 대비 -5% ~ -10% 범위 제한
+        stop_candidates = []
+        if ma240_v:
+            stop_candidates.append(ma240_v * 0.995)   # 240선 아래 0.5%
+        stop_candidates.append(swing_low_20 - atr * 1.0)  # 스윙저점 - ATR
+
+        stop = max(stop_candidates) if stop_candidates else entry * 0.93
+        # 범위 제한: entry 대비 -5% ~ -12%
+        stop = max(stop, entry * 0.88)
+        stop = min(stop, entry * 0.95)
+        risk = max(entry - stop, entry * 0.01)
 
         # ── 목표가: 다중 기법 합산 ───────────────────────────────
         recent_high = float(high.tail(120).max())
@@ -976,18 +993,21 @@ def make_candle(data, title, ma240_series=None, cross_date=None, show_levels=Tru
             target = current + risk * 3.0
 
         target   = min(target, current * 2.0)  # 상한 100%
-        rr_ratio = (target - current) / (current - stop + 1e-9)
-        upside   = (target / current - 1) * 100
-        downside = (stop / current - 1) * 100
+        rr_ratio = (target - entry) / (entry - stop + 1e-9)   # 매수가 기준 손익비
+        upside   = (target / entry - 1) * 100                  # 매수가 대비 수익률
+        downside = (stop / entry - 1) * 100                    # 매수가 대비 손실률
 
         # 목표가 수평선 (초록)
         fig.add_hline(y=target, line=dict(color="#00ff88", width=2, dash="dash"))
-        fig.add_hrect(y0=current, y1=target, fillcolor="rgba(0,255,136,0.08)", line_width=0)
+        fig.add_hrect(y0=entry, y1=target, fillcolor="rgba(0,255,136,0.08)", line_width=0)
+        # 매수가 수평선 (노란색)
+        if entry < current:
+            fig.add_hline(y=entry, line=dict(color="#ffd700", width=2, dash="dashdot"))
+            fig.add_hrect(y0=stop, y1=entry, fillcolor="rgba(255,51,85,0.08)", line_width=0)
         # 현재가 수평선 (흰색)
         fig.add_hline(y=current, line=dict(color="#ffffff", width=1.5, dash="dot"))
         # 손절가 수평선 (빨강)
         fig.add_hline(y=stop, line=dict(color="#ff3355", width=2, dash="dash"))
-        fig.add_hrect(y0=stop, y1=current, fillcolor="rgba(255,51,85,0.08)", line_width=0)
 
     fig.update_layout(
         title=dict(text=title, font=dict(color="#e0e6f0", size=13)),
@@ -999,7 +1019,7 @@ def make_candle(data, title, ma240_series=None, cross_date=None, show_levels=Tru
         dragmode=False,
         height=500, margin=dict(l=0,r=50,t=30,b=0))
     # 차트 아래 목표가/손절가 정보 박스는 호출부에서 별도 표시
-    fig._price_levels = dict(target=target, current=current, entry=entry, stop=stop,
+    fig._price_levels = dict(target=target, current=current, entry=entry, entry_label=entry_label, stop=stop,
                              upside=upside, downside=downside, rr_ratio=rr_ratio) if show_levels else None
     return fig
 
