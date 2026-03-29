@@ -1,0 +1,6 @@
+content = open('app.py', encoding='utf-8').read()
+content = content.replace('min_target = current + risk * 2.0', 'min_target = current + risk * 3.0')
+content = content.replace('target = current + risk * 2.5', 'target = current + risk * 3.5')
+content = content.replace('target = current + risk * 3.0', 'target = current + risk * 4.0')
+open('app.py', 'w', encoding='utf-8').write(content)
+print('done')

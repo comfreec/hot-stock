@@ -521,6 +521,46 @@ def ls_persist_to_browser():
         pass
 
 # ── 캐시 함수 ────────────────────────────────────────────────────
+@st.cache_data(ttl=86400)
+def get_all_krx_stocks() -> dict:
+    """KRX 전체 상장 종목 로드 (JSON 파일 우선, 없으면 KRX에서 다운로드)"""
+    import json, os
+    json_path = os.path.join(os.path.dirname(__file__), "krx_stocks.json")
+    try:
+        if os.path.exists(json_path):
+            with open(json_path, encoding="utf-8") as f:
+                return json.load(f)
+    except:
+        pass
+    # JSON 없으면 KRX에서 다운로드
+    try:
+        import io
+        result = {}
+        for market, suffix in [("stockMkt","KS"), ("kosdaqMkt","KQ")]:
+            url = f"https://kind.krx.co.kr/corpgeneral/corpList.do?method=download&searchType=13&marketType={market}"
+            r = requests.get(url, headers={"User-Agent":"Mozilla/5.0"}, timeout=15)
+            df = pd.read_html(io.StringIO(r.content.decode("euc-kr")), header=0)[0]
+            for _, row in df.iterrows():
+                name = str(row["회사명"]).strip()
+                code = str(row["종목코드"]).strip().zfill(6)
+                result[f"{code}.{suffix}"] = name
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(result, f, ensure_ascii=False)
+        return result
+    except:
+        return {}
+
+@st.cache_data(ttl=300)
+def search_stock_by_name(query: str) -> list:
+    """종목명으로 검색 (KRX 전체 2600+ 종목)"""
+    from stock_surge_detector import STOCK_NAMES as DET_NAMES
+    all_names = {**STOCK_NAMES, **DET_NAMES}
+    all_names.update(get_all_krx_stocks())
+
+    q = query.strip()
+    matches = [(k, v) for k, v in all_names.items() if q in v]
+    matches.sort(key=lambda x: (not x[1].startswith(q), x[1]))
+    return matches[:20]
 @st.cache_data(ttl=300)
 def get_chart_data(symbol, period="2y"):
     try:
@@ -976,10 +1016,22 @@ if mode == "🔍 급등 예고 종목 탐지":
                 </div>""", unsafe_allow_html=True)
 
                 if True:  # 바로 표시
-                    m1,m2,m3,m4 = st.columns(4)
+                    m1,m2,m3,m4,m5 = st.columns(5)
                     m1.metric("RSI(20)", f"{r['rsi']:.1f}")
                     m2.metric("240선 이격", f"+{r['ma240_gap']:.1f}%")
                     m3.metric("조정 기간", f"{r['below_days']}일")
+                    m4.metric("돌파 후", f"{r['days_since_cross']}일")
+                    # AI 예측 (캐시)
+                    cache_key = f"ai_pred_{r['symbol']}"
+                    if cache_key not in st.session_state:
+                        try:
+                            from ml_predictor import train_and_predict
+                            st.session_state[cache_key] = train_and_predict(r["symbol"])
+                        except:
+                            st.session_state[cache_key] = None
+                    pred = st.session_state.get(cache_key)
+                    if pred:
+                        m5.metric("AI 상승확률", f"{pred['prob_up']}%")
                     m4.metric("돌파 후", f"{r['days_since_cross']}일")
 
                     s = r["signals"]
@@ -1027,14 +1079,36 @@ if mode == "🔍 급등 예고 종목 탐지":
 # ── 개별 종목 분석 ───────────────────────────────────────────────
 elif mode == "📈 개별 종목 분석":
     st.markdown("<div class='sec-title'>📈 개별 종목 분석</div>", unsafe_allow_html=True)
-    opts = [f"{v} ({k})" for k,v in sorted(STOCK_NAMES.items(), key=lambda x:x[1])]
-    col1,col2 = st.columns([3,1])
-    with col1: sel = st.selectbox("종목 선택", opts)
-    with col2: period = st.selectbox("기간", ["2y","2y","2y"])
-    symbol = sel.split("(")[1].replace(")","").strip()
-    name   = sel.split("(")[0].strip()
 
-    if st.button("분석", type="primary"):
+    from stock_surge_detector import STOCK_NAMES as DET_NAMES
+    all_names = {**STOCK_NAMES, **DET_NAMES}
+    opts = [f"{v} ({k})" for k,v in sorted(all_names.items(), key=lambda x:x[1])]
+
+    # 종목명 검색
+    search_col, period_col = st.columns([4, 1])
+    with search_col:
+        search_query = st.text_input("🔍 종목명 검색", placeholder="예: 우리기술, 삼성전자, 알테오젠...")
+    with period_col:
+        period = st.selectbox("기간", ["2y","1y","6mo"])
+
+    symbol = None
+    name   = None
+
+    if search_query.strip():
+        matches = search_stock_by_name(search_query.strip())
+        if matches:
+            search_opts = [f"{v} ({k})" for k, v in matches]
+            sel_search = st.selectbox("검색 결과", search_opts, key="search_result")
+            symbol = sel_search.split("(")[1].replace(")","").strip()
+            name   = sel_search.split("(")[0].strip()
+        else:
+            st.warning(f"'{search_query}' 검색 결과 없음")
+    else:
+        sel = st.selectbox("종목 선택 (전체 목록)", opts)
+        symbol = sel.split("(")[1].replace(")","").strip()
+        name   = sel.split("(")[0].strip()
+
+    if symbol and st.button("분석", type="primary"):
         with st.spinner(f"{name} 분석 중..."):
             det = KoreanStockSurgeDetector(max_gap, min_below, max_cross)
             result = det.analyze_stock(symbol)
@@ -1127,6 +1201,33 @@ elif mode == "📈 개별 종목 분석":
 
             rsi_s = result["rsi_series"]
 
+            # ── AI 예측 점수 ──────────────────────────────────────
+            with st.expander("🤖 AI 상승 확률 예측 (ML)", expanded=False):
+                with st.spinner("ML 모델 학습 중..."):
+                    try:
+                        from ml_predictor import train_and_predict
+                        pred = train_and_predict(symbol)
+                    except:
+                        pred = None
+
+                if pred:
+                    prob = pred["prob_up"]
+                    conf = pred["confidence"]
+                    acc  = pred["model_accuracy"]
+                    exp_ret = pred["expected_return"]
+                    hold = pred["hold_days"]
+
+                    prob_color = "#00d4aa" if prob >= 65 else "#ffd700" if prob >= 55 else "#ff4b6e"
+                    st.markdown(f"""
+                    <div style='background:#1a1f35;border-radius:12px;padding:20px;border:1px solid {prob_color};text-align:center;'>
+                      <div style='color:#8b92a5;font-size:13px;'>{hold}일 후 상승 확률 (RandomForest + GradientBoosting 앙상블)</div>
+                      <div style='color:{prob_color};font-size:48px;font-weight:800;margin:8px 0;'>{prob}%</div>
+                      <div style='color:#8b92a5;font-size:12px;'>신뢰도: <b style='color:{prob_color};'>{conf}</b> | 모델 정확도: {acc}% | 유사 구간 평균 수익률: {exp_ret:+.1f}%</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                else:
+                    st.info("데이터 부족으로 예측 불가")
+
         else:
             st.markdown(f"""<div class="rank-card" style="margin-bottom:16px;">
               <div style="display:flex;justify-content:space-between;align-items:center;">
@@ -1169,6 +1270,27 @@ elif mode == "📈 개별 종목 분석":
                 st.toast("⭐ 추가됐어요!" if not _is_fav3 else "즐겨찾기에서 제거됐어요")
 
             rsi_s = calc_rsi_wilder(data["Close"], period=20)
+
+            # ── AI 예측 점수 (조건 미충족 종목도 표시) ───────────
+            with st.expander("🤖 AI 상승 확률 예측 (ML)", expanded=False):
+                with st.spinner("ML 모델 학습 중..."):
+                    try:
+                        from ml_predictor import train_and_predict
+                        pred = train_and_predict(symbol)
+                    except:
+                        pred = None
+                if pred:
+                    prob = pred["prob_up"]
+                    prob_color = "#00d4aa" if prob >= 65 else "#ffd700" if prob >= 55 else "#ff4b6e"
+                    st.markdown(f"""
+                    <div style='background:#1a1f35;border-radius:12px;padding:20px;border:1px solid {prob_color};text-align:center;'>
+                      <div style='color:#8b92a5;font-size:13px;'>{pred['hold_days']}일 후 상승 확률</div>
+                      <div style='color:{prob_color};font-size:48px;font-weight:800;margin:8px 0;'>{prob}%</div>
+                      <div style='color:#8b92a5;font-size:12px;'>신뢰도: <b style='color:{prob_color};'>{pred['confidence']}</b> | 모델 정확도: {pred['model_accuracy']}% | 유사 구간 평균 수익률: {pred['expected_return']:+.1f}%</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                else:
+                    st.info("데이터 부족으로 예측 불가")
 
 
 # ── 우량주 RSI 70 이탈 스캐너 ────────────────────────────────────

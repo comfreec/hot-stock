@@ -1,0 +1,5 @@
+content = open('app.py', encoding='utf-8').read()
+content = content.replace('"1y"', '"2y"')
+content = content.replace("'1y'", "'2y'")
+open('app.py', 'w', encoding='utf-8').write(content)
+print('done')
