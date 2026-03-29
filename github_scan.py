@@ -28,6 +28,10 @@ try:
     det = KoreanStockSurgeDetector(max_gap_pct=10, min_below_days=120, max_cross_days=90)
     results = det.analyze_all_stocks()
 
+    # 최소 종합점수 12점 이상만 (앱 최적 셋팅과 동일)
+    results = [r for r in results if r.get("total_score", 0) >= 12]
+    results = sorted(results, key=lambda x: x["total_score"], reverse=True)
+
     if results:
         print(f"조건 충족 종목: {len(results)}개")
         send_scan_alert(results)
