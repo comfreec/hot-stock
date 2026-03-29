@@ -41,22 +41,19 @@ def send_photo(image_bytes: bytes, caption: str = "") -> bool:
         return False
 
 
-def make_chart_image(symbol: str, name: str) -> bytes | None:
-    """캔들차트 + 240일선 이미지 생성"""
+def make_chart_image(symbol: str, name: str, price_levels: dict = None) -> bytes | None:
+    """캔들차트 + 240일선 + 목표가/손절가 수평선 이미지 생성"""
     try:
         import yfinance as yf
         import matplotlib
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
-        import matplotlib.patches as mpatches
-        from matplotlib.patches import FancyArrowPatch
 
         df = yf.Ticker(symbol).history(period="6mo")
         df = df.dropna(subset=["Open","High","Low","Close"])
         if len(df) < 20:
             return None
 
-        # 240일선은 2년 데이터로 계산
         df2y = yf.Ticker(symbol).history(period="2y").dropna(subset=["Close"])
         ma240_full = df2y["Close"].rolling(240).mean()
         ma240 = ma240_full.reindex(df.index)
@@ -75,7 +72,6 @@ def make_chart_image(symbol: str, name: str) -> bytes | None:
                     bottom=min(row["Open"], row["Close"]),
                     color=color, width=0.6, alpha=0.9)
 
-        # 이동평균선
         close = df["Close"]
         x = range(len(df))
         ax1.plot(x, close.rolling(20).mean().values, color="#ffd700", linewidth=1.2, label="MA20")
@@ -83,9 +79,37 @@ def make_chart_image(symbol: str, name: str) -> bytes | None:
         if ma240.notna().any():
             ax1.plot(x, ma240.values, color="#ff4b6e", linewidth=2.0, label="MA240")
 
-        # 현재가 수평선
         current = float(close.iloc[-1])
-        ax1.axhline(y=current, color="#ffffff", linewidth=0.8, linestyle="--", alpha=0.5)
+
+        # ── 목표가 / 현재가 / 손절가 수평선 ──
+        if price_levels:
+            target = price_levels.get("target")
+            stop   = price_levels.get("stop")
+            upside = price_levels.get("upside", 0)
+            downside = price_levels.get("downside", 0)
+
+            if target:
+                ax1.axhline(y=target, color="#00ff88", linewidth=1.5, linestyle="--", alpha=0.9)
+                ax1.text(len(df)-1, target, f" 목표 ₩{target:,.0f} (+{upside:.1f}%)",
+                         color="#00ff88", fontsize=7, va="bottom", ha="right",
+                         fontproperties=_get_korean_font())
+                # 현재~목표 구간 음영
+                ax1.axhspan(current, target, alpha=0.05, color="#00ff88")
+
+            ax1.axhline(y=current, color="#ffffff", linewidth=1.0, linestyle="--", alpha=0.6)
+            ax1.text(len(df)-1, current, f" 현재 ₩{current:,.0f}",
+                     color="#ffffff", fontsize=7, va="bottom", ha="right",
+                     fontproperties=_get_korean_font())
+
+            if stop:
+                ax1.axhline(y=stop, color="#ff3355", linewidth=1.5, linestyle="--", alpha=0.9)
+                ax1.text(len(df)-1, stop, f" 손절 ₩{stop:,.0f} ({downside:.1f}%)",
+                         color="#ff3355", fontsize=7, va="top", ha="right",
+                         fontproperties=_get_korean_font())
+                # 손절~현재 구간 음영
+                ax1.axhspan(stop, current, alpha=0.05, color="#ff3355")
+        else:
+            ax1.axhline(y=current, color="#ffffff", linewidth=0.8, linestyle="--", alpha=0.5)
 
         ax1.set_title(f"{name} ({symbol})", color="#e0e6f0", fontsize=12, pad=8)
         ax1.tick_params(colors="#8b92a5", labelsize=8)
@@ -107,7 +131,6 @@ def make_chart_image(symbol: str, name: str) -> bytes | None:
         ax2.yaxis.tick_right()
         ax2.set_ylabel("Volume", color="#8b92a5", fontsize=7)
 
-        # x축 날짜
         step = max(1, len(df) // 6)
         ax1.set_xticks([])
         ax2.set_xticks(range(0, len(df), step))
@@ -118,14 +141,27 @@ def make_chart_image(symbol: str, name: str) -> bytes | None:
 
         plt.tight_layout(pad=0.5)
         buf = io.BytesIO()
-        plt.savefig(buf, format="png", dpi=120, bbox_inches="tight",
-                    facecolor="#0e1117")
+        plt.savefig(buf, format="png", dpi=120, bbox_inches="tight", facecolor="#0e1117")
         plt.close(fig)
         buf.seek(0)
         return buf.read()
     except Exception as e:
         print(f"차트 생성 실패 {symbol}: {e}")
         return None
+
+
+def _get_korean_font():
+    """한글 폰트 반환 (없으면 None)"""
+    try:
+        from matplotlib import font_manager
+        for name in ["Malgun Gothic", "NanumGothic", "AppleGothic", "NotoSansCJK"]:
+            try:
+                return font_manager.FontProperties(family=name)
+            except:
+                pass
+    except:
+        pass
+    return None
 
 
 def get_financial_data(symbol: str) -> dict:
@@ -289,10 +325,10 @@ def send_scan_alert(results: list, send_charts: bool = True):
 
     # 차트 이미지 전송 (종목별)
     if send_charts:
-        for r in results[:5]:  # 상위 5개만 차트 전송
-            img = make_chart_image(r["symbol"], r["name"])
+        for r in results[:5]:
+            lv = calc_price_levels(r["symbol"])
+            img = make_chart_image(r["symbol"], r["name"], price_levels=lv)
             if img:
-                lv = calc_price_levels(r["symbol"])
                 caption = (
                     f"<b>{r['name']}</b> ⭐{r['total_score']}점\n"
                     f"매수 ₩{r['current_price']:,.0f}  "
