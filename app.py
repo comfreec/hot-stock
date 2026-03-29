@@ -455,7 +455,7 @@ with st.sidebar:
         help="240일선 아래 최소 체류 일수 (120=6개월, 240=1년)")
     max_cross = st.slider("📈 돌파 후 최대 경과 (일)", 10, 180, key="max_cross",
         help="240일선 돌파 후 최대 경과 일수")
-    min_score = st.slider("🎯 최소 종합점수", 0, 20, key="min_score",
+    min_score = st.slider("🎯 최소 종합점수", 0, 40, key="min_score",
         help="이 점수 이상인 종목만 표시 (0=전체, 높을수록 엄격)")
     st.markdown("---")
     st.markdown("""**📊 추가 점수 신호**
@@ -856,7 +856,7 @@ if mode == "🔍 급등 예고 종목 탐지":
 
     if st.button("🚀 스캔 시작", type="primary", use_container_width=True):
         det = KoreanStockSurgeDetector(max_gap, min_below, max_cross)
-        symbols = det.all_symbols
+        symbols = list(dict.fromkeys(det.all_symbols))  # 중복 제거
         total = len(symbols)
 
         st.markdown("<div class='sec-title'>📡 스캔 진행 중...</div>", unsafe_allow_html=True)
@@ -864,37 +864,49 @@ if mode == "🔍 급등 예고 종목 탐지":
         prog_text = st.empty()
 
         results = []
-        for idx, symbol in enumerate(symbols):
-            name_disp = det.all_symbols
-            prog_text.markdown(
-                f"<span style='color:#8b92a5;font-size:13px;'>"
-                f"({idx+1}/{total}) {symbol} 분석 중...</span>",
-                unsafe_allow_html=True
-            )
-            prog_bar.progress((idx + 1) / total)
-            r = det.analyze_stock(symbol)
-            if r:
-                results.append(r)
+        completed = [0]
+
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        def _scan(symbol):
+            return det.analyze_stock(symbol)
+
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            futures = {executor.submit(_scan, sym): sym for sym in symbols}
+            for future in as_completed(futures):
+                completed[0] += 1
+                sym = futures[future]
+                prog_text.markdown(
+                    f"<span style='color:#8b92a5;font-size:13px;'>"
+                    f"({completed[0]}/{total}) {sym} 분석 중...</span>",
+                    unsafe_allow_html=True
+                )
+                prog_bar.progress(completed[0] / total)
+                try:
+                    r = future.result()
+                    if r:
+                        results.append(r)
+                except:
+                    pass
 
         prog_bar.empty()
         prog_text.empty()
         results = sorted(results, key=lambda x: x["total_score"], reverse=True)
         results = [r for r in results if r["total_score"] >= min_score]
 
-        # 스캔 결과 session_state에 저장 (즐겨찾기 버튼 클릭 후에도 유지)
         st.session_state["scan_results"] = results
 
         # DB 캐싱
         try:
-            save_scan([{k: v for k, v in r.items() if k not in ("close_series", "rsi_series")} for r in results])
+            save_scan([{k: v for k, v in r.items() if k not in ("close_series","rsi_series","ma240_series","ma60_series","ma20_series","volume_series","vol_ma_series")} for r in results])
         except:
             pass
 
-    # session_state에서 결과 로드
+    # session_state 없으면 아무것도 표시 안 함 (자동 로드 없음)
     results = st.session_state.get("scan_results", [])
 
     if "scan_results" not in st.session_state:
-        pass  # 스캔 전 - 아무것도 표시 안 함
+        pass  # 스캔 전 - 빈 화면
     elif not results:
         st.warning("현재 조건을 만족하는 종목이 없습니다.")
         st.info("💡 사이드바에서 조건을 완화해보세요:\n- '240선 근처 범위'를 늘리거나\n- '최소 조정 기간'을 줄이거나\n- '돌파 후 최대 경과'를 늘려보세요")
@@ -1082,10 +1094,14 @@ if mode == "🔍 급등 예고 종목 탐지":
                     if not active:
                         st.info("추가 신호 없음 (핵심 조건만 충족)")
 
-                    rsi_s = r["rsi_series"]
+                    rsi_s = r.get("rsi_series")
                     cd    = get_chart_data(r["symbol"], "2y")
                     if cd is not None:
-                        cross_date = r["close_series"].index[-(r["days_since_cross"]+1)]
+                        close_s = r.get("close_series")
+                        if close_s is not None:
+                            cross_date = close_s.index[-(r["days_since_cross"]+1)]
+                        else:
+                            cross_date = None
                         _c1 = make_candle(cd, f"{r['name']} ({r['symbol']})", cross_date=cross_date)
                         st.plotly_chart(_c1, config={"scrollZoom":False,"displayModeBar":False,"staticPlot":True}, use_container_width=True, key=f"candle_{r['symbol']}")
                         show_price_levels(_c1)
@@ -1203,7 +1219,8 @@ elif mode == "📈 개별 종목 분석":
                 st.write("**❌ 미충족 신호**")
                 for sig in inactive: st.error(sig)
 
-            cross_date = result["close_series"].index[-(result["days_since_cross"]+1)]
+            close_s2 = result.get("close_series")
+            cross_date = close_s2.index[-(result["days_since_cross"]+1)] if close_s2 is not None else None
             _c2 = make_candle(data, f"{name} ({symbol})", cross_date=cross_date)
             st.plotly_chart(_c2, config={"scrollZoom":False,"displayModeBar":False,"staticPlot":True}, use_container_width=True)
             show_price_levels(_c2)

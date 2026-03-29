@@ -67,7 +67,7 @@ ALL_SYMBOLS = [
     "196170.KQ","206650.KQ","214370.KQ","237690.KQ","247540.KQ",
     "950140.KQ","068760.KQ","091990.KQ","086520.KQ",
     # 2차전지/소재
-    "066970.KQ","078600.KQ","247540.KQ",
+    "066970.KQ","078600.KQ",
     # 엔터/미디어
     "035900.KQ","036030.KQ","041510.KQ","251270.KQ","253450.KQ",
     # IT/소프트웨어
@@ -75,7 +75,7 @@ ALL_SYMBOLS = [
     # 방산/항공
     "047810.KQ",
     # 기타 우량 코스닥
-    "048260.KQ","060310.KQ","086520.KQ","200130.KQ","214150.KQ",
+    "048260.KQ","200130.KQ",
     "357780.KQ","041960.KQ","039440.KQ","033290.KQ","032500.KQ",
 ]
 
@@ -307,32 +307,28 @@ class KoreanStockSurgeDetector:
             return False, []
 
     def _institutional_flow(self, symbol):
-        """기관/외국인 순매수 크롤링 (네이버 금융)
+        """기관/외국인 순매수 크롤링 (네이버 금융) - timeout 3초 제한
         Returns: (inst_net: int, foreign_net: int)  단위: 주
         """
         code = symbol.replace(".KS","").replace(".KQ","")
         try:
             url = f"https://finance.naver.com/item/frgn.naver?code={code}"
-            res = requests.get(url, headers={"User-Agent":"Mozilla/5.0"}, timeout=5)
+            res = requests.get(url, headers={"User-Agent":"Mozilla/5.0"}, timeout=3)
             soup = BeautifulSoup(res.text, "html.parser")
             rows = soup.select("table.type2 tr")
             inst_net    = 0
             foreign_net = 0
-            count = 0
-            for row in rows[1:6]:  # 최근 5거래일
+            for row in rows[1:6]:
                 cols = row.select("td")
                 if len(cols) < 5:
                     continue
                 try:
-                    # 외국인 순매수
                     f_val = cols[4].get_text(strip=True).replace(",","").replace("+","")
                     if f_val and f_val != "-":
                         foreign_net += int(f_val)
-                    # 기관 순매수 (컬럼 위치: 5번째)
                     i_val = cols[5].get_text(strip=True).replace(",","").replace("+","") if len(cols) > 5 else "0"
                     if i_val and i_val != "-":
                         inst_net += int(i_val)
-                    count += 1
                 except:
                     pass
             return inst_net, foreign_net

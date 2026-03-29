@@ -27,11 +27,11 @@ from telegram_alert import send_scan_alert, send_telegram
 print(f"[{date.today()}] 스캔 시작 (병렬 처리)...")
 
 try:
-    det = KoreanStockSurgeDetector(max_gap_pct=10, min_below_days=120, max_cross_days=90)
+    det = KoreanStockSurgeDetector(max_gap_pct=15, min_below_days=120, max_cross_days=120)
     results = det.analyze_all_stocks()
 
-    # 최소 종합점수 12점 이상
-    results = [r for r in results if r.get("total_score", 0) >= 12]
+    # 최소 종합점수 10점 이상 (앱 최적 셋팅 기본값과 동일)
+    results = [r for r in results if r.get("total_score", 0) >= 10]
     results = sorted(results, key=lambda x: x["total_score"], reverse=True)
 
     print(f"조건 충족 종목: {len(results)}개")

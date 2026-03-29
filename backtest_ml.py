@@ -13,7 +13,11 @@ SIGNAL_WEIGHTS = {
     "bb_squeeze_expand":    2.5,  # BB수축→확장: 폭발 직전 가장 강력
     "stealth_accumulation": 2.3,  # 세력 매집: 조용한 거래량 증가
     "vol_price_rising3":    2.2,  # 3일 연속 거래량+가격 상승
-    "vol_at_cross":         2.0,  # 돌파 시 거래량 급증
+    "vol_strong_cross":     2.5,  # 돌파 시 거래량 3배+ (강한 돌파)
+    "vol_at_cross":         2.0,  # 돌파 시 거래량 2배+
+    "vol_surge_sustained":  1.8,  # 돌파 전후 거래량 지속 증가
+    "both_buying":          2.8,  # 기관+외국인 동시 순매수 (최강 수급)
+    "smart_money_in":       1.8,  # 기관 또는 외국인 순매수
     "pullback_bounce":      2.0,  # 눌림목 반등: 최적 진입 타이밍
     "ichimoku_bull":        1.9,  # 일목균형표: 추세 확인
     "ma240_turning_up":     1.8,  # 240선 상승 전환: 장기 추세 전환
@@ -215,11 +219,17 @@ def ml_score_adjustment(signals: dict, base_score: int) -> float:
     if active_count >= 5:   combo_multiplier = 1.3
     elif active_count >= 3: combo_multiplier = 1.15
 
+    # BB수축 + MACD + 거래량 3종 세트
     if (signals.get("bb_squeeze_expand") and signals.get("macd_cross") and
-            (signals.get("vol_at_cross") or signals.get("recent_vol"))):
+            (signals.get("vol_strong_cross") or signals.get("vol_at_cross") or signals.get("recent_vol"))):
         combo_multiplier *= 1.2
 
+    # 일목균형표 + 이평선 정배열
     if signals.get("ichimoku_bull") and signals.get("ma_align"):
         combo_multiplier *= 1.1
+
+    # 기관+외국인 동시 수급 + 거래량 = 최강 조합
+    if signals.get("both_buying") and (signals.get("vol_strong_cross") or signals.get("vol_at_cross")):
+        combo_multiplier *= 1.15
 
     return round(base_score * combo_multiplier + (weighted_sum - active_count) * 0.5, 1)
