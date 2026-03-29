@@ -57,6 +57,15 @@ ALL_SYMBOLS = [
     "145990.KS","148150.KS","152100.KS","155660.KS","158430.KS",
     "163560.KS","170900.KS","178920.KS","185750.KS","187660.KS",
     "194370.KS","196170.KS","199800.KS","200130.KS","214150.KS",
+    # 코스닥 성장주 추가
+    "035900.KQ","036030.KQ","039030.KQ","048260.KQ","053800.KQ",
+    "058470.KQ","064760.KQ","066970.KQ","068760.KQ","078600.KQ",
+    "086520.KQ","091580.KQ","095340.KQ","096530.KQ","101490.KQ",
+    "108320.KQ","122870.KQ","131970.KQ","137310.KQ","141080.KQ",
+    "155900.KQ","166090.KQ","183300.KQ","206650.KQ","214370.KQ",
+    "236200.KQ","237690.KQ","251270.KQ","253450.KQ","263750.KQ",
+    "293490.KQ","357780.KQ","086900.KQ","145020.KQ","196170.KQ",
+    "247540.KQ","041510.KQ","950140.KQ","112040.KQ","214150.KQ",
 ]
 
 STOCK_NAMES = {
@@ -199,6 +208,17 @@ STOCK_NAMES = {
     "178920.KS":"PI첨단소재","185750.KS":"종근당","187660.KS":"에이비엘바이오",
     "194370.KS":"제이에스코퍼레이션","196170.KS":"알테오젠","199800.KS":"툴젠",
     "200130.KS":"콜마비앤에이치","214150.KS":"클래시스",
+    # 코스닥 추가 종목명
+    "035900.KQ":"JYP엔터","036030.KQ":"YG엔터테인먼트","039030.KQ":"이오테크닉스",
+    "048260.KQ":"오스템임플란트","053800.KQ":"안랩","058470.KQ":"리노공업",
+    "064760.KQ":"티씨케이","066970.KQ":"엘앤에프","068760.KQ":"셀트리온제약",
+    "078600.KQ":"대주전자재료","086520.KQ":"에코프로","091580.KQ":"상아프론테크",
+    "095340.KQ":"ISC","096530.KQ":"씨젠","101490.KQ":"에스앤에스텍",
+    "108320.KQ":"LX세미콘","122870.KQ":"와이지-원","131970.KQ":"두산테스나",
+    "137310.KQ":"에스디바이오센서","141080.KQ":"레고켐바이오","155900.KQ":"바텍",
+    "166090.KQ":"하나머티리얼즈","183300.KQ":"코미코","206650.KQ":"유바이오로직스",
+    "214370.KQ":"케어젠","236200.KQ":"슈프리마","237690.KQ":"에스티팜",
+    "251270.KQ":"넷마블","253450.KQ":"스튜디오드래곤",
 }
 
 
@@ -646,11 +666,20 @@ class KoreanStockSurgeDetector:
     def analyze_all_stocks(self):
         results = []
         print("스캔 중 (240일선 조건 필터)...")
-        for symbol in self.all_symbols:
-            print(f"  {symbol}")
-            r = self.analyze_stock(symbol)
-            if r:
-                results.append(r)
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            futures = {executor.submit(self.analyze_stock, sym): sym for sym in self.all_symbols}
+            for future in as_completed(futures):
+                sym = futures[future]
+                try:
+                    r = future.result()
+                    if r:
+                        results.append(r)
+                        print(f"  ✅ {sym} ({r['total_score']}점)")
+                    else:
+                        print(f"  ❌ {sym}")
+                except Exception as e:
+                    print(f"  ⚠️ {sym}: {e}")
         return sorted(results, key=lambda x: x["total_score"], reverse=True)
 
     def run_analysis(self):

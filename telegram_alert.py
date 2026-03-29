@@ -1,18 +1,20 @@
 """
-텔레그램 알림 모듈
+텔레그램 알림 모듈 v2.0
 - 급등 예고 종목 자동 알림
 - 매수가/목표가/손절가/손익비 포함
+- 캔들차트 이미지 첨부
+- 재무 데이터 (PER/PBR)
 """
 import requests
 import pandas as pd
 import numpy as np
+import io
 from datetime import date
 
 TELEGRAM_TOKEN   = "8686257393:AAGWPuisi_qy995cKC7pIWnCGqpQMljQxgc"
 TELEGRAM_CHAT_ID = "-1003815975342"  # 주식 급등 알림 채널
 
-def send_telegram(message: str):
-    """텔레그램 메시지 전송"""
+def send_telegram(message: str) -> bool:
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     try:
         resp = requests.post(url, json={
@@ -23,6 +25,124 @@ def send_telegram(message: str):
         return resp.ok
     except:
         return False
+
+
+def send_photo(image_bytes: bytes, caption: str = "") -> bool:
+    """이미지 전송"""
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
+    try:
+        resp = requests.post(url, data={
+            "chat_id": TELEGRAM_CHAT_ID,
+            "caption": caption,
+            "parse_mode": "HTML"
+        }, files={"photo": ("chart.png", image_bytes, "image/png")}, timeout=30)
+        return resp.ok
+    except:
+        return False
+
+
+def make_chart_image(symbol: str, name: str) -> bytes | None:
+    """캔들차트 + 240일선 이미지 생성"""
+    try:
+        import yfinance as yf
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        import matplotlib.patches as mpatches
+        from matplotlib.patches import FancyArrowPatch
+
+        df = yf.Ticker(symbol).history(period="6mo")
+        df = df.dropna(subset=["Open","High","Low","Close"])
+        if len(df) < 20:
+            return None
+
+        # 240일선은 2년 데이터로 계산
+        df2y = yf.Ticker(symbol).history(period="2y").dropna(subset=["Close"])
+        ma240_full = df2y["Close"].rolling(240).mean()
+        ma240 = ma240_full.reindex(df.index)
+
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 7),
+                                        gridspec_kw={"height_ratios": [3, 1]},
+                                        facecolor="#0e1117")
+        ax1.set_facecolor("#0e1117")
+        ax2.set_facecolor("#0e1117")
+
+        # 캔들차트
+        for i, (idx, row) in enumerate(df.iterrows()):
+            color = "#ff3355" if row["Close"] >= row["Open"] else "#4f8ef7"
+            ax1.plot([i, i], [row["Low"], row["High"]], color=color, linewidth=0.8)
+            ax1.bar(i, abs(row["Close"] - row["Open"]),
+                    bottom=min(row["Open"], row["Close"]),
+                    color=color, width=0.6, alpha=0.9)
+
+        # 이동평균선
+        close = df["Close"]
+        x = range(len(df))
+        ax1.plot(x, close.rolling(20).mean().values, color="#ffd700", linewidth=1.2, label="MA20")
+        ax1.plot(x, close.rolling(60).mean().values, color="#ff8c42", linewidth=1.2, label="MA60")
+        if ma240.notna().any():
+            ax1.plot(x, ma240.values, color="#ff4b6e", linewidth=2.0, label="MA240")
+
+        # 현재가 수평선
+        current = float(close.iloc[-1])
+        ax1.axhline(y=current, color="#ffffff", linewidth=0.8, linestyle="--", alpha=0.5)
+
+        ax1.set_title(f"{name} ({symbol})", color="#e0e6f0", fontsize=12, pad=8)
+        ax1.tick_params(colors="#8b92a5", labelsize=8)
+        ax1.spines[:].set_color("#2d3555")
+        ax1.yaxis.set_label_position("right")
+        ax1.yaxis.tick_right()
+        ax1.legend(loc="upper left", fontsize=7, facecolor="#1a1f35",
+                   labelcolor="#8b92a5", edgecolor="#2d3555")
+
+        # 거래량
+        vol = df["Volume"]
+        vol_colors = ["#ff3355" if df["Close"].iloc[i] >= df["Open"].iloc[i]
+                      else "#4f8ef7" for i in range(len(df))]
+        ax2.bar(x, vol.values, color=vol_colors, alpha=0.7, width=0.6)
+        ax2.plot(x, vol.rolling(20).mean().values, color="#ffd700", linewidth=1.0)
+        ax2.tick_params(colors="#8b92a5", labelsize=7)
+        ax2.spines[:].set_color("#2d3555")
+        ax2.yaxis.set_label_position("right")
+        ax2.yaxis.tick_right()
+        ax2.set_ylabel("Volume", color="#8b92a5", fontsize=7)
+
+        # x축 날짜
+        step = max(1, len(df) // 6)
+        ax1.set_xticks([])
+        ax2.set_xticks(range(0, len(df), step))
+        ax2.set_xticklabels(
+            [df.index[i].strftime("%m/%d") for i in range(0, len(df), step)],
+            color="#8b92a5", fontsize=7
+        )
+
+        plt.tight_layout(pad=0.5)
+        buf = io.BytesIO()
+        plt.savefig(buf, format="png", dpi=120, bbox_inches="tight",
+                    facecolor="#0e1117")
+        plt.close(fig)
+        buf.seek(0)
+        return buf.read()
+    except Exception as e:
+        print(f"차트 생성 실패 {symbol}: {e}")
+        return None
+
+
+def get_financial_data(symbol: str) -> dict:
+    """재무 데이터 (PER, PBR) 조회"""
+    try:
+        import yfinance as yf
+        info = yf.Ticker(symbol).info
+        per = info.get("trailingPE") or info.get("forwardPE")
+        pbr = info.get("priceToBook")
+        eps = info.get("trailingEps")
+        return {
+            "per": round(per, 1) if per and per > 0 else None,
+            "pbr": round(pbr, 2) if pbr and pbr > 0 else None,
+            "eps": round(eps, 0) if eps else None,
+        }
+    except:
+        return {}
 
 
 def calc_price_levels(symbol: str) -> dict:
@@ -39,7 +159,6 @@ def calc_price_levels(symbol: str) -> dict:
         low   = df["Low"]
         current = float(close.iloc[-1])
 
-        # ATR
         tr = pd.concat([
             high - low,
             (high - close.shift(1)).abs(),
@@ -48,7 +167,6 @@ def calc_price_levels(symbol: str) -> dict:
         atr_s = tr.rolling(14).mean().dropna()
         atr = float(atr_s.iloc[-1]) if len(atr_s) > 0 else current * 0.02
 
-        # 손절가 (Van Tharp)
         swing_low = float(low.tail(20).min())
         ma20 = float(close.rolling(20).mean().dropna().iloc[-1])
         stop = max(swing_low - atr * 1.5, ma20 - atr * 1.0)
@@ -56,7 +174,6 @@ def calc_price_levels(symbol: str) -> dict:
         stop = min(stop, current * 0.95)
         risk = max(current - stop, current * 0.01)
 
-        # 목표가 (피보나치 + ATR)
         recent_high = float(high.tail(120).max())
         recent_low  = float(low.tail(120).min())
         swing_range = max(recent_high - recent_low, current * 0.01)
@@ -98,7 +215,6 @@ def calc_price_levels(symbol: str) -> dict:
 
 
 def format_signals(signals: dict) -> str:
-    """활성 신호 포맷"""
     sig_map = {
         "vol_at_cross":          "📦 돌파 거래량",
         "recent_vol":            "📊 거래량 급증",
@@ -116,24 +232,30 @@ def format_signals(signals: dict) -> str:
     return "  ".join(active[:6]) if active else ""
 
 
-def send_scan_alert(results: list):
-    """스캔 결과 텔레그램 전송"""
+def send_scan_alert(results: list, send_charts: bool = True):
+    """스캔 결과 텔레그램 전송 (차트 이미지 포함)"""
     if not results:
         return
 
     today = date.today().strftime("%Y-%m-%d")
-    lines = [f"🚀 <b>급등 예고 종목</b> ({today} 장마감)\n{'━'*20}"]
 
-    for i, r in enumerate(results[:10], 1):  # 최대 10개
+    # 요약 메시지 먼저 전송
+    summary_lines = [f"🚀 <b>급등 예고 종목</b> ({today} 장마감) — {len(results[:10])}개\n{'━'*20}"]
+
+    for i, r in enumerate(results[:10], 1):
         lv = calc_price_levels(r["symbol"])
-        s  = r.get("signals", {})
-
+        fin = get_financial_data(r["symbol"])
+        s   = r.get("signals", {})
         sig_str = format_signals(s)
 
-        entry = f"₩{lv['current']:,.0f}" if lv else f"₩{r['current_price']:,.0f}"
+        entry      = f"₩{lv['current']:,.0f}" if lv else f"₩{r['current_price']:,.0f}"
         target_str = f"₩{lv['target']:,.0f}  (+{lv['upside']:.1f}%)" if lv else "-"
         stop_str   = f"₩{lv['stop']:,.0f}  ({lv['downside']:.1f}%)" if lv else "-"
         rr_str     = f"{lv['rr']:.1f} : 1" if lv else "-"
+
+        per_str = f"PER {fin['per']}" if fin.get("per") else ""
+        pbr_str = f"PBR {fin['pbr']}" if fin.get("pbr") else ""
+        fin_str = "  ".join(filter(None, [per_str, pbr_str]))
 
         block = (
             f"\n<b>{i}. {r['name']} ({r['symbol']})</b> ⭐ {r['total_score']}점\n"
@@ -142,20 +264,20 @@ def send_scan_alert(results: list):
             f"🛑 손절가:  {stop_str}\n"
             f"⚖️ 손익비:  {rr_str}\n"
         )
+        if fin_str:
+            block += f"📊 {fin_str}\n"
         if sig_str:
             block += f"{sig_str}\n"
         block += "━" * 20
+        summary_lines.append(block)
 
-        lines.append(block)
+    summary_lines.append("\n⚠️ 투자 참고용 정보이며 투자 권유가 아닙니다.")
+    message = "\n".join(summary_lines)
 
-    lines.append("\n⚠️ 투자 참고용 정보이며 투자 권유가 아닙니다.")
-    message = "\n".join(lines)
-
-    # 메시지가 너무 길면 분할 전송
     if len(message) > 4000:
-        chunks = [lines[0]]
-        for line in lines[1:]:
-            if sum(len(c) for c in chunks[-1:]) + len(line) > 3800:
+        chunks = [summary_lines[0]]
+        for line in summary_lines[1:]:
+            if sum(len(c) for c in chunks) + len(line) > 3800:
                 send_telegram("\n".join(chunks))
                 chunks = [line]
             else:
@@ -165,9 +287,22 @@ def send_scan_alert(results: list):
     else:
         send_telegram(message)
 
+    # 차트 이미지 전송 (종목별)
+    if send_charts:
+        for r in results[:5]:  # 상위 5개만 차트 전송
+            img = make_chart_image(r["symbol"], r["name"])
+            if img:
+                lv = calc_price_levels(r["symbol"])
+                caption = (
+                    f"<b>{r['name']}</b> ⭐{r['total_score']}점\n"
+                    f"매수 ₩{r['current_price']:,.0f}  "
+                    f"목표 ₩{lv['target']:,.0f}(+{lv['upside']:.1f}%)  "
+                    f"손절 ₩{lv['stop']:,.0f}" if lv else f"<b>{r['name']}</b>"
+                )
+                send_photo(img, caption)
+
 
 def send_test_alert():
-    """테스트 메시지 전송"""
     return send_telegram(
         "✅ <b>HotStock 알림 봇 연결 완료!</b>\n"
         "매일 장 마감 후 급등 예고 종목을 자동으로 알려드립니다. 🚀"

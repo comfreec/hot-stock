@@ -22,7 +22,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install yfinance pandas numpy requests beautifulsoup4
+          pip install yfinance pandas numpy requests beautifulsoup4 matplotlib
 
       - name: Run scan & send alert
         run: python github_scan.py
