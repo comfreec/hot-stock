@@ -25,7 +25,7 @@ from datetime import date
 print(f"[{date.today()}] 스캔 시작...")
 
 try:
-    det = KoreanStockSurgeDetector(max_gap_pct=15, min_below_days=60, max_cross_days=90)
+    det = KoreanStockSurgeDetector(max_gap_pct=10, min_below_days=120, max_cross_days=90)
     results = det.analyze_all_stocks()
 
     if results:
