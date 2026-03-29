@@ -31,7 +31,7 @@ try:
     results = det.analyze_all_stocks()
 
     # 최소 종합점수 10점 이상 (앱 최적 셋팅 기본값과 동일)
-    results = [r for r in results if r.get("total_score", 0) >= 12]
+    results = [r for r in results if r.get("total_score", 0) >= 15]
     results = sorted(results, key=lambda x: x["total_score"], reverse=True)
 
     print(f"조건 충족 종목: {len(results)}개")

@@ -614,13 +614,13 @@ with st.sidebar:
     if "max_gap"   not in st.session_state: st.session_state["max_gap"]   = 15
     if "min_below" not in st.session_state: st.session_state["min_below"] = 120
     if "max_cross" not in st.session_state: st.session_state["max_cross"] = 120
-    if "min_score" not in st.session_state: st.session_state["min_score"] = 12
+    if "min_score" not in st.session_state: st.session_state["min_score"] = 15
 
     if st.button("⚡ 최적 셋팅", use_container_width=True):
         st.session_state["max_gap"]   = 15   # 240선 근처 15% 이내
         st.session_state["min_below"] = 120  # 최소 6개월 조정
         st.session_state["max_cross"] = 120  # 돌파 후 6개월 이내
-        st.session_state["min_score"] = 12   # 종합점수 12점 이상
+        st.session_state["min_score"] = 15   # 종합점수 15점 이상
         st.rerun()
 
     max_gap   = st.slider("📍 240선 근처 범위 (%)", 1, 20, key="max_gap",
@@ -1856,18 +1856,29 @@ elif mode == "🎯 최적 급등 타이밍":
 
     if st.button("🚀 최적 타이밍 스캔", type="primary", use_container_width=True):
         from stock_surge_detector import ALL_SYMBOLS as SCAN_SYMBOLS
+        from concurrent.futures import ThreadPoolExecutor, as_completed
 
-        results = []
+        symbols  = list(dict.fromkeys(SCAN_SYMBOLS))  # 중복 제거
+        total    = len(symbols)
+        results  = []
+        completed = [0]
+
         prog      = st.progress(0)
         prog_text = st.empty()
-        total     = len(SCAN_SYMBOLS)
 
-        for idx, symbol in enumerate(SCAN_SYMBOLS):
-            prog_text.markdown(f"<span style='color:#8b92a5;font-size:13px;'>({idx+1}/{total}) {symbol} 분석 중...</span>", unsafe_allow_html=True)
-            prog.progress((idx + 1) / total)
-            r = calc_surge_timing_score(symbol)
-            if r and r["total_score"] >= 12:  # 기준 상향: 7 → 12점
-                results.append(r)
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            futures = {executor.submit(calc_surge_timing_score, sym): sym for sym in symbols}
+            for future in as_completed(futures):
+                completed[0] += 1
+                sym = futures[future]
+                prog_text.markdown(f"<span style='color:#8b92a5;font-size:13px;'>({completed[0]}/{total}) {sym} 분석 중...</span>", unsafe_allow_html=True)
+                prog.progress(completed[0] / total)
+                try:
+                    r = future.result()
+                    if r and r["total_score"] >= 7:
+                        results.append(r)
+                except:
+                    pass
 
         prog.empty()
         prog_text.empty()
