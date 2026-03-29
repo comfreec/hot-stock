@@ -169,103 +169,270 @@ STOCK_NAMES = {
 st.set_page_config(page_title="한국 주식 급등 예측", page_icon="🚀", layout="wide", initial_sidebar_state="expanded")
 
 st.markdown("""<style>
-/* ── 뷰포트 ── */
+/* ── 뷰포트 & 기본 ── */
 @viewport { width: device-width; }
 
-/* ── 기본 레이아웃 ── */
 .main .block-container {
-    padding: 0.5rem 0.5rem !important;
+    padding: 0.5rem 0.8rem !important;
     max-width: 100% !important;
-}
-/* Streamlit 내부 여백 제거 */
-.main > div:first-child {
-    padding-left: 0 !important;
-    padding-right: 0 !important;
 }
 section[data-testid="stSidebar"] {
     min-width: 240px !important;
     max-width: 260px !important;
+    background: linear-gradient(180deg, #0d1117 0%, #0e1117 100%) !important;
+    border-right: 1px solid #1e2540 !important;
+}
+section[data-testid="stSidebar"] .block-container {
+    padding: 1rem 0.8rem !important;
 }
 
-/* ── 모바일: 사이드바 항상 표시 (숨기지 않음) ── */
+/* ── 배경 ── */
+.stApp { background: #080c14 !important; }
+.main { background: #080c14 !important; }
+
+/* ── 헤더 ── */
+.top-header {
+    background: linear-gradient(135deg, #0d1528 0%, #111827 50%, #0d1528 100%);
+    padding: 28px 36px;
+    border-radius: 20px;
+    margin-bottom: 20px;
+    border: 1px solid rgba(79,142,247,0.25);
+    box-shadow: 0 0 40px rgba(79,142,247,0.08), inset 0 1px 0 rgba(255,255,255,0.05);
+    position: relative;
+    overflow: hidden;
+}
+.top-header::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(ellipse at 30% 50%, rgba(79,142,247,0.06) 0%, transparent 60%);
+    pointer-events: none;
+}
+
+/* ── 메트릭 카드 ── */
+.metric-card {
+    background: linear-gradient(135deg, #111827 0%, #1a2035 100%);
+    border: 1px solid rgba(61,68,102,0.6);
+    border-radius: 14px;
+    padding: 18px 14px;
+    text-align: center;
+    margin: 4px;
+    transition: all 0.25s ease;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+    position: relative;
+    overflow: hidden;
+}
+.metric-card::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(79,142,247,0.4), transparent);
+}
+.metric-card .lbl { color: #6b7280; font-size: 11px; font-weight: 500; letter-spacing: 0.5px; text-transform: uppercase; }
+.metric-card .val { color: #f0f4ff; font-size: 24px; font-weight: 800; margin-top: 4px; letter-spacing: -0.5px; }
+
+/* ── 종목 카드 ── */
+.rank-card {
+    background: linear-gradient(135deg, #0f1623 0%, #131d2e 100%);
+    border-left: 3px solid #4f8ef7;
+    border-top: 1px solid rgba(255,255,255,0.05);
+    border-right: 1px solid rgba(255,255,255,0.03);
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+    border-radius: 14px;
+    padding: 18px 20px;
+    margin: 10px 0;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4), 0 0 0 0 rgba(79,142,247,0);
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+.rank-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: linear-gradient(135deg, rgba(79,142,247,0.03) 0%, transparent 60%);
+    pointer-events: none;
+}
+.rank-card.gold {
+    border-left-color: #ffd700;
+    background: linear-gradient(135deg, #141208 0%, #1a1a0f 100%);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4), 0 0 20px rgba(255,215,0,0.06);
+}
+.rank-card.gold::before {
+    background: linear-gradient(135deg, rgba(255,215,0,0.04) 0%, transparent 60%);
+}
+.rank-card.silver {
+    border-left-color: #c0c0c0;
+    background: linear-gradient(135deg, #111318 0%, #181b22 100%);
+}
+.rank-card.bronze {
+    border-left-color: #cd7f32;
+    background: linear-gradient(135deg, #130f0a 0%, #1a1510 100%);
+}
+
+/* ── 진행 바 ── */
+.bar-bg {
+    background: rgba(30,33,48,0.8);
+    border-radius: 10px;
+    height: 6px;
+    width: 100%;
+    overflow: hidden;
+}
+.bar-fill {
+    background: linear-gradient(90deg, #4f8ef7 0%, #00d4aa 100%);
+    border-radius: 10px;
+    height: 6px;
+    box-shadow: 0 0 8px rgba(79,142,247,0.5);
+    transition: width 0.6s ease;
+}
+
+/* ── 섹션 타이틀 ── */
+.sec-title {
+    font-size: clamp(15px,3vw,19px);
+    font-weight: 700;
+    color: #e8edf8;
+    margin: 24px 0 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(45,53,85,0.8);
+    letter-spacing: -0.3px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* ── 조건 박스 ── */
+.cond-box {
+    background: linear-gradient(135deg, #0d1528, #111827);
+    border: 1px solid rgba(45,53,85,0.7);
+    border-radius: 12px;
+    padding: 14px 18px;
+    margin-bottom: 14px;
+    font-size: 13px;
+    color: #8b92a5;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
+}
+
+/* ── 버튼 ── */
+.stButton > button {
+    background: linear-gradient(135deg, #1e3a5f 0%, #1a3050 100%) !important;
+    border: 1px solid rgba(79,142,247,0.3) !important;
+    color: #7eb8f7 !important;
+    border-radius: 10px !important;
+    font-weight: 600 !important;
+    transition: all 0.2s ease !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3) !important;
+}
+.stButton > button:hover {
+    background: linear-gradient(135deg, #254a7a 0%, #1e3d66 100%) !important;
+    border-color: rgba(79,142,247,0.6) !important;
+    box-shadow: 0 4px 16px rgba(79,142,247,0.2) !important;
+    transform: translateY(-1px) !important;
+}
+button[kind="primary"] {
+    background: linear-gradient(135deg, #1a56db 0%, #1e40af 100%) !important;
+    border: 1px solid rgba(79,142,247,0.5) !important;
+    color: #fff !important;
+    box-shadow: 0 4px 16px rgba(26,86,219,0.3) !important;
+}
+button[kind="primary"]:hover {
+    background: linear-gradient(135deg, #1d63f5 0%, #2348c4 100%) !important;
+    box-shadow: 0 6px 24px rgba(26,86,219,0.45) !important;
+    transform: translateY(-1px) !important;
+}
+
+/* ── 슬라이더 ── */
+.stSlider > div > div > div > div {
+    background: linear-gradient(90deg, #4f8ef7, #00d4aa) !important;
+}
+
+/* ── 데이터프레임 ── */
+.stDataFrame {
+    border-radius: 12px !important;
+    overflow: hidden !important;
+    border: 1px solid rgba(45,53,85,0.5) !important;
+}
+.stDataFrame thead tr th {
+    background: #111827 !important;
+    color: #8b92a5 !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.5px !important;
+    text-transform: uppercase !important;
+    border-bottom: 1px solid #1e2540 !important;
+}
+.stDataFrame tbody tr:nth-child(even) { background: rgba(17,24,39,0.5) !important; }
+.stDataFrame tbody tr:hover { background: rgba(79,142,247,0.06) !important; }
+
+/* ── 성공/에러/인포 박스 ── */
+.stSuccess { background: rgba(0,212,170,0.08) !important; border: 1px solid rgba(0,212,170,0.25) !important; border-radius: 10px !important; }
+.stWarning { background: rgba(255,193,7,0.08) !important; border: 1px solid rgba(255,193,7,0.25) !important; border-radius: 10px !important; }
+.stInfo    { background: rgba(79,142,247,0.08) !important; border: 1px solid rgba(79,142,247,0.25) !important; border-radius: 10px !important; }
+.stError   { background: rgba(255,51,85,0.08)  !important; border: 1px solid rgba(255,51,85,0.25)  !important; border-radius: 10px !important; }
+
+/* ── 차트 터치 ── */
+.js-plotly-plot, .plotly, .plot-container { touch-action: pan-y !important; }
+.stPlotlyChart { touch-action: pan-y !important; }
+
+/* ── 시장 현황 카드 ── */
+.market-card {
+    background: linear-gradient(135deg, #111827 0%, #1a2035 100%);
+    border: 1px solid rgba(45,53,85,0.6);
+    border-radius: 14px;
+    padding: 12px 16px;
+    text-align: center;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+    position: relative;
+    overflow: hidden;
+}
+.market-card::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent);
+}
+
+/* ── 스크롤바 ── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #0d1117; }
+::-webkit-scrollbar-thumb { background: #2d3555; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #4f8ef7; }
+
+/* ── 모바일 ── */
 @media (max-width: 768px) {
     .main .block-container { padding: 0.3rem 0.3rem !important; }
     h1 { font-size: 18px !important; }
-    h3 { font-size: 14px !important; }
-    .metric-card { padding: 8px 4px !important; margin: 2px !important; }
-    .metric-card .val { font-size: 14px !important; }
-    .metric-card .lbl { font-size: 10px !important; }
-    .rank-card { padding: 8px 10px !important; }
+    .metric-card { padding: 10px 6px !important; margin: 2px !important; }
+    .metric-card .val { font-size: 16px !important; }
+    .rank-card { padding: 10px 12px !important; }
     .stButton > button { font-size: 12px !important; padding: 6px 4px !important; }
-    .stDataFrame { overflow-x: auto !important; -webkit-overflow-scrolling: touch !important; }
+    .stDataFrame { overflow-x: auto !important; }
     .stDataFrame table { min-width: 600px !important; }
-    .top-header { padding: 12px 14px !important; }
-    /* 탭 버튼 모바일 줄바꿈 */
-    div[data-testid="column"] > div > div > button {
-        font-size: 11px !important;
-        padding: 6px 2px !important;
-        white-space: nowrap !important;
-        overflow: hidden !important;
-        text-overflow: ellipsis !important;
-    }
-    /* 가격 레벨 박스 세로 배치 */
-    .price-levels-wrap { flex-direction: column !important; }
+    .top-header { padding: 16px 18px !important; }
 }
 
-/* ── 태블릿 (1024px 이하) ── */
+/* ── 태블릿 ── */
 @media (max-width: 1024px) and (min-width: 769px) {
     .metric-card .val { font-size: 18px !important; }
     .main .block-container { padding: 0.4rem 0.6rem !important; }
 }
-
-/* ── 공통 컴포넌트 ── */
-.top-header{background:linear-gradient(135deg,#1a1f35,#0e1117);padding:24px 32px;
-  border-radius:16px;margin-bottom:20px;border:1px solid #2d3555;}
-.metric-card{background:linear-gradient(135deg,#1e2130,#262b3d);border:1px solid #3d4466;
-  border-radius:12px;padding:16px;text-align:center;margin:4px;}
-.metric-card .lbl{color:#8b92a5;font-size:12px;}
-.metric-card .val{color:#fff;font-size:22px;font-weight:700;}
-.rank-card{background:linear-gradient(135deg,#1a1f35,#1e2540);border-left:4px solid #4f8ef7;
-  border-radius:10px;padding:14px 18px;margin:8px 0;}
-.rank-card.gold{border-left-color:#ffd700;}
-.rank-card.silver{border-left-color:#c0c0c0;}
-.rank-card.bronze{border-left-color:#cd7f32;}
-.bar-bg{background:#1e2130;border-radius:8px;height:8px;width:100%;}
-.bar-fill{background:linear-gradient(90deg,#4f8ef7,#00d4aa);border-radius:8px;height:8px;}
-.sec-title{font-size:clamp(15px,3vw,20px);font-weight:700;color:#e0e6f0;margin:20px 0 10px;
-  padding-bottom:6px;border-bottom:2px solid #2d3555;}
-.cond-box{background:#1a1f35;border:1px solid #2d3555;border-radius:10px;
-  padding:12px 16px;margin-bottom:12px;font-size:13px;color:#8b92a5;}
-
-/* 차트 영역 터치 스크롤 허용 */
-.js-plotly-plot, .plotly, .plot-container {
-    touch-action: pan-y !important;
-}
-.stPlotlyChart {
-    touch-action: pan-y !important;
-}
 </style>""", unsafe_allow_html=True)
 
-# 차트 터치 스크롤 허용 JS
-st.markdown("""
-<script>
-(function() {
-    function fixScroll() {
-        // plotly 내부 SVG와 드래그 레이어에 touch-action 강제 적용
-        document.querySelectorAll('.js-plotly-plot, .js-plotly-plot *, .plotly, .nsewdrag, .drag').forEach(el => {
-            el.style.touchAction = 'pan-y';
-        });
-    }
-    const obs = new MutationObserver(fixScroll);
-    obs.observe(document.body, {childList: true, subtree: true});
-    setInterval(fixScroll, 1000);
-})();
-</script>
-""", unsafe_allow_html=True)
+
 
 st.markdown("""<div class="top-header">
-  <h1 style="color:#fff;margin:0;font-size:clamp(18px,4vw,30px);">🚀 한국 주식 급등 예측 시스템 v3.0</h1>
-  <p style="color:#8b92a5;margin:6px 0 0;font-size:13px;">
+  <div style="display:flex;align-items:center;gap:12px;">
+    <span style="font-size:36px;">🚀</span>
+    <div>
+      <h1 style="color:#f0f4ff;margin:0;font-size:clamp(18px,4vw,28px);font-weight:800;letter-spacing:-0.5px;">한국 주식 급등 예측 시스템</h1>
+      <p style="color:#4f8ef7;margin:4px 0 0;font-size:12px;font-weight:600;letter-spacing:2px;text-transform:uppercase;">Stock Surge Predictor v3.0</p>
+    </div>
+  </div>
+  <p style="color:#6b7280;margin:12px 0 0;font-size:13px;line-height:1.6;">
     240일선 아래 충분한 조정 → 최근 돌파 → 현재 근처 → 급등 신호 복합 확인
   </p>
 </div>""", unsafe_allow_html=True)
@@ -391,27 +558,34 @@ for i, (name, (val, chg)) in enumerate(market.items()):
     color = "#ff3355" if chg > 0 else "#4f8ef7"
     arrow = "▲" if chg > 0 else "▼"
     cols_m[i].markdown(f"""
-    <div style='background:#1e2130;border:1px solid #2d3555;border-radius:10px;
-         padding:10px 14px;text-align:center;'>
-      <div style='color:#8b92a5;font-size:11px;'>{name}</div>
-      <div style='color:#fff;font-size:18px;font-weight:700;'>{val:,.2f}</div>
-      <div style='color:{color};font-size:13px;'>{arrow} {abs(chg):.2f}%</div>
+    <div class='market-card'>
+      <div style='color:#6b7280;font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;'>{name}</div>
+      <div style='color:#f0f4ff;font-size:20px;font-weight:800;margin:4px 0;letter-spacing:-0.5px;'>{val:,.2f}</div>
+      <div style='color:{color};font-size:13px;font-weight:600;'>{arrow} {abs(chg):.2f}%</div>
     </div>""", unsafe_allow_html=True)
 
 if fear_score is not None:
+    bar_w = fear_score
+    if fear_score >= 75:   bar_color = "#ff3355"
+    elif fear_score >= 55: bar_color = "#ff8c42"
+    elif fear_score >= 45: bar_color = "#ffd700"
+    elif fear_score >= 25: bar_color = "#4f8ef7"
+    else:                  bar_color = "#00d4aa"
     cols_m[2].markdown(f"""
-    <div style='background:#1e2130;border:1px solid #2d3555;border-radius:10px;
-         padding:10px 14px;text-align:center;'>
-      <div style='color:#8b92a5;font-size:11px;'>공포/탐욕 지수</div>
-      <div style='color:{fear_color};font-size:18px;font-weight:700;'>{fear_score}</div>
-      <div style='color:{fear_color};font-size:12px;'>{fear_label}</div>
+    <div class='market-card'>
+      <div style='color:#6b7280;font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;'>공포/탐욕</div>
+      <div style='color:{fear_color};font-size:20px;font-weight:800;margin:4px 0;'>{fear_score}</div>
+      <div style='color:{fear_color};font-size:12px;font-weight:600;'>{fear_label}</div>
+      <div style='background:rgba(255,255,255,0.06);border-radius:4px;height:3px;margin-top:6px;'>
+        <div style='background:{bar_color};width:{bar_w}%;height:3px;border-radius:4px;box-shadow:0 0 6px {bar_color};'></div>
+      </div>
     </div>""", unsafe_allow_html=True)
 
 cols_m[3].markdown(f"""
-    <div style='background:#1e2130;border:1px solid #2d3555;border-radius:10px;
-         padding:10px 14px;text-align:right;'>
-      <div style='color:#8b92a5;font-size:11px;'>기준시각 (1~2분 지연)</div>
-      <div style='color:#e0e6f0;font-size:16px;font-weight:700;'>{now}</div>
+    <div class='market-card' style='text-align:right;'>
+      <div style='color:#6b7280;font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;'>기준시각 (1~2분 지연)</div>
+      <div style='color:#e8edf8;font-size:17px;font-weight:700;margin-top:6px;letter-spacing:-0.3px;'>{now}</div>
+      <div style='color:#3d4466;font-size:11px;margin-top:4px;'>KST</div>
     </div>""", unsafe_allow_html=True)
 
 # ── 상단 메뉴 탭 ─────────────────────────────────────────────────
@@ -440,13 +614,13 @@ with st.sidebar:
     if "max_gap"   not in st.session_state: st.session_state["max_gap"]   = 15
     if "min_below" not in st.session_state: st.session_state["min_below"] = 120
     if "max_cross" not in st.session_state: st.session_state["max_cross"] = 120
-    if "min_score" not in st.session_state: st.session_state["min_score"] = 10
+    if "min_score" not in st.session_state: st.session_state["min_score"] = 12
 
     if st.button("⚡ 최적 셋팅", use_container_width=True):
         st.session_state["max_gap"]   = 15   # 240선 근처 15% 이내
         st.session_state["min_below"] = 120  # 최소 6개월 조정
         st.session_state["max_cross"] = 120  # 돌파 후 6개월 이내
-        st.session_state["min_score"] = 10   # 종합점수 10점 이상
+        st.session_state["min_score"] = 12   # 종합점수 12점 이상
         st.rerun()
 
     max_gap   = st.slider("📍 240선 근처 범위 (%)", 1, 20, key="max_gap",
@@ -507,26 +681,12 @@ def ls_save_favorites(favs: dict):
     st.session_state["favorites"] = favs
 
 def ls_load_from_browser():
-    """브라우저 localStorage에서 즐겨찾기 로드 (즐겨찾기 탭 진입 시 1회만 호출)"""
-    try:
-        val = st_javascript("JSON.parse(localStorage.getItem('hotstock_favs') || '{}')")
-        if isinstance(val, dict) and val:
-            # 기존 session_state와 병합
-            existing = st.session_state.get("favorites", {})
-            existing.update(val)
-            st.session_state["favorites"] = existing
-    except:
-        pass
+    """브라우저 localStorage에서 즐겨찾기 로드 - st_javascript 미사용"""
+    pass  # localStorage 동기화 비활성화 (렌더링 노이즈 방지)
 
 def ls_persist_to_browser():
-    """즐겨찾기를 localStorage에 동기화 (즐겨찾기 탭에서 호출)"""
-    try:
-        import json
-        favs = st.session_state.get("favorites", {})
-        js_str = json.dumps(favs, ensure_ascii=False)
-        st_javascript(f"localStorage.setItem('hotstock_favs', JSON.stringify({js_str}))")
-    except:
-        pass
+    """즐겨찾기를 localStorage에 동기화 - st_javascript 미사용"""
+    pass  # localStorage 동기화 비활성화 (렌더링 노이즈 방지)
 
 # ── 캐시 함수 ────────────────────────────────────────────────────
 @st.cache_data(ttl=86400)
@@ -1463,11 +1623,11 @@ elif mode == "💎 우량주 RSI 70 이탈":
 elif mode == "🎯 최적 급등 타이밍":
 
     st.markdown("""
-    <div style='background:linear-gradient(135deg,#1a1f35,#0e1117);
-         padding:20px 24px;border-radius:12px;margin-bottom:16px;border:1px solid #2d3555;'>
-      <h3 style='color:#fff;margin:0;'>🎯 최적 급등 타이밍 탐지 시스템</h3>
-      <p style='color:#8b92a5;margin:8px 0 0;font-size:13px;'>
-        8가지 핵심 조건이 동시에 겹치는 순간을 포착합니다.<br>
+    <div style='background:linear-gradient(135deg,#0d1528,#111827);
+         padding:20px 24px;border-radius:14px;margin-bottom:16px;border:1px solid rgba(79,142,247,0.2);'>
+      <h3 style='color:#f0f4ff;margin:0;font-size:18px;font-weight:800;'>🎯 최적 급등 타이밍 탐지 시스템</h3>
+      <p style='color:#8b92a5;margin:8px 0 0;font-size:13px;line-height:1.6;'>
+        9가지 핵심 조건이 동시에 겹치는 순간을 포착합니다.<br>
         <b style='color:#ffd700;'>에너지 축적 → 세력 매집 → 변동성 수축 → 돌파 직전</b> 패턴
       </p>
     </div>
@@ -1932,12 +2092,37 @@ elif mode == "📊 백테스트":
     st.markdown("#### 종목별 백테스트 실행")
     st.caption("선택 종목의 과거 신호 발생 시점 → 20일 후 평균 수익률 계산")
 
-    bt_opts = [f"{v} ({k})" for k, v in sorted(STOCK_NAMES.items(), key=lambda x: x[1])]
-    bt_sel  = st.selectbox("종목 선택", bt_opts, key="bt_symbol")
-    bt_sym  = bt_sel.split("(")[1].replace(")", "").strip()
-    bt_name = bt_sel.split("(")[0].strip()
+    bt_col1, bt_col2 = st.columns([3, 2])
+    with bt_col1:
+        bt_query = st.text_input("🔍 종목명 검색 (KRX 전체)", placeholder="예: 우리기술, 삼성전자, 알테오젠...", key="bt_search")
+    with bt_col2:
+        bt_direct = st.text_input("직접 입력 (종목코드)", placeholder="예: 041190.KQ", key="bt_direct")
 
-    if st.button("🔬 백테스트 실행", type="primary"):
+    bt_sym  = None
+    bt_name = ""
+
+    if bt_direct.strip():
+        bt_sym  = bt_direct.strip()
+        bt_name = bt_sym
+        st.info(f"직접 입력: {bt_sym}")
+    elif bt_query.strip():
+        bt_matches = search_stock_by_name(bt_query.strip())
+        if bt_matches:
+            bt_opts2 = [f"{v} ({k})" for k, v in bt_matches]
+            bt_sel2  = st.selectbox("검색 결과", bt_opts2, key="bt_symbol2")
+            bt_sym   = bt_sel2.split("(")[-1].replace(")", "").strip()
+            bt_name  = bt_sel2.split("(")[0].strip()
+        else:
+            st.warning(f"'{bt_query}' 검색 결과 없음. 종목코드로 직접 입력해보세요.")
+    else:
+        from stock_surge_detector import STOCK_NAMES as DET_NAMES
+        all_bt = {**STOCK_NAMES, **DET_NAMES}
+        bt_opts = [f"{v} ({k})" for k, v in sorted(all_bt.items(), key=lambda x: x[1])]
+        bt_sel  = st.selectbox("종목 선택", bt_opts, key="bt_symbol")
+        bt_sym  = bt_sel.split("(")[-1].replace(")", "").strip()
+        bt_name = bt_sel.split("(")[0].strip()
+
+    if bt_sym and st.button("🔬 백테스트 실행", type="primary"):
         with st.spinner(f"{bt_name} 백테스트 중... (1~2분 소요)"):
             try:
                 bt_result = backtest_signal(bt_sym)
