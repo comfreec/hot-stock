@@ -1,0 +1,293 @@
+$003600.KS: possibly delisted; no price data found  (period=2y)
+HTTP Error 404: {"quoteSummary":{"result":null,"error":{"code":"Not Found","description":"Quote not found for symbol: 010620.KS"}}}
+$010620.KS: possibly delisted; no price data found  (period=2y) (Yahoo error = "No data found, symbol may be delisted")
+HTTP Error 404: {"quoteSummary":{"result":null,"error":{"code":"Not Found","description":"Quote not found for symbol: 019440.KS"}}}
+$019440.KS: possibly delisted; no price data found  (period=2y) (Yahoo error = "No data found, symbol may be delisted")
+$036490.KS: possibly delisted; no price data found  (period=2y) (Yahoo error = "No data found, symbol may be delisted")
+$049770.KS: possibly delisted; no price data found  (period=2y) (Yahoo error = "No data found, symbol may be delisted")
+$046080.KS: possibly delisted; no price data found  (period=2y) (Yahoo error = "No data found, symbol may be delisted")
+$068400.KS: possibly delisted; no price data found  (period=2y) (Yahoo error = "No data found, symbol may be delisted")
+$091990.KS: possibly delisted; no price data found  (period=2y) (Yahoo error = "No data found, symbol may be delisted")
+$115390.KS: possibly delisted; no price data found  (period=2y) (Yahoo error = "No data found, symbol may be delisted")
+$102280.KS: possibly delisted; no price data found  (period=2y) (Yahoo error = "No data found, symbol may be delisted")
+$155900.KQ: possibly delisted; no price data found  (period=2y) (Yahoo error = "No data found, symbol may be delisted")
+$091990.KQ: possibly delisted; no price data found  (period=2y) (Yahoo error = "No data found, symbol may be delisted")
+$066970.KQ: possibly delisted; no price data found  (period=2y) (Yahoo error = "No data found, symbol may be delisted")
+$048260.KQ: possibly delisted; no price data found  (period=2y) (Yahoo error = "No data found, symbol may be delisted")
+Traceback (most recent call last):
+  File "C:\Users\dev\�޵���\stock_surge_detector.py", line 1020, in analyze_all_stocks
+    print(f"  \u274c {sym}")
+    ~~~~~^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'cp949' codec can't encode character '\u274c' in position 2: illegal multibyte sequence
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\dev\�޵���\run_scan.py", line 20, in <module>
+    results = det.analyze_all_stocks()
+  File "C:\Users\dev\�޵���\stock_surge_detector.py", line 1022, in analyze_all_stocks
+    print(f"  \u26a0\ufe0f {sym}: {e}")
+    ~~~~~^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'cp949' codec can't encode character '\u26a0' in position 2: illegal multibyte sequence
+[2026-03-30] ��ĵ ����...
+��ĵ �� (240�ϼ� ���� ����)...
+����: 'cp949' codec can't encode character '\u26a0' in position 2: illegal multibyte sequence
+$003600.KS: possibly delisted; no price data found  (period=2y)
+HTTP Error 404: {"quoteSummary":{"result":null,"error":{"code":"Not Found","description":"Quote not found for symbol: 010620.KS"}}}
+$010620.KS: possibly delisted; no price data found  (period=2y) (Yahoo error = "No data found, symbol may be delisted")
+HTTP Error 404: {"quoteSummary":{"result":null,"error":{"code":"Not Found","description":"Quote not found for symbol: 019440.KS"}}}
+$019440.KS: possibly delisted; no price data found  (period=2y) (Yahoo error = "No data found, symbol may be delisted")
+$036490.KS: possibly delisted; no price data found  (period=2y) (Yahoo error = "No data found, symbol may be delisted")
+$046080.KS: possibly delisted; no price data found  (period=2y) (Yahoo error = "No data found, symbol may be delisted")
+$049770.KS: possibly delisted; no price data found  (period=2y) (Yahoo error = "No data found, symbol may be delisted")
+$068400.KS: possibly delisted; no price data found  (period=2y) (Yahoo error = "No data found, symbol may be delisted")
+$091990.KS: possibly delisted; no price data found  (period=2y) (Yahoo error = "No data found, symbol may be delisted")
+$102280.KS: possibly delisted; no price data found  (period=2y) (Yahoo error = "No data found, symbol may be delisted")
+$115390.KS: possibly delisted; no price data found  (period=2y) (Yahoo error = "No data found, symbol may be delisted")
+$155900.KQ: possibly delisted; no price data found  (period=2y) (Yahoo error = "No data found, symbol may be delisted")
+$066970.KQ: possibly delisted; no price data found  (period=2y) (Yahoo error = "No data found, symbol may be delisted")
+$091990.KQ: possibly delisted; no price data found  (period=2y) (Yahoo error = "No data found, symbol may be delisted")
+$048260.KQ: possibly delisted; no price data found  (period=2y) (Yahoo error = "No data found, symbol may be delisted")
+[2026-03-30] 스캔 시작...
+스캔 중 (240일선 조건 필터)...
+  ❌ 035420.KS
+  ❌ 000660.KS
+  ❌ 207940.KS
+  ❌ 035720.KS
+  ❌ 006400.KS
+  ❌ 068270.KS
+  ❌ 051910.KS
+  ❌ 005930.KS
+  ❌ 323410.KS
+  ❌ 373220.KS
+  ❌ 005380.KS
+  ❌ 055550.KS
+  ❌ 012330.KS
+  ❌ 000270.KS
+  ❌ 105560.KS
+  ❌ 028260.KS
+  ❌ 066570.KS
+  ❌ 003550.KS
+  ❌ 017670.KS
+  ❌ 030200.KS
+  ❌ 000100.KS
+  ❌ 002380.KS
+  ❌ 001040.KS
+  ❌ 003490.KS
+  ❌ 004020.KS
+  ❌ 005490.KS
+  ❌ 007070.KS
+  ❌ 010130.KS
+  ❌ 011070.KS
+  ❌ 011200.KS
+  ❌ 010950.KS
+  ❌ 016360.KS
+  ❌ 018260.KS
+  ❌ 021240.KS
+  ❌ 023530.KS
+  ❌ 024110.KS
+  ❌ 032640.KS
+  ❌ 029780.KS
+  ❌ 033780.KS
+  ❌ 034220.KS
+  ❌ 034020.KS
+  ❌ 036460.KS
+  ❌ 036570.KS
+  ❌ 051600.KS
+  ❌ 060980.KS
+  ❌ 042660.KS
+  ❌ 047050.KS
+  ❌ 064350.KS
+  ❌ 071050.KS
+  ❌ 078930.KS
+  ❌ 086280.KS
+  ❌ 090430.KS
+  ❌ 100840.KS
+  ❌ 097950.KS
+  ❌ 161390.KS
+  ❌ 175330.KS
+  ❌ 180640.KS
+  ❌ 192400.KS
+  ❌ 204320.KS
+  ❌ 267250.KS
+  ❌ 316140.KS
+  ❌ 326030.KS
+  ❌ 329180.KS
+  ❌ 336260.KS
+  ❌ 003600.KS
+  ❌ 000810.KS
+  ❌ 001450.KS
+  ❌ 002790.KS
+  ❌ 003230.KS
+  ❌ 003670.KS
+  ❌ 004990.KS
+  ❌ 004170.KS
+  ❌ 004370.KS
+  ❌ 005250.KS
+  ❌ 096770.KS
+  ❌ 005830.KS
+  ❌ 006260.KS
+  ❌ 006360.KS
+  ❌ 008770.KS
+  ❌ 007310.KS
+  ❌ 006650.KS
+  ❌ 009240.KS
+  ❌ 009150.KS
+  ❌ 010140.KS
+  ❌ 009540.KS
+  ❌ 009830.KS
+  ❌ 011170.KS
+  ❌ 011780.KS
+  ❌ 012450.KS
+  ❌ 012630.KS
+  ❌ 014680.KS
+  ❌ 015760.KS
+  ❌ 016880.KS
+  ❌ 010620.KS
+  ❌ 017800.KS
+  ❌ 019170.KS
+  ❌ 020150.KS
+  ❌ 023150.KS
+  ❌ 025540.KS
+  ❌ 024070.KS
+  ❌ 021080.KS
+  ❌ 026960.KS
+  ❌ 027740.KS
+  ❌ 019440.KS
+  ❌ 030610.KS
+  ❌ 028050.KS
+  ❌ 030000.KS
+  ❌ 032830.KS
+  ❌ 033240.KS
+  ❌ 034730.KS
+  ❌ 035000.KS
+  ✅ 018880.KS (25점)
+  ❌ 035250.KS
+  ❌ 039130.KS
+  ❌ 040910.KS
+  ❌ 037270.KS
+  ❌ 036490.KS
+  ❌ 041650.KS
+  ❌ 042700.KS
+  ❌ 046080.KS
+  ❌ 045390.KS
+  ❌ 044490.KS
+  ❌ 047810.KS
+  ❌ 049770.KS
+  ❌ 052690.KS
+  ❌ 051900.KS
+  ❌ 053210.KS
+  ❌ 058430.KS
+  ❌ 055490.KS
+  ❌ 057050.KS
+  ❌ 060310.KS
+  ❌ 061040.KS
+  ❌ 063160.KS
+  ❌ 064960.KS
+  ❌ 068400.KS
+  ❌ 066790.KS
+  ❌ 067160.KS
+  ❌ 069260.KS
+  ❌ 069620.KS
+  ❌ 072130.KS
+  ❌ 071840.KS
+  ❌ 073240.KS
+  ❌ 079550.KS
+  ❌ 075580.KS
+  ❌ 077970.KS
+  ❌ 081660.KS
+  ❌ 083420.KS
+  ❌ 082640.KS
+  ❌ 084010.KS
+  ❌ 085620.KS
+  ❌ 089590.KS
+  ❌ 086790.KS
+  ❌ 088350.KS
+  ❌ 090080.KS
+  ❌ 093050.KS
+  ❌ 092200.KS
+  ❌ 091990.KS
+  ❌ 095570.KS
+  ❌ 097520.KS
+  ❌ 096040.KS
+  ❌ 099140.KS
+  ❌ 100250.KS
+  ❌ 103140.KS
+  ❌ 105630.KS
+  ❌ 101530.KS
+  ❌ 102280.KS
+  ❌ 108670.KS
+  ❌ 111770.KS
+  ❌ 115390.KS
+  ❌ 120110.KS
+  ❌ 114090.KS
+  ❌ 128940.KS
+  ❌ 138040.KS
+  ❌ 130660.KS
+  ❌ 139130.KS
+  ❌ 145990.KS
+  ❌ 148150.KS
+  ❌ 155660.KS
+  ❌ 152100.KS
+  ❌ 158430.KS
+  ❌ 163560.KS
+  ❌ 170900.KS
+  ❌ 187660.KS
+  ❌ 178920.KS
+  ❌ 194370.KS
+  ❌ 200130.KS
+  ❌ 199800.KS
+  ❌ 196170.KS
+  ❌ 214150.KS
+  ❌ 058470.KQ
+  ❌ 039030.KQ
+  ❌ 064760.KQ
+  ❌ 095340.KQ
+  ❌ 108320.KQ
+  ❌ 101490.KQ
+  ❌ 091580.KQ
+  ❌ 122870.KQ
+  ❌ 131970.KQ
+  ❌ 155900.KQ
+  ❌ 166090.KQ
+  ❌ 183300.KQ
+  ❌ 185750.KS
+  ❌ 086900.KQ
+  ❌ 236200.KQ
+  ❌ 137310.KQ
+  ❌ 096530.KQ
+  ❌ 145020.KQ
+  ❌ 141080.KQ
+  ❌ 206650.KQ
+  ❌ 196170.KQ
+  ❌ 237690.KQ
+  ❌ 214370.KQ
+  ❌ 247540.KQ
+  ❌ 950140.KQ
+  ❌ 068760.KQ
+  ❌ 066970.KQ
+  ❌ 091990.KQ
+  ❌ 086520.KQ
+  ❌ 078600.KQ
+  ❌ 035900.KQ
+  ❌ 036030.KQ
+  ❌ 041510.KQ
+  ❌ 253450.KQ
+  ❌ 053800.KQ
+  ❌ 251270.KQ
+  ❌ 293490.KQ
+  ❌ 263750.KQ
+  ❌ 067160.KQ
+  ❌ 112040.KQ
+  ❌ 047810.KQ
+  ❌ 048260.KQ
+  ❌ 200130.KQ
+  ❌ 357780.KQ
+  ❌ 041960.KQ
+  ❌ 032500.KQ
+  ❌ 039440.KQ
+  ❌ 033290.KQ
+조건 충족 종목: 1개
+[성과추적] 1개 종목 저장 완료
+텔레그램 전송 완료
+성과 추적 업데이트 완료
