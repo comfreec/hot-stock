@@ -400,3 +400,94 @@ def send_test_alert():
         "✅ <b>HotStock 알림 봇 연결 완료!</b>\n"
         "매일 장 마감 후 급등 예고 종목을 자동으로 알려드립니다. 🚀"
     )
+
+
+def send_performance_update():
+    """성과 업데이트 알림 - 상태 변경된 종목만 전송"""
+    try:
+        from cache_db import update_alert_status, get_alert_history, get_performance_summary
+        import yfinance as yf
+
+        # 상태 업데이트 실행
+        update_alert_status()
+
+        today = date.today().isoformat()
+        history = get_alert_history(200)
+
+        # 오늘 상태 변경된 종목 찾기
+        newly_active   = [h for h in history if h["status"] == "active"   and h.get("exit_date") is None and h["alert_date"] == today]
+        hit_target_today = [h for h in history if h["status"] == "hit_target" and h.get("exit_date") == today]
+        hit_stop_today   = [h for h in history if h["status"] == "hit_stop"   and h.get("exit_date") == today]
+        still_pending  = [h for h in history if h["status"] == "pending"]
+
+        # 변경 사항 없으면 전송 안 함
+        if not newly_active and not hit_target_today and not hit_stop_today:
+            print("[성과추적] 오늘 상태 변경 없음 - 알림 생략")
+            return
+
+        lines = [f"📊 <b>성과 업데이트</b> ({today})\n{'━'*20}"]
+
+        if hit_target_today:
+            lines.append("\n✅ <b>목표가 달성!</b>")
+            for h in hit_target_today:
+                lines.append(f"• {h['name']} → ₩{h['exit_price']:,.0f} (<b>+{h['return_pct']:.1f}%</b>) 🎉")
+
+        if hit_stop_today:
+            lines.append("\n🛑 <b>손절가 이탈</b>")
+            for h in hit_stop_today:
+                lines.append(f"• {h['name']} → ₩{h['exit_price']:,.0f} ({h['return_pct']:.1f}%)")
+
+        if newly_active:
+            lines.append("\n🔵 <b>매수가 진입 확인</b>")
+            for h in newly_active:
+                lines.append(f"• {h['name']} → ₩{h['entry_price']:,.0f} 터치 (모니터링 시작)")
+
+        if still_pending:
+            lines.append(f"\n⏳ 매수 대기 중: {len(still_pending)}개 종목")
+
+        send_telegram("\n".join(lines))
+        print(f"[성과추적] 업데이트 알림 전송 완료")
+
+    except Exception as e:
+        print(f"[성과추적] 알림 오류: {e}")
+
+
+def send_weekly_summary():
+    """주간 성과 요약 - 매주 금요일 전송"""
+    try:
+        from cache_db import get_performance_summary
+        from datetime import datetime
+
+        # 금요일(4)만 전송
+        if datetime.now().weekday() != 4:
+            return
+
+        perf = get_performance_summary()
+        if perf["total"] == 0:
+            return
+
+        win_rate = perf["win_rate"]
+        avg_ret  = perf["avg_return"]
+        wr_emoji = "🟢" if win_rate >= 60 else "🟡" if win_rate >= 40 else "🔴"
+        ret_emoji = "📈" if avg_ret >= 0 else "📉"
+
+        msg = (
+            f"📈 <b>주간 성과 요약</b>\n{'━'*20}\n\n"
+            f"청산 종목: <b>{perf['total']}개</b>\n"
+            f"✅ 목표달성: {perf['win']}개  |  🛑 손절: {perf['loss']}개\n\n"
+            f"{wr_emoji} 승률: <b>{win_rate}%</b>\n"
+            f"{ret_emoji} 평균 수익률: <b>{avg_ret:+.1f}%</b>\n"
+        )
+        if perf["win"] > 0:
+            msg += f"평균 수익: <b style='color:green'>+{perf['avg_win']:.1f}%</b>\n"
+        if perf["loss"] > 0:
+            msg += f"평균 손실: <b>{perf['avg_loss']:.1f}%</b>\n"
+        msg += f"\n🔵 진입 모니터링: {perf.get('active',0)}개\n"
+        msg += f"⏳ 매수 대기: {perf.get('pending',0)}개\n"
+        msg += "\n⚠️ 투자 참고용 정보입니다."
+
+        send_telegram(msg)
+        print("[성과추적] 주간 요약 전송 완료")
+
+    except Exception as e:
+        print(f"[성과추적] 주간 요약 오류: {e}")

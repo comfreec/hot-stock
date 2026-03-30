@@ -22,7 +22,7 @@ telegram_alert.TELEGRAM_TOKEN   = TELEGRAM_TOKEN
 telegram_alert.TELEGRAM_CHAT_ID = TELEGRAM_CHAT_ID
 
 from stock_surge_detector import KoreanStockSurgeDetector, ALL_SYMBOLS, STOCK_NAMES
-from telegram_alert import send_scan_alert, send_telegram
+from telegram_alert import send_scan_alert, send_telegram, send_performance_update, send_weekly_summary
 
 print(f"[{date.today()}] 스캔 시작 (병렬 처리)...")
 
@@ -42,13 +42,13 @@ try:
     else:
         send_telegram(f"📊 {date.today()} 장마감\n오늘은 조건을 충족하는 급등 예고 종목이 없습니다.")
 
-    # ── 기존 알림 종목 성과 상태 업데이트 ──────────────────────
+    # ── 기존 알림 종목 성과 상태 업데이트 + 알림 ───────────────
     try:
-        from cache_db import update_alert_status
-        update_alert_status()
-        print("성과 추적 상태 업데이트 완료")
+        send_performance_update()   # 상태 변경 종목 알림
+        send_weekly_summary()       # 금요일 주간 요약
+        print("성과 추적 알림 완료")
     except Exception as e:
-        print(f"성과 추적 업데이트 오류: {e}")
+        print(f"성과 추적 오류: {e}")
 
 except Exception as e:
     print(f"오류: {e}")
