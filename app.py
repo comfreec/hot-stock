@@ -998,6 +998,7 @@ if mode == "🔍 급등 예고 종목 탐지":
     </div>""", unsafe_allow_html=True)
 
     if st.button("🚀 스캔 시작", type="primary", width='stretch'):
+        st.session_state.pop("scan_results", None)  # 기존 결과 초기화
         det = KoreanStockSurgeDetector(max_gap, min_below, max_cross)
         symbols = list(dict.fromkeys(det.all_symbols))  # 중복 제거
         total = len(symbols)
