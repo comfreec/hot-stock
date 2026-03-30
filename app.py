@@ -2242,7 +2242,7 @@ elif mode == "📈 성과 추적":
         perf = get_performance_summary()
         if perf["total"] > 0:
             c1, c2, c3, c4, c5 = st.columns(5)
-            metric_card(c1, "총 알림 종목", f"{perf['total']}개")
+            metric_card(c1, "청산 종목", f"{perf['total']}개")
             metric_card(c2, "목표가 달성", f"{perf['win']}개")
             metric_card(c3, "손절 발생", f"{perf['loss']}개")
             win_color = "#00d4aa" if perf['win_rate'] >= 50 else "#ff3355"
@@ -2260,7 +2260,9 @@ elif mode == "📈 성과 추적":
                 st.markdown(f"""<div class='cond-box' style='margin-top:8px;'>
                   평균 수익: <b style='color:#00d4aa;'>{perf['avg_win']:+.1f}%</b> &nbsp;|&nbsp;
                   평균 손실: <b style='color:#ff3355;'>{perf['avg_loss']:+.1f}%</b> &nbsp;|&nbsp;
-                  만료(30일): <b style='color:#8b92a5;'>{perf['expired']}개</b>
+                  진입 모니터링: <b style='color:#4f8ef7;'>{perf.get('active',0)}개</b> &nbsp;|&nbsp;
+                  매수가 대기: <b style='color:#8b92a5;'>{perf.get('pending',0)}개</b> &nbsp;|&nbsp;
+                  만료: <b style='color:#8b92a5;'>{perf['expired']}개</b>
                 </div>""", unsafe_allow_html=True)
         else:
             st.info("아직 성과 데이터가 없어요. 텔레그램 알림이 발송되면 자동으로 기록됩니다.")
@@ -2270,13 +2272,13 @@ elif mode == "📈 성과 추적":
         if history:
             st.markdown("<div class='sec-title'>📋 알림 내역</div>", unsafe_allow_html=True)
 
-            status_filter = st.selectbox("상태 필터", ["전체", "진행중", "목표달성", "손절", "만료"], key="perf_filter")
-            status_map = {"전체": None, "진행중": "active", "목표달성": "hit_target", "손절": "hit_stop", "만료": "expired"}
+            status_filter = st.selectbox("상태 필터", ["전체", "매수대기", "진입중", "목표달성", "손절", "만료"], key="perf_filter")
+            status_map = {"전체": None, "매수대기": "pending", "진입중": "active", "목표달성": "hit_target", "손절": "hit_stop", "만료": "expired"}
             filtered = [h for h in history if status_map[status_filter] is None or h["status"] == status_map[status_filter]]
 
             rows = []
             for h in filtered:
-                status_emoji = {"active": "🔵 진행중", "hit_target": "✅ 목표달성", "hit_stop": "🛑 손절", "expired": "⏰ 만료"}.get(h["status"], h["status"])
+                status_emoji = {"pending": "⏳ 매수대기", "active": "🔵 진입중", "hit_target": "✅ 목표달성", "hit_stop": "🛑 손절", "expired": "⏰ 만료"}.get(h["status"], h["status"])
                 ret_str = f"{h['return_pct']:+.1f}%" if h["return_pct"] is not None else "-"
                 ret_color_str = "🟢" if (h["return_pct"] or 0) > 0 else "🔴" if (h["return_pct"] or 0) < 0 else "⚪"
                 rows.append({

@@ -137,7 +137,7 @@ def save_alert_history(results: list, price_levels_map: dict = None):
             INSERT INTO alert_history
             (alert_date, symbol, name, score, entry_price, entry_label,
              target_price, stop_price, rr_ratio, status, created_at)
-            VALUES (?,?,?,?,?,?,?,?,?,'active',?)
+            VALUES (?,?,?,?,?,?,?,?,?,'pending',?)
         """, (
             today, sym, r.get("name", sym),
             r.get("total_score", 0),
@@ -166,18 +166,18 @@ def get_alert_history(limit: int = 60) -> list:
     return [dict(zip(keys, r)) for r in rows]
 
 def update_alert_status():
-    """active 종목들의 현재가 확인 → 목표가/손절가 달성 여부 업데이트"""
+    """pending/active 종목들의 현재가 확인 → 상태 업데이트"""
     try:
         import yfinance as yf
         conn = _get_conn()
         rows = conn.execute("""
-            SELECT id, symbol, entry_price, target_price, stop_price, alert_date
-            FROM alert_history WHERE status='active'
+            SELECT id, symbol, entry_price, target_price, stop_price, alert_date, status
+            FROM alert_history WHERE status IN ('pending', 'active')
         """).fetchall()
 
         today = date.today().isoformat()
         for row in rows:
-            rid, sym, entry, target, stop, alert_date = row
+            rid, sym, entry, target, stop, alert_date, status = row
             if not entry or not target or not stop:
                 continue
             # 30일 경과 시 만료
@@ -191,20 +191,29 @@ def update_alert_status():
             except:
                 pass
             try:
-                df = yf.Ticker(sym).history(period="5d").dropna(subset=["Close"])
+                df = yf.Ticker(sym).history(period="5d").dropna(subset=["Close","Low","High"])
                 if len(df) == 0:
                     continue
-                cur = float(df["Close"].iloc[-1])
-                ret = (cur - entry) / entry * 100
+                cur      = float(df["Close"].iloc[-1])
+                day_low  = float(df["Low"].iloc[-1])
+                day_high = float(df["High"].iloc[-1])
 
-                if cur >= target:
-                    conn.execute("""UPDATE alert_history
-                        SET status='hit_target', exit_price=?, exit_date=?, return_pct=?
-                        WHERE id=?""", (cur, today, ret, rid))
-                elif cur <= stop:
-                    conn.execute("""UPDATE alert_history
-                        SET status='hit_stop', exit_price=?, exit_date=?, return_pct=?
-                        WHERE id=?""", (cur, today, ret, rid))
+                if status == 'pending':
+                    # 당일 저가가 매수가 이하로 내려왔으면 진입 확인
+                    if day_low <= entry:
+                        conn.execute("UPDATE alert_history SET status='active' WHERE id=?", (rid,))
+                        status = 'active'
+
+                if status == 'active':
+                    ret = (cur - entry) / entry * 100
+                    if cur >= target:
+                        conn.execute("""UPDATE alert_history
+                            SET status='hit_target', exit_price=?, exit_date=?, return_pct=?
+                            WHERE id=?""", (cur, today, ret, rid))
+                    elif cur <= stop:
+                        conn.execute("""UPDATE alert_history
+                            SET status='hit_stop', exit_price=?, exit_date=?, return_pct=?
+                            WHERE id=?""", (cur, today, ret, rid))
             except:
                 pass
 
@@ -214,28 +223,36 @@ def update_alert_status():
         print(f"[성과추적] 업데이트 오류: {e}")
 
 def get_performance_summary() -> dict:
-    """성과 요약 통계"""
+    """성과 요약 통계 (매수가 도달 종목만)"""
     conn = _get_conn()
+    # 진입 확인된 종목만 (active 포함 - 아직 청산 안 된 것도 포함)
     rows = conn.execute("""
         SELECT status, return_pct FROM alert_history
-        WHERE status != 'active'
+        WHERE status IN ('hit_target','hit_stop','expired','active')
     """).fetchall()
+    pending_cnt = conn.execute(
+        "SELECT COUNT(*) FROM alert_history WHERE status='pending'"
+    ).fetchone()[0]
     conn.close()
 
-    if not rows:
-        return {"total": 0, "win": 0, "loss": 0, "win_rate": 0, "avg_return": 0}
+    closed = [r for r in rows if r[0] in ('hit_target','hit_stop')]
+    if not closed:
+        return {"total": 0, "win": 0, "loss": 0, "win_rate": 0,
+                "avg_return": 0, "avg_win": 0, "avg_loss": 0,
+                "expired": 0, "active": 0, "pending": pending_cnt}
 
-    total  = len(rows)
-    wins   = [r[1] for r in rows if r[0] == 'hit_target' and r[1] is not None]
-    losses = [r[1] for r in rows if r[0] == 'hit_stop'   and r[1] is not None]
-    all_ret = [r[1] for r in rows if r[1] is not None]
+    wins   = [r[1] for r in closed if r[0] == 'hit_target' and r[1] is not None]
+    losses = [r[1] for r in closed if r[0] == 'hit_stop'   and r[1] is not None]
+    all_ret = [r[1] for r in closed if r[1] is not None]
 
     return {
-        "total":      total,
+        "total":      len(closed),
         "win":        len(wins),
         "loss":       len(losses),
         "expired":    sum(1 for r in rows if r[0] == 'expired'),
-        "win_rate":   round(len(wins) / total * 100, 1) if total > 0 else 0,
+        "active":     sum(1 for r in rows if r[0] == 'active'),
+        "pending":    pending_cnt,
+        "win_rate":   round(len(wins) / len(closed) * 100, 1) if closed else 0,
         "avg_return": round(sum(all_ret) / len(all_ret), 2) if all_ret else 0,
         "avg_win":    round(sum(wins) / len(wins), 2) if wins else 0,
         "avg_loss":   round(sum(losses) / len(losses), 2) if losses else 0,
