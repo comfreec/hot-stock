@@ -864,7 +864,59 @@ def make_rsi_chart(rsi_s, chart_data=None):
     )
     return fig
 
-def make_candle(data, title, ma240_series=None, cross_date=None, show_levels=True):
+def _calc_price_levels_from_data(data):
+    """symbol 없이 data DataFrame으로 가격 레벨 계산 (telegram_alert.calc_price_levels와 동일 로직)"""
+    try:
+        import numpy as np
+        df = data.dropna(subset=["Close","High","Low"])
+        if len(df) < 30:
+            return {}
+        close = df["Close"]; high = df["High"]; low = df["Low"]
+        current = float(close.iloc[-1])
+        tr = pd.concat([high-low,(high-close.shift(1)).abs(),(low-close.shift(1)).abs()],axis=1).max(axis=1)
+        atr = float(tr.rolling(14).mean().dropna().iloc[-1])
+        ma240 = close.rolling(240).mean()
+        ma240_v = float(ma240.iloc[-1]) if not pd.isna(ma240.iloc[-1]) else None
+        ma20 = float(close.rolling(20).mean().iloc[-1])
+        swing_low_20 = float(low.tail(20).min())
+        entry_candidates = []
+        if ma240_v:
+            entry_candidates.append(("240선+버퍼", ma240_v * 1.005))
+        entry_candidates.append(("스윙저점", swing_low_20))
+        entry_candidates.append(("MA20", ma20))
+        valid = [(l,p) for l,p in entry_candidates if p < current * 0.98 and (ma240_v is None or p >= ma240_v * 0.99)]
+        if valid:
+            entry_label, entry = min(valid, key=lambda x: abs(x[1]-(ma240_v or x[1])))
+        else:
+            entry_label, entry = "현재가", current
+        stop_cands = []
+        if ma240_v: stop_cands.append(ma240_v * 0.995)
+        stop_cands.append(swing_low_20 - atr * 1.0)
+        stop = max(stop_cands) if stop_cands else entry * 0.93
+        stop = max(stop, entry * 0.88); stop = min(stop, entry * 0.95)
+        risk = max(entry - stop, entry * 0.01)
+        recent_high = float(high.tail(120).max()); recent_low = float(low.tail(120).min())
+        swing_range = max(recent_high - recent_low, entry * 0.01)
+        candidates = sorted([x for x in [
+            recent_low+swing_range*1.272, recent_low+swing_range*1.618,
+            recent_low+swing_range*2.0, recent_high*1.05,
+            entry+atr*3.0, entry+atr*5.0] if x > entry*1.03])
+        min_rr3 = entry + risk * 3.0
+        valid_t = [x for x in candidates if x >= min_rr3]
+        if valid_t:
+            weights = [1/(x-entry) for x in valid_t]
+            target = sum(x*w for x,w in zip(valid_t,weights))/sum(weights)
+        elif candidates: target = candidates[-1]
+        else: target = entry + risk * 3.0
+        target = min(target, entry * 2.0)
+        rr = (target - entry) / (entry - stop + 1e-9)
+        return {"current":current,"entry":entry,"entry_label":entry_label,"target":target,
+                "stop":stop,"rr":rr,"upside":(target/entry-1)*100,"downside":(stop/entry-1)*100}
+    except:
+        return {}
+
+
+def make_candle(data, title, ma240_series=None, cross_date=None, show_levels=True, symbol=None):
     fig = go.Figure()
     fig.add_trace(go.Ohlc(
         x=data.index, open=data["Open"], high=data["High"],
@@ -877,131 +929,40 @@ def make_candle(data, title, ma240_series=None, cross_date=None, show_levels=Tru
     if cross_date is not None:
         pass  # 돌파 표시 제거
 
+    fig._price_levels = None
     if show_levels:
-        # 마지막 행 nan 방어 (yfinance 당일 미완성 데이터)
-        data_clean = data.dropna(subset=["Close", "High", "Low"])
-        if len(data_clean) < 20:
-            return fig
-        current  = float(data_clean["Close"].iloc[-1])
-        close    = data_clean["Close"]
-        high     = data_clean["High"]
-        low      = data_clean["Low"]
-        vol      = data_clean["Volume"] if "Volume" in data_clean.columns else None
+        try:
+            from telegram_alert import calc_price_levels
+            # symbol이 있으면 telegram_alert의 calc_price_levels 사용 (텔레그램과 동일)
+            # 없으면 data 기반으로 직접 계산
+            if symbol:
+                lv = calc_price_levels(symbol)
+            else:
+                # data만 있을 때 임시 심볼 없이 계산 (개별 종목 탭 등)
+                lv = _calc_price_levels_from_data(data)
 
-        # ── ATR(14) 계산 ─────────────────────────────────────────
-        tr = pd.concat([
-            high - low,
-            (high - close.shift(1)).abs(),
-            (low  - close.shift(1)).abs()
-        ], axis=1).max(axis=1)
-        atr_series = tr.rolling(14).mean().dropna()
-        atr = float(atr_series.iloc[-1]) if len(atr_series) > 0 else float((high - low).mean())
+            if lv and lv.get("target"):
+                target  = lv["target"]
+                entry   = lv["entry"]
+                entry_label = lv.get("entry_label", "매수")
+                stop    = lv["stop"]
+                current = lv["current"]
+                upside  = lv["upside"]
+                downside = lv["downside"]
+                rr_ratio = lv["rr"]
 
-        # ── 매수가: 240선 근처 근거 있는 눌림목 진입가 ─────────
-        ma240 = close.rolling(240).mean()
-        ma240_v = float(ma240.iloc[-1]) if not pd.isna(ma240.iloc[-1]) else None
-        swing_low_20 = float(low.tail(20).min())
-        ma20 = float(close.rolling(20).mean().dropna().iloc[-1])
-
-        # 우선순위: 240선 → 스윙저점 → MA20
-        # 조건: 현재가 대비 최소 2% 이상 낮아야 의미있는 눌림목 가격
-        entry_candidates = []
-        if ma240_v:
-            entry_candidates.append(("240선", ma240_v * 1.005))
-        entry_candidates.append(("스윙저점", swing_low_20))
-        entry_candidates.append(("MA20", ma20))
-
-        # 현재가 대비 2% 이상 낮고, 240선 위인 것만 유효
-        valid_entries = [
-            (label, price) for label, price in entry_candidates
-            if price < current * 0.98 and (ma240_v is None or price >= ma240_v * 0.99)
-        ]
-        if valid_entries:
-            # 240선에 가장 가까운 값 선택 (가장 낮은 값 = 240선 근처)
-            entry_label, entry = min(valid_entries, key=lambda x: abs(x[1] - (ma240_v or x[1])))
-        else:
-            # 유효한 후보 없으면 현재가 그대로 (이미 240선 근처에 있는 경우)
-            entry_label, entry = "현재가", current
-
-        # ── 손절가: 매수가 기준 근거 있는 손절 ──────────────────
-        # 매수가(entry) 아래에서 근거 있는 지지선 이탈 기준
-        # 1) 240선 아래 0.5% = 240선 지지 붕괴
-        # 2) 스윙 저점(20일) - ATR×1.0 = 추세 붕괴
-        # 3) entry 대비 -5% ~ -10% 범위 제한
-        stop_candidates = []
-        if ma240_v:
-            stop_candidates.append(ma240_v * 0.995)   # 240선 아래 0.5%
-        stop_candidates.append(swing_low_20 - atr * 1.0)  # 스윙저점 - ATR
-
-        stop = max(stop_candidates) if stop_candidates else entry * 0.93
-        # 범위 제한: entry 대비 -5% ~ -12%
-        stop = max(stop, entry * 0.88)
-        stop = min(stop, entry * 0.95)
-        risk = max(entry - stop, entry * 0.01)
-
-        # ── 목표가: 다중 기법 합산 ───────────────────────────────
-        recent_high = float(high.tail(120).max())
-        recent_low  = float(low.tail(120).min())
-        swing_range = max(recent_high - recent_low, current * 0.01)
-
-        # 1) 피보나치 확장 (스윙 저점 기준)
-        fib_1272 = recent_low + swing_range * 1.272   # 보수적 목표
-        fib_1618 = recent_low + swing_range * 1.618   # 표준 목표
-        fib_2000 = recent_low + swing_range * 2.000   # 공격적 목표
-
-        # 2) 직전 고점 돌파 후 저항 → 지지 전환
-        prev_high      = recent_high
-        prev_high_ext  = recent_high * 1.05  # 고점 돌파 후 +5% 저항
-
-        # 3) ATR 멀티플 (변동성 기반)
-        atr_x3 = current + atr * 3.0
-        atr_x5 = current + atr * 5.0
-
-        # 4) 볼린저밴드 상단 (2σ) - 과열 저항선
-        ma20_s  = close.rolling(20).mean()
-        std20   = close.rolling(20).std()
-        bb_upper = float((ma20_s + std20 * 2.0).dropna().iloc[-1])
-
-        # 후보 중 현재가 +3% 이상, 손익비 2:1 이상인 것만
-        min_rr2 = current + risk * 2.0
-        min_rr3 = current + risk * 3.0
-        all_cands = sorted([
-            x for x in [fib_1272, fib_1618, fib_2000,
-                         prev_high, prev_high_ext,
-                         atr_x3, atr_x5, bb_upper]
-            if x > current * 1.03
-        ])
-
-        valid_3 = [x for x in all_cands if x >= min_rr3]
-        valid_2 = [x for x in all_cands if x >= min_rr2]
-
-        if valid_3:
-            # 3:1 이상 후보들의 가중 평균 (가장 가까운 것에 가중치)
-            weights = [1 / (x - current) for x in valid_3]
-            target = sum(x * w for x, w in zip(valid_3, weights)) / sum(weights)
-        elif valid_2:
-            target = valid_2[-1]
-        elif all_cands:
-            target = all_cands[-1]
-        else:
-            target = current + risk * 3.0
-
-        target   = min(target, current * 2.0)  # 상한 100%
-        rr_ratio = (target - entry) / (entry - stop + 1e-9)   # 매수가 기준 손익비
-        upside   = (target / entry - 1) * 100                  # 매수가 대비 수익률
-        downside = (stop / entry - 1) * 100                    # 매수가 대비 손실률
-
-        # 목표가 수평선 (초록)
-        fig.add_hline(y=target, line=dict(color="#00ff88", width=2, dash="dash"))
-        fig.add_hrect(y0=entry, y1=target, fillcolor="rgba(0,255,136,0.08)", line_width=0)
-        # 매수가 수평선 (노란색)
-        if entry < current:
-            fig.add_hline(y=entry, line=dict(color="#ffd700", width=2, dash="dashdot"))
-            fig.add_hrect(y0=stop, y1=entry, fillcolor="rgba(255,51,85,0.08)", line_width=0)
-        # 현재가 수평선 (흰색)
-        fig.add_hline(y=current, line=dict(color="#ffffff", width=1.5, dash="dot"))
-        # 손절가 수평선 (빨강)
-        fig.add_hline(y=stop, line=dict(color="#ff3355", width=2, dash="dash"))
+                fig.add_hline(y=target, line=dict(color="#00ff88", width=2, dash="dash"))
+                fig.add_hrect(y0=entry, y1=target, fillcolor="rgba(0,255,136,0.08)", line_width=0)
+                if entry < current:
+                    fig.add_hline(y=entry, line=dict(color="#ffd700", width=2, dash="dashdot"))
+                    fig.add_hrect(y0=stop, y1=entry, fillcolor="rgba(255,51,85,0.08)", line_width=0)
+                fig.add_hline(y=current, line=dict(color="#ffffff", width=1.5, dash="dot"))
+                fig.add_hline(y=stop, line=dict(color="#ff3355", width=2, dash="dash"))
+                fig._price_levels = dict(target=target, current=current, entry=entry,
+                                         entry_label=entry_label, stop=stop,
+                                         upside=upside, downside=downside, rr_ratio=rr_ratio)
+        except Exception:
+            pass
 
     fig.update_layout(
         title=dict(text=title, font=dict(color="#e0e6f0", size=13)),
@@ -1287,7 +1248,7 @@ if mode == "🔍 급등 예고 종목 탐지":
                             cross_date = None
                             if r["days_since_cross"] < len(close_s):
                                 cross_date = close_s.index[-(r["days_since_cross"]+1)]
-                            _c1 = make_candle(cd, f"{r['name']} ({r['symbol']})", cross_date=cross_date)
+                            _c1 = make_candle(cd, f"{r['name']} ({r['symbol']})", cross_date=cross_date, symbol=r["symbol"])
                             st.plotly_chart(_c1, width='stretch', key=f"candle_{r['symbol']}_{i}")
                             show_price_levels(_c1)
                         except Exception as chart_err:
