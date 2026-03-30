@@ -282,7 +282,7 @@ class KoreanStockSurgeDetector:
         neg = ["급락","하락","적자","손실","매도","하향","감소","부진","우려"]
         try:
             url = "https://finance.naver.com/item/news_news.naver?code=" + code + "&page=1"
-            res = requests.get(url, headers={"User-Agent":"Mozilla/5.0"}, timeout=5)
+            res = requests.get(url, headers={"User-Agent":"Mozilla/5.0"}, timeout=2)
             soup = BeautifulSoup(res.text, "html.parser")
             titles = [a.get_text() for a in soup.select(".title")]
             p = sum(1 for t in titles for k in pos if k in t)
@@ -297,7 +297,7 @@ class KoreanStockSurgeDetector:
         keys = ["자기주식취득","수주","공급계약","투자","합병"]
         try:
             url = "https://finance.naver.com/item/news_dis.naver?code=" + code
-            res = requests.get(url, headers={"User-Agent":"Mozilla/5.0"}, timeout=5)
+            res = requests.get(url, headers={"User-Agent":"Mozilla/5.0"}, timeout=2)
             soup = BeautifulSoup(res.text, "html.parser")
             titles = [a.get_text() for a in soup.select(".title")]
             hits = [k for t in titles for k in keys if k in t]
@@ -312,7 +312,7 @@ class KoreanStockSurgeDetector:
         code = symbol.replace(".KS","").replace(".KQ","")
         try:
             url = f"https://finance.naver.com/item/frgn.naver?code={code}"
-            res = requests.get(url, headers={"User-Agent":"Mozilla/5.0"}, timeout=3)
+            res = requests.get(url, headers={"User-Agent":"Mozilla/5.0"}, timeout=2)
             soup = BeautifulSoup(res.text, "html.parser")
             rows = soup.select("table.type2 tr")
             inst_net    = 0
@@ -745,19 +745,16 @@ class KoreanStockSurgeDetector:
             elif below_days >= 180: score += 2
             elif below_days >= 120: score += 1
 
-            # [+1~2] 뉴스 감성
-            sentiment, pos_n, neg_n = self._news_sentiment(symbol)
-            signals["news_sentiment"] = sentiment
-            signals["pos_news"]       = pos_n
-            signals["neg_news"]       = neg_n
-            if sentiment > 0.3: score += 2
-            elif sentiment > 0: score += 1
+            # [+1~2] 뉴스 감성 - 손익비 통과 후 실행 (기본값)
+            sentiment, pos_n, neg_n = 0, 0, 0
+            signals["news_sentiment"] = 0
+            signals["pos_news"]       = 0
+            signals["neg_news"]       = 0
 
-            # [+2] 호재 공시
-            has_disc, disc_types = self._dart_disclosure(symbol)
-            signals["has_disclosure"]   = has_disc
-            signals["disclosure_types"] = disc_types
-            if has_disc: score += 2
+            # [+2] 호재 공시 - 손익비 통과 후 실행 (기본값)
+            has_disc, disc_types = False, []
+            signals["has_disclosure"]   = False
+            signals["disclosure_types"] = []
 
             # ── 1. 세력 매집 감지 (조용한 거래량 증가) ──────────
             # 주가 횡보 + 거래량 꾸준히 증가 = 세력 매집 패턴
@@ -942,6 +939,24 @@ class KoreanStockSurgeDetector:
                     return None
             except:
                 signals["rr_ratio"] = 0
+
+            # ── 손익비 통과 후에만 크롤링 실행 (속도 최적화) ────
+            # 하루 1~5개 통과 종목에만 크롤링 → 224번 → 1~5번으로 감소
+            sentiment, pos_n, neg_n = self._news_sentiment(symbol)
+            signals["news_sentiment"] = sentiment
+            signals["pos_news"]       = pos_n
+            signals["neg_news"]       = neg_n
+            if sentiment > 0.3: score += 2
+            elif sentiment > 0: score += 1
+
+            has_disc, disc_types = self._dart_disclosure(symbol)
+            signals["has_disclosure"]   = has_disc
+            signals["disclosure_types"] = disc_types
+            if has_disc: score += 2
+
+            # ML 점수 재보정 (뉴스/공시 반영 후)
+            ml_adjusted = ml_score_adjustment(signals, score)
+            signals["ml_adjusted_score"] = ml_adjusted
 
             return {
                 "symbol":           symbol,
