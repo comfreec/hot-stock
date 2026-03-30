@@ -405,9 +405,10 @@ def send_scan_alert(results: list, send_charts: bool = True):
                 if lv:
                     caption = (
                         f"<b>{r['name']}</b> ⭐{r['total_score']}점\n"
-                        f"분할매수 ₩{lv.get('ma240', lv['entry']):,.0f}~₩{lv['entry']:,.0f}  "
-                        f"목표 ₩{lv['target']:,.0f}(+{lv['upside']:.1f}%)  "
-                        f"손절 ₩{lv['stop']:,.0f}({lv['downside']:.1f}%)"
+                        f"📍 분할매수: ₩{lv.get('ma240', lv['entry']):,.0f}~₩{lv['entry']:,.0f}\n"
+                        f"🎯 목표가: ₩{lv['target']:,.0f} (+{lv['upside']:.1f}%)\n"
+                        f"🛑 손절가: ₩{lv['stop']:,.0f} ({lv['downside']:.1f}%)\n"
+                        f"⚖️ 손익비: {lv['rr']:.1f}:1"
                     )
                 else:
                     caption = f"<b>{r['name']}</b>"
