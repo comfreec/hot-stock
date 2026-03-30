@@ -592,8 +592,8 @@ cols_m[3].markdown(f"""
 if "mode" not in st.session_state:
     st.session_state["mode"] = "🔍 급등 예고 종목 탐지"
 
-tab_labels = ["🔍 급등 예고 종목 탐지", "🎯 최적 급등 타이밍", "📈 개별 종목 분석", "⭐ 즐겨찾기", "📊 백테스트"]
-tab_cols = st.columns(5)
+tab_labels = ["🔍 급등 예고 종목 탐지", "🎯 최적 급등 타이밍", "📈 개별 종목 분석", "⭐ 즐겨찾기", "📊 백테스트", "📈 성과 추적"]
+tab_cols = st.columns(6)
 for i, (col, label) in enumerate(zip(tab_cols, tab_labels)):
     active = st.session_state["mode"] == label
     if col.button(label, key=f"tab_{i}", use_container_width=True,
@@ -2222,6 +2222,85 @@ elif mode == "📊 백테스트":
                 st.dataframe(hist_df, use_container_width=True, hide_index=True)
     except:
         st.info("히스토리 기능을 사용하려면 먼저 스캔을 실행하세요.")
+
+# ── 성과 추적 탭 ──────────────────────────────────────────────────
+elif mode == "📈 성과 추적":
+    st.markdown("<div class='sec-title'>📈 알림 종목 성과 추적</div>", unsafe_allow_html=True)
+
+    try:
+        from cache_db import get_alert_history, get_performance_summary, update_alert_status
+
+        col_refresh, col_empty = st.columns([1, 4])
+        with col_refresh:
+            if st.button("🔄 상태 업데이트", type="primary", use_container_width=True):
+                with st.spinner("현재가 확인 중..."):
+                    update_alert_status()
+                st.success("업데이트 완료!")
+                st.rerun()
+
+        # ── 성과 요약 ──────────────────────────────────────────
+        perf = get_performance_summary()
+        if perf["total"] > 0:
+            c1, c2, c3, c4, c5 = st.columns(5)
+            metric_card(c1, "총 알림 종목", f"{perf['total']}개")
+            metric_card(c2, "목표가 달성", f"{perf['win']}개")
+            metric_card(c3, "손절 발생", f"{perf['loss']}개")
+            win_color = "#00d4aa" if perf['win_rate'] >= 50 else "#ff3355"
+            c4.markdown(f"""<div class='metric-card'>
+              <div class='lbl'>승률</div>
+              <div class='val' style='color:{win_color};'>{perf['win_rate']}%</div>
+            </div>""", unsafe_allow_html=True)
+            ret_color = "#00d4aa" if perf['avg_return'] >= 0 else "#ff3355"
+            c5.markdown(f"""<div class='metric-card'>
+              <div class='lbl'>평균 수익률</div>
+              <div class='val' style='color:{ret_color};'>{perf['avg_return']:+.1f}%</div>
+            </div>""", unsafe_allow_html=True)
+
+            if perf['win'] > 0 or perf['loss'] > 0:
+                st.markdown(f"""<div class='cond-box' style='margin-top:8px;'>
+                  평균 수익: <b style='color:#00d4aa;'>{perf['avg_win']:+.1f}%</b> &nbsp;|&nbsp;
+                  평균 손실: <b style='color:#ff3355;'>{perf['avg_loss']:+.1f}%</b> &nbsp;|&nbsp;
+                  만료(30일): <b style='color:#8b92a5;'>{perf['expired']}개</b>
+                </div>""", unsafe_allow_html=True)
+        else:
+            st.info("아직 성과 데이터가 없어요. 텔레그램 알림이 발송되면 자동으로 기록됩니다.")
+
+        # ── 상세 내역 ──────────────────────────────────────────
+        history = get_alert_history(100)
+        if history:
+            st.markdown("<div class='sec-title'>📋 알림 내역</div>", unsafe_allow_html=True)
+
+            status_filter = st.selectbox("상태 필터", ["전체", "진행중", "목표달성", "손절", "만료"], key="perf_filter")
+            status_map = {"전체": None, "진행중": "active", "목표달성": "hit_target", "손절": "hit_stop", "만료": "expired"}
+            filtered = [h for h in history if status_map[status_filter] is None or h["status"] == status_map[status_filter]]
+
+            rows = []
+            for h in filtered:
+                status_emoji = {"active": "🔵 진행중", "hit_target": "✅ 목표달성", "hit_stop": "🛑 손절", "expired": "⏰ 만료"}.get(h["status"], h["status"])
+                ret_str = f"{h['return_pct']:+.1f}%" if h["return_pct"] is not None else "-"
+                ret_color_str = "🟢" if (h["return_pct"] or 0) > 0 else "🔴" if (h["return_pct"] or 0) < 0 else "⚪"
+                rows.append({
+                    "날짜":    h["alert_date"],
+                    "종목명":  h["name"],
+                    "점수":    h["score"],
+                    "매수가":  f"₩{h['entry_price']:,.0f}" if h["entry_price"] else "-",
+                    "목표가":  f"₩{h['target_price']:,.0f}" if h["target_price"] else "-",
+                    "손절가":  f"₩{h['stop_price']:,.0f}" if h["stop_price"] else "-",
+                    "손익비":  f"{h['rr_ratio']:.1f}:1" if h["rr_ratio"] else "-",
+                    "상태":    status_emoji,
+                    "수익률":  f"{ret_color_str} {ret_str}",
+                    "청산일":  h["exit_date"] or "-",
+                })
+            st.dataframe(pd.DataFrame(rows),
+                column_config={
+                    "점수": st.column_config.ProgressColumn("점수", min_value=0, max_value=50, format="%d점"),
+                },
+                use_container_width=True, hide_index=True)
+        else:
+            st.info("알림 내역이 없습니다.")
+
+    except Exception as e:
+        st.error(f"성과 추적 오류: {e}")
 
 # ── 하단 면책조항 ─────────────────────────────────────────────────
 st.markdown("---")

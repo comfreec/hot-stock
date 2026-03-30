@@ -27,6 +27,25 @@ def _get_conn():
             added_at TEXT
         )
     """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS alert_history (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            alert_date  TEXT NOT NULL,
+            symbol      TEXT NOT NULL,
+            name        TEXT NOT NULL,
+            score       INTEGER,
+            entry_price REAL,
+            entry_label TEXT,
+            target_price REAL,
+            stop_price  REAL,
+            rr_ratio    REAL,
+            status      TEXT DEFAULT 'active',  -- active / hit_target / hit_stop / expired
+            exit_price  REAL,
+            exit_date   TEXT,
+            return_pct  REAL,
+            created_at  TEXT NOT NULL
+        )
+    """)
     conn.commit()
     return conn
 
@@ -105,6 +124,122 @@ def is_favorite(symbol: str) -> bool:
         return row is not None
     except:
         return False
+
+# ── 성과 추적 ────────────────────────────────────────────────────
+def save_alert_history(results: list, price_levels_map: dict = None):
+    """알림 발송 종목을 성과 추적 DB에 저장"""
+    today = date.today().isoformat()
+    conn = _get_conn()
+    for r in results:
+        sym = r.get("symbol", "")
+        lv  = (price_levels_map or {}).get(sym, {})
+        conn.execute("""
+            INSERT INTO alert_history
+            (alert_date, symbol, name, score, entry_price, entry_label,
+             target_price, stop_price, rr_ratio, status, created_at)
+            VALUES (?,?,?,?,?,?,?,?,?,'active',?)
+        """, (
+            today, sym, r.get("name", sym),
+            r.get("total_score", 0),
+            lv.get("entry"), lv.get("entry_label", ""),
+            lv.get("target"), lv.get("stop"),
+            lv.get("rr"), datetime.now().isoformat()
+        ))
+    conn.commit()
+    conn.close()
+
+def get_alert_history(limit: int = 60) -> list:
+    """성과 추적 내역 조회"""
+    conn = _get_conn()
+    rows = conn.execute("""
+        SELECT id, alert_date, symbol, name, score,
+               entry_price, entry_label, target_price, stop_price, rr_ratio,
+               status, exit_price, exit_date, return_pct, created_at
+        FROM alert_history
+        ORDER BY alert_date DESC, score DESC
+        LIMIT ?
+    """, (limit,)).fetchall()
+    conn.close()
+    keys = ["id","alert_date","symbol","name","score",
+            "entry_price","entry_label","target_price","stop_price","rr_ratio",
+            "status","exit_price","exit_date","return_pct","created_at"]
+    return [dict(zip(keys, r)) for r in rows]
+
+def update_alert_status():
+    """active 종목들의 현재가 확인 → 목표가/손절가 달성 여부 업데이트"""
+    try:
+        import yfinance as yf
+        conn = _get_conn()
+        rows = conn.execute("""
+            SELECT id, symbol, entry_price, target_price, stop_price, alert_date
+            FROM alert_history WHERE status='active'
+        """).fetchall()
+
+        today = date.today().isoformat()
+        for row in rows:
+            rid, sym, entry, target, stop, alert_date = row
+            if not entry or not target or not stop:
+                continue
+            # 30일 경과 시 만료
+            try:
+                from datetime import datetime as dt
+                days_elapsed = (dt.now() - dt.fromisoformat(alert_date)).days
+                if days_elapsed > 30:
+                    conn.execute("UPDATE alert_history SET status='expired', exit_date=? WHERE id=?",
+                                 (today, rid))
+                    continue
+            except:
+                pass
+            try:
+                df = yf.Ticker(sym).history(period="5d").dropna(subset=["Close"])
+                if len(df) == 0:
+                    continue
+                cur = float(df["Close"].iloc[-1])
+                ret = (cur - entry) / entry * 100
+
+                if cur >= target:
+                    conn.execute("""UPDATE alert_history
+                        SET status='hit_target', exit_price=?, exit_date=?, return_pct=?
+                        WHERE id=?""", (cur, today, ret, rid))
+                elif cur <= stop:
+                    conn.execute("""UPDATE alert_history
+                        SET status='hit_stop', exit_price=?, exit_date=?, return_pct=?
+                        WHERE id=?""", (cur, today, ret, rid))
+            except:
+                pass
+
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"[성과추적] 업데이트 오류: {e}")
+
+def get_performance_summary() -> dict:
+    """성과 요약 통계"""
+    conn = _get_conn()
+    rows = conn.execute("""
+        SELECT status, return_pct FROM alert_history
+        WHERE status != 'active'
+    """).fetchall()
+    conn.close()
+
+    if not rows:
+        return {"total": 0, "win": 0, "loss": 0, "win_rate": 0, "avg_return": 0}
+
+    total  = len(rows)
+    wins   = [r[1] for r in rows if r[0] == 'hit_target' and r[1] is not None]
+    losses = [r[1] for r in rows if r[0] == 'hit_stop'   and r[1] is not None]
+    all_ret = [r[1] for r in rows if r[1] is not None]
+
+    return {
+        "total":      total,
+        "win":        len(wins),
+        "loss":       len(losses),
+        "expired":    sum(1 for r in rows if r[0] == 'expired'),
+        "win_rate":   round(len(wins) / total * 100, 1) if total > 0 else 0,
+        "avg_return": round(sum(all_ret) / len(all_ret), 2) if all_ret else 0,
+        "avg_win":    round(sum(wins) / len(wins), 2) if wins else 0,
+        "avg_loss":   round(sum(losses) / len(losses), 2) if losses else 0,
+    }
 
 # ── 백그라운드 자동 스캔 스케줄러 ────────────────────────────────
 def _run_scan_job():

@@ -42,6 +42,14 @@ try:
     else:
         send_telegram(f"📊 {date.today()} 장마감\n오늘은 조건을 충족하는 급등 예고 종목이 없습니다.")
 
+    # ── 기존 알림 종목 성과 상태 업데이트 ──────────────────────
+    try:
+        from cache_db import update_alert_status
+        update_alert_status()
+        print("성과 추적 상태 업데이트 완료")
+    except Exception as e:
+        print(f"성과 추적 업데이트 오류: {e}")
+
 except Exception as e:
     print(f"오류: {e}")
     import traceback

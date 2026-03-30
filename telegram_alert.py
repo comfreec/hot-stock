@@ -363,9 +363,12 @@ def send_scan_alert(results: list, send_charts: bool = True):
         send_telegram(message)
 
     # 차트 이미지 전송 (종목별)
+    # 차트 이미지 전송 + 성과 추적 저장
+    price_levels_map = {}
     if send_charts:
         for r in results[:5]:
             lv = calc_price_levels(r["symbol"])
+            price_levels_map[r["symbol"]] = lv
             img = make_chart_image(r["symbol"], r["name"], price_levels=lv)
             if img:
                 if lv:
@@ -378,6 +381,18 @@ def send_scan_alert(results: list, send_charts: bool = True):
                 else:
                     caption = f"<b>{r['name']}</b>"
                 send_photo(img, caption)
+
+    # ── 성과 추적 DB 저장 ──────────────────────────────────────
+    try:
+        from cache_db import save_alert_history
+        # 차트 없는 종목도 포함해서 전체 저장
+        for r in results:
+            if r["symbol"] not in price_levels_map:
+                price_levels_map[r["symbol"]] = calc_price_levels(r["symbol"])
+        save_alert_history(results, price_levels_map)
+        print(f"[성과추적] {len(results)}개 종목 저장 완료")
+    except Exception as e:
+        print(f"[성과추적] 저장 오류: {e}")
 
 
 def send_test_alert():
