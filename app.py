@@ -1234,19 +1234,35 @@ if mode == "🔍 급등 예고 종목 탐지":
                     if not active:
                         st.info("추가 신호 없음 (핵심 조건만 충족)")
 
-                    # 스캔 시 이미 가져온 OHLC 데이터 직접 사용 (yfinance 재호출 없음)
-                    close_s = r.get("close_series")
-                    if close_s is not None and len(close_s) > 20:
-                        try:
+                    # yfinance에서 직접 가져오기 (OHLC 포함 캔들 차트용)
+                    cd = None
+                    try:
+                        import yfinance as _yf
+                        _df = _yf.Ticker(r["symbol"]).history(period="2y")
+                        # 당일 NaN 보완
+                        if len(_df) > 0 and pd.isna(_df["Close"].iloc[-1]):
+                            today_p = r.get("current_price")
+                            if today_p:
+                                _df.loc[_df.index[-1], ["Open","High","Low","Close"]] = today_p
+                        cd = _df.dropna(subset=["Open","High","Low","Close"])
+                    except:
+                        pass
+                    # 실패 시 스캔 데이터로 폴백
+                    if cd is None or len(cd) == 0:
+                        close_s = r.get("close_series")
+                        if close_s is not None:
                             cd = pd.DataFrame({
-                                "Open":   r.get("open_series",  close_s),
-                                "High":   r.get("high_series",  close_s),
-                                "Low":    r.get("low_series",   close_s),
+                                "Open":   r.get("open_series", close_s),
+                                "High":   r.get("high_series", close_s),
+                                "Low":    r.get("low_series",  close_s),
                                 "Close":  close_s,
                                 "Volume": r.get("volume_series", pd.Series(0, index=close_s.index))
                             })
+                    if cd is not None and len(cd) > 20:
+                        try:
                             cross_date = None
-                            if r["days_since_cross"] < len(close_s):
+                            close_s = r.get("close_series")
+                            if close_s is not None and r["days_since_cross"] < len(close_s):
                                 cross_date = close_s.index[-(r["days_since_cross"]+1)]
                             _c1 = make_candle(cd, f"{r['name']} ({r['symbol']})", cross_date=cross_date, symbol=r["symbol"])
                             st.plotly_chart(_c1, width='stretch', key=f"candle_{r['symbol']}_{i}")
