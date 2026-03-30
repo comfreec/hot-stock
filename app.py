@@ -789,10 +789,10 @@ def show_price_levels(fig):
       </div>
       <div style='flex:1;background:rgba(255,215,0,0.08);border:1px solid #ffd700;
            border-radius:10px;padding:12px;text-align:center;'>
-        <div style='color:#8b92a5;font-size:10px;letter-spacing:1px;'>📍 매수가</div>
-        <div style='color:#ffd700;font-size:18px;font-weight:700;margin:4px 0;'>₩{lv["entry"]:,.0f}</div>
-        <div style='color:#ffd700;font-size:12px;'>{lv.get("entry_label","근거가") } 기준</div>
-        <div style='color:#4a5568;font-size:10px;margin-top:4px;'>240선 근거 진입가</div>
+        <div style='color:#8b92a5;font-size:10px;letter-spacing:1px;'>📍 분할매수</div>
+        <div style='color:#ffd700;font-size:15px;font-weight:700;margin:4px 0;'>₩{lv["stop"]:,.0f}</div>
+        <div style='color:#ffd700;font-size:12px;'>~ ₩{lv["entry"]:,.0f}</div>
+        <div style='color:#4a5568;font-size:10px;margin-top:4px;'>240선 근처 분할매수</div>
       </div>
       <div style='flex:1;background:rgba(255,51,85,0.08);border:1px solid #ff3355;
            border-radius:10px;padding:12px;text-align:center;'>
