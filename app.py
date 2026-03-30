@@ -1234,19 +1234,25 @@ if mode == "🔍 급등 예고 종목 탐지":
                     if not active:
                         st.info("추가 신호 없음 (핵심 조건만 충족)")
 
-                    # yfinance에서 직접 가져오기 (OHLC 포함 캔들 차트용)
+                    # 스캔 데이터 직접 사용 (yfinance 재호출 없음 - Rate Limit 방지)
                     cd = None
-                    try:
-                        import yfinance as _yf
-                        _df = _yf.Ticker(r["symbol"]).history(period="2y")
-                        # 당일 NaN 보완
-                        if len(_df) > 0 and pd.isna(_df["Close"].iloc[-1]):
-                            today_p = r.get("current_price")
-                            if today_p:
-                                _df.loc[_df.index[-1], ["Open","High","Low","Close"]] = today_p
-                        cd = _df.dropna(subset=["Open","High","Low","Close"])
-                    except:
-                        pass
+                    close_s = r.get("close_series")
+                    if close_s is not None and len(close_s) > 20:
+                        open_s  = r.get("open_series",  close_s)
+                        high_s  = r.get("high_series",  close_s)
+                        low_s   = r.get("low_series",   close_s)
+                        vol_s   = r.get("volume_series", pd.Series(0, index=close_s.index))
+                        cd = pd.DataFrame({"Open":open_s,"High":high_s,"Low":low_s,"Close":close_s,"Volume":vol_s})
+                        # 당일 종가가 스캔 데이터에 없으면 current_price로 추가
+                        from datetime import date as _date
+                        today_str = _date.today().isoformat()
+                        last_date = str(cd.index[-1])[:10]
+                        if last_date < today_str:
+                            cur_p = float(r.get("current_price", 0))
+                            if cur_p > 0:
+                                import pandas as _pd
+                                new_idx = _pd.Timestamp(today_str, tz=cd.index.tz)
+                                cd.loc[new_idx] = [cur_p, cur_p, cur_p, cur_p, 0]
                     # 실패 시 스캔 데이터로 폴백
                     if cd is None or len(cd) == 0:
                         close_s = r.get("close_series")
