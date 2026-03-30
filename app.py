@@ -59,7 +59,7 @@ if not st.session_state["authenticated"]:
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
         pw = st.text_input("", type="password", placeholder="🔑  비밀번호 입력", label_visibility="collapsed")
-        if st.button("로그인", type="primary", use_container_width=True):
+        if st.button("로그인", type="primary", width='stretch'):
             if pw in PASSWORDS:
                 st.session_state["authenticated"] = True
                 st.rerun()
@@ -597,7 +597,7 @@ tab_labels = ["🔍 급등 예고 종목 탐지", "🎯 최적 급등 타이밍"
 tab_cols = st.columns(6)
 for i, (col, label) in enumerate(zip(tab_cols, tab_labels)):
     active = st.session_state["mode"] == label
-    if col.button(label, key=f"tab_{i}", use_container_width=True,
+    if col.button(label, key=f"tab_{i}", width='stretch',
                   type="primary" if active else "secondary"):
         st.session_state["mode"] = label
         if label == "⭐ 즐겨찾기":
@@ -617,7 +617,7 @@ with st.sidebar:
     if "max_cross" not in st.session_state: st.session_state["max_cross"] = 60
     if "min_score" not in st.session_state: st.session_state["min_score"] = 15
 
-    if st.button("⚡ 최적 셋팅", use_container_width=True):
+    if st.button("⚡ 최적 셋팅", width='stretch'):
         st.session_state["max_gap"]   = 15
         st.session_state["min_below"] = 120
         st.session_state["max_cross"] = 60   # 돌파 후 60일 이내
@@ -734,8 +734,12 @@ def search_stock_by_name(query: str) -> list:
 def get_chart_data(symbol, period="2y"):
     try:
         df = yf.Ticker(symbol).history(period=period)
-        return df.dropna(subset=["Open","High","Low","Close"]) if df is not None and len(df) > 0 else None
-    except: return None
+        if df is None or len(df) == 0:
+            return None
+        df = df.dropna(subset=["Open","High","Low","Close"])
+        return df if len(df) > 0 else None
+    except:
+        return None
 
 def metric_card(col, label, value):
     col.markdown(f"""<div class="metric-card">
@@ -1019,7 +1023,7 @@ if mode == "🔍 급등 예고 종목 탐지":
       📍 현재 주가 240일선 위 <b style="color:#4f8ef7;">0~{max_gap}%</b> 이내
     </div>""", unsafe_allow_html=True)
 
-    if st.button("🚀 스캔 시작", type="primary", use_container_width=True):
+    if st.button("🚀 스캔 시작", type="primary", width='stretch'):
         det = KoreanStockSurgeDetector(max_gap, min_below, max_cross)
         symbols = list(dict.fromkeys(det.all_symbols))  # 중복 제거
         total = len(symbols)
@@ -1131,7 +1135,7 @@ if mode == "🔍 급등 예고 종목 탐지":
                     "수급": st.column_config.TextColumn("기관/외국인", help="🔥=동시매수 ✅=한쪽매수 ❌=없음"),
                     "거래량": st.column_config.TextColumn("거래량", help="✅=3배이상 🔶=2배이상 ❌=미달"),
                 },
-                use_container_width=True, hide_index=True)
+                width='stretch', hide_index=True)
 
             # 차트
             if len(results) > 1:
@@ -1141,7 +1145,7 @@ if mode == "🔍 급등 예고 종목 탐지":
                 fig.update_layout(paper_bgcolor="#0e1117",plot_bgcolor="#0e1117",
                     font=dict(color="#8b92a5"),xaxis_tickangle=30,
                     coloraxis_showscale=False,height=240,margin=dict(l=5,r=5,t=30,b=50))
-                st.plotly_chart(fig, config={"scrollZoom":False,"displayModeBar":False,"staticPlot":True}, use_container_width=True, key="chart_score_bar")
+                st.plotly_chart(fig, config={"scrollZoom":False,"displayModeBar":False,"staticPlot":True}, width='stretch', key="chart_score_bar")
 
             # 상세 카드
             st.markdown("<div class='sec-title'>🎯 종목별 상세 분석</div>", unsafe_allow_html=True)
@@ -1155,9 +1159,8 @@ if mode == "🔍 급등 예고 종목 탐지":
                 color = "#ff3355" if r["price_change_1d"] > 0 else "#4f8ef7"
                 arrow = "▲" if r["price_change_1d"] > 0 else "▼"
 
-                # 스파크라인 + 뉴스
-                spark_prices = get_sparkline(r["symbol"])
-                spark_svg = make_sparkline(spark_prices, color) if spark_prices else ""
+                # 스파크라인 제거 (렌더링 충돌 방지)
+                spark_svg = ""
                 news = get_news_headline(r["symbol"])
                 import html as _html
                 news_safe = _html.escape(news) if news else ""
@@ -1165,6 +1168,13 @@ if mode == "🔍 급등 예고 종목 탐지":
                 # 실시간 가격
                 rt_price = get_realtime_price(r["symbol"])
                 display_price = rt_price if rt_price else r["current_price"]
+                # 수급 문자열 사전 계산 (f-string 충돌 방지)
+                if r.get("both_buying"):
+                    supply_str = "🔥기관+외국인"
+                elif r.get("smart_money_in"):
+                    supply_str = "✅수급있음"
+                else:
+                    supply_str = "❌수급없음"
 
                 st.markdown(f"""<div class="rank-card {medal}">
                   <div style="display:flex;justify-content:space-between;align-items:center;">
@@ -1174,7 +1184,6 @@ if mode == "🔍 급등 예고 종목 탐지":
                       <span style="color:#8b92a5;font-size:13px;margin-left:8px;">{r["symbol"]}</span>
                     </div>
                     <div style="display:flex;align-items:center;gap:12px;">
-                      {spark_svg}
                       <div style="text-align:right;">
                         <span style="color:#fff;font-size:clamp(14px,3vw,20px);font-weight:700;">₩{display_price:,.0f}</span>
                         <span style="color:{color};font-size:14px;margin-left:8px;">{arrow} {abs(r["price_change_1d"]):.2f}%</span>
@@ -1184,7 +1193,7 @@ if mode == "🔍 급등 예고 종목 탐지":
                   <div style="margin-top:6px;color:#8b92a5;font-size:12px;">
                     240일선 ₩{r["ma240"]:,.0f} | 이격 +{r["ma240_gap"]:.1f}% |
                     조정 {r["below_days"]}일({below_months}개월) | 돌파 {r["days_since_cross"]}일 전 | 돌파강도 {r.get("cross_gap_pct",0):.1f}% |
-                    수급 {"🔥기관+외국인" if r.get("both_buying") else ("✅수급있음" if r.get("smart_money_in") else "❌수급없음")} | 핵심신호 {r.get("core_signal_count",0)}개
+                    수급 {supply_str} | 핵심신호 {r.get("core_signal_count",0)}개
                   </div>
                 </div>""", unsafe_allow_html=True)
                 # 즐겨찾기 버튼 (localStorage 기반 - 기기별 영구 저장)
@@ -1192,7 +1201,7 @@ if mode == "🔍 급등 예고 종목 탐지":
                 _favs = ls_get_favorites()
                 _is_fav = r["symbol"] in _favs
                 _fav_label = "⭐ 즐겨찾기 해제" if _is_fav else "☆ 즐겨찾기"
-                if _fav_col.button(_fav_label, key=f"fav_{r['symbol']}_{i}", use_container_width=True):
+                if _fav_col.button(_fav_label, key=f"fav_{r['symbol']}_{i}", width='stretch'):
                     if _is_fav:
                         _favs.pop(r["symbol"], None)
                     else:
@@ -1259,17 +1268,25 @@ if mode == "🔍 급등 예고 종목 탐지":
                     if not active:
                         st.info("추가 신호 없음 (핵심 조건만 충족)")
 
-                    rsi_s = r.get("rsi_series")
-                    cd    = get_chart_data(r["symbol"], "2y")
-                    if cd is not None:
-                        close_s = r.get("close_series")
-                        if close_s is not None:
-                            cross_date = close_s.index[-(r["days_since_cross"]+1)]
-                        else:
+                    # 스캔 시 이미 가져온 OHLC 데이터 직접 사용 (yfinance 재호출 없음)
+                    close_s = r.get("close_series")
+                    if close_s is not None and len(close_s) > 20:
+                        try:
+                            cd = pd.DataFrame({
+                                "Open":   r.get("open_series",  close_s),
+                                "High":   r.get("high_series",  close_s),
+                                "Low":    r.get("low_series",   close_s),
+                                "Close":  close_s,
+                                "Volume": r.get("volume_series", pd.Series(0, index=close_s.index))
+                            })
                             cross_date = None
-                        _c1 = make_candle(cd, f"{r['name']} ({r['symbol']})", cross_date=cross_date)
-                        st.plotly_chart(_c1, config={"scrollZoom":False,"displayModeBar":False,"staticPlot":True}, use_container_width=True, key=f"candle_{r['symbol']}")
-                        show_price_levels(_c1)
+                            if r["days_since_cross"] < len(close_s):
+                                cross_date = close_s.index[-(r["days_since_cross"]+1)]
+                            _c1 = make_candle(cd, f"{r['name']} ({r['symbol']})", cross_date=cross_date)
+                            st.plotly_chart(_c1, width='stretch', key=f"candle_{r['symbol']}_{i}")
+                            show_price_levels(_c1)
+                        except Exception as chart_err:
+                            st.caption(f"차트 오류: {chart_err}")
 
 # ── 개별 종목 분석 ───────────────────────────────────────────────
 elif mode == "📈 개별 종목 분석":
@@ -1387,7 +1404,7 @@ elif mode == "📈 개별 종목 분석":
             close_s2 = result.get("close_series")
             cross_date = close_s2.index[-(result["days_since_cross"]+1)] if close_s2 is not None else None
             _c2 = make_candle(data, f"{name} ({symbol})", cross_date=cross_date)
-            st.plotly_chart(_c2, config={"scrollZoom":False,"displayModeBar":False,"staticPlot":True}, use_container_width=True)
+            st.plotly_chart(_c2, config={"scrollZoom":False,"displayModeBar":False,"staticPlot":True}, width='stretch')
             show_price_levels(_c2)
 
             _favs2 = ls_get_favorites()
@@ -1430,7 +1447,7 @@ elif mode == "📈 개별 종목 분석":
                     st.warning("📊 240일선 돌파 이력 또는 조정 기간 조건 미충족")
 
             _c3 = make_candle(data, f"{name} ({symbol})")
-            st.plotly_chart(_c3, config={"scrollZoom":False,"displayModeBar":False,"staticPlot":True}, use_container_width=True, key="chart_candle_no_cond")
+            st.plotly_chart(_c3, config={"scrollZoom":False,"displayModeBar":False,"staticPlot":True}, width='stretch', key="chart_candle_no_cond")
             show_price_levels(_c3)
 
             _favs3 = ls_get_favorites()
@@ -1502,7 +1519,7 @@ elif mode == "💎 우량주 RSI 70 이탈":
 
     days_ago = st.slider("📅 최근 며칠 이내 70 이탈", 1, 60, 20, help="70선 이탈이 며칠 이내인지")
 
-    if st.button("🔍 스캔 시작", type="primary", use_container_width=True):
+    if st.button("🔍 스캔 시작", type="primary", width='stretch'):
         results = []
         prog = st.progress(0)
         total = len(QUALITY_STOCKS)
@@ -1605,7 +1622,7 @@ elif mode == "💎 우량주 RSI 70 이탈":
                     "현재RSI": st.column_config.ProgressColumn("현재RSI", min_value=0, max_value=100, format="%.1f"),
                     "고점RSI": st.column_config.ProgressColumn("고점RSI", min_value=0, max_value=100, format="%.1f"),
                 },
-                use_container_width=True, hide_index=True)
+                width='stretch', hide_index=True)
 
             st.markdown("<div class='sec-title'>📈 종목별 RSI 차트</div>", unsafe_allow_html=True)
             for r in results:
@@ -1618,9 +1635,9 @@ elif mode == "💎 우량주 RSI 70 이탈":
                     st.plotly_chart(
                         make_rsi_chart(r["rsi_series"], r["df"]),
                         config={"scrollZoom": False, "displayModeBar": False},
-                        use_container_width=True, key=f"rsi_quality_{r['symbol']}")
+                        width='stretch', key=f"rsi_quality_{r['symbol']}")
                     _c4 = make_candle(r["df"], f"{r['name']} ({r['symbol']})")
-                    st.plotly_chart(_c4, config={"scrollZoom":False,"displayModeBar":False,"staticPlot":True}, use_container_width=True, key=f"candle_quality_{r['symbol']}")
+                    st.plotly_chart(_c4, config={"scrollZoom":False,"displayModeBar":False,"staticPlot":True}, width='stretch', key=f"candle_quality_{r['symbol']}")
                     show_price_levels(_c4)
 
 
@@ -1859,7 +1876,7 @@ elif mode == "🎯 최적 급등 타이밍":
         except Exception:
             return None
 
-    if st.button("🚀 최적 타이밍 스캔", type="primary", use_container_width=True):
+    if st.button("🚀 최적 타이밍 스캔", type="primary", width='stretch'):
         from stock_surge_detector import ALL_SYMBOLS as SCAN_SYMBOLS
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -1929,7 +1946,7 @@ elif mode == "🎯 최적 급등 타이밍":
                         "종합점수", min_value=0, max_value=30, format="%d점"),
                     "240선": st.column_config.TextColumn("240선 확인", help="🔥=완전확인 ✅=근처 ❌=해당없음"),
                 },
-                use_container_width=True, hide_index=True)
+                width='stretch', hide_index=True)
 
             # 상위 종목 상세
             st.markdown("<div class='sec-title'>🔍 상위 종목 상세 분석</div>", unsafe_allow_html=True)
@@ -2001,12 +2018,12 @@ elif mode == "🎯 최적 급등 타이밍":
 
                     cd = r["df"]
                     _c5 = make_candle(cd, f"{r['name']} ({r['symbol']})", show_levels=True)
-                    st.plotly_chart(_c5, config={"scrollZoom":False,"displayModeBar":False,"staticPlot":True}, use_container_width=True, key=f"candle_timing_{r['symbol']}")
+                    st.plotly_chart(_c5, config={"scrollZoom":False,"displayModeBar":False,"staticPlot":True}, width='stretch', key=f"candle_timing_{r['symbol']}")
                     show_price_levels(_c5)
                     st.plotly_chart(
                         make_rsi_chart(r["rsi_series"], cd),
                         config={"scrollZoom":False,"displayModeBar":False,"staticPlot":True},
-                        use_container_width=True, key=f"rsi_timing_{r['symbol']}")
+                        width='stretch', key=f"rsi_timing_{r['symbol']}")
 
 
 # ── 즐겨찾기 탭 ──────────────────────────────────────────────────
@@ -2058,7 +2075,7 @@ elif mode == "⭐ 즐겨찾기":
                 if cd is not None:
                     fig_f = make_candle(cd, f"{name} ({sym})")
                     st.plotly_chart(fig_f, config={"scrollZoom":False,"displayModeBar":False,"staticPlot":True},
-                                    use_container_width=True, key=f"fav_chart_{sym}")
+                                    width='stretch', key=f"fav_chart_{sym}")
                     show_price_levels(fig_f)
 
 # ── 백테스트 탭 ───────────────────────────────────────────────────
@@ -2100,7 +2117,7 @@ elif mode == "📊 백테스트":
             column_config={
                 "가중치": st.column_config.ProgressColumn("가중치", min_value=0, max_value=2.5, format="%.1f")
             },
-            use_container_width=True, hide_index=True)
+            width='stretch', hide_index=True)
     except:
         st.warning("백테스트 모듈을 불러올 수 없습니다.")
 
@@ -2181,7 +2198,7 @@ elif mode == "📊 백테스트":
                     column_config={
                         "평균수익률": st.column_config.NumberColumn("평균수익률(%)", format="%.2f")
                     },
-                    use_container_width=True, hide_index=True)
+                    width='stretch', hide_index=True)
 
     # 과거 스캔 결과 히스토리
     st.markdown("---")
@@ -2204,7 +2221,7 @@ elif mode == "📊 백테스트":
                     "조정기간": f"{r.get('below_days',0)}일",
                     "종합점수": r.get("total_score", 0),
                 } for r in cached])
-                st.dataframe(hist_df, use_container_width=True, hide_index=True)
+                st.dataframe(hist_df, width='stretch', hide_index=True)
     except:
         st.info("히스토리 기능을 사용하려면 먼저 스캔을 실행하세요.")
 
@@ -2217,7 +2234,7 @@ elif mode == "📈 성과 추적":
 
         col_refresh, col_empty = st.columns([1, 4])
         with col_refresh:
-            if st.button("🔄 상태 업데이트", type="primary", use_container_width=True):
+            if st.button("🔄 상태 업데이트", type="primary", width='stretch'):
                 with st.spinner("현재가 확인 중..."):
                     update_alert_status()
                 st.success("업데이트 완료!")
@@ -2284,7 +2301,7 @@ elif mode == "📈 성과 추적":
                     xaxis=dict(gridcolor="#1e2540"),
                     yaxis=dict(gridcolor="#1e2540", ticksuffix="%"),
                 )
-                st.plotly_chart(fig_perf, use_container_width=True)
+                st.plotly_chart(fig_perf, width='stretch')
         else:
             st.info("아직 성과 데이터가 없어요. 텔레그램 알림이 발송되면 자동으로 기록됩니다.")
 
@@ -2318,7 +2335,7 @@ elif mode == "📈 성과 추적":
                 column_config={
                     "점수": st.column_config.ProgressColumn("점수", min_value=0, max_value=50, format="%d점"),
                 },
-                use_container_width=True, hide_index=True)
+                width='stretch', hide_index=True)
         else:
             st.info("알림 내역이 없습니다.")
 
@@ -2332,7 +2349,7 @@ st.markdown("---")
 with st.sidebar:
     st.markdown("---")
     st.markdown("### 📲 텔레그램 알림")
-    if st.button("🔔 지금 알림 전송", use_container_width=True):
+    if st.button("🔔 지금 알림 전송", width='stretch'):
         try:
             from telegram_alert import send_scan_alert, send_test_alert
             scan_res = st.session_state.get("scan_results", [])
@@ -2343,7 +2360,7 @@ with st.sidebar:
                 st.warning("스캔 결과가 없어요. 먼저 스캔을 실행하세요.")
         except Exception as e:
             st.error(f"전송 실패: {e}")
-    if st.button("🧪 연결 테스트", use_container_width=True):
+    if st.button("🧪 연결 테스트", width='stretch'):
         try:
             from telegram_alert import send_test_alert
             ok = send_test_alert()
