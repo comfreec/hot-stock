@@ -23,6 +23,25 @@ try:
 
     print(f"조건 충족 종목: {len(results)}개")
 
+    # DB 저장 (앱에서 캐시로 사용)
+    try:
+        from cache_db import save_scan
+        def _serialize(r):
+            out = {}
+            for k, v in r.items():
+                if hasattr(v, 'tolist'):
+                    out[k] = v.tolist()
+                elif hasattr(v, '__iter__') and not isinstance(v, (str, dict, list)):
+                    try: out[k] = list(v)
+                    except: out[k] = v
+                else:
+                    out[k] = v
+            return out
+        save_scan([_serialize(r) for r in results])
+        print(f"DB 저장 완료 ({len(results)}개)")
+    except Exception as e:
+        print(f"DB 저장 오류: {e}")
+
     if results:
         send_scan_alert(results, send_charts=True)
         print("텔레그램 전송 완료")

@@ -970,6 +970,16 @@ def make_candle(data, title, ma240_series=None, cross_date=None, show_levels=Tru
 # ── 급등 예고 종목 탐지 ──────────────────────────────────────────
 if mode == "🔍 급등 예고 종목 탐지":
 
+    # ── 오늘 캐시 자동 로드 ──────────────────────────────────────
+    if "scan_results" not in st.session_state:
+        try:
+            cached_today = load_scan()  # 오늘 날짜 기본값
+            if cached_today:
+                st.session_state["scan_results"] = cached_today
+                st.info(f"📦 오늘 캐시된 스캔 결과 {len(cached_today)}개 로드됨 (재스캔하려면 '스캔 시작' 클릭)")
+        except:
+            pass
+
     # 현재 조건 표시
     st.markdown(f"""<div class="cond-box">
       <b style="color:#e0e6f0;">현재 탐지 조건</b><br>
@@ -1020,9 +1030,19 @@ if mode == "🔍 급등 예고 종목 탐지":
 
         st.session_state["scan_results"] = results
 
-        # DB 캐싱
+        # DB 캐싱 (시리즈 데이터 포함 저장)
         try:
-            save_scan([{k: v for k, v in r.items() if k not in ("close_series","rsi_series","ma240_series","ma60_series","ma20_series","volume_series","vol_ma_series")} for r in results])
+            def _serialize(r):
+                out = {}
+                for k, v in r.items():
+                    if hasattr(v, 'tolist'):  # pandas Series/numpy array
+                        out[k] = v.tolist()
+                    elif hasattr(v, 'index'):  # pandas Series with index
+                        out[k] = list(v)
+                    else:
+                        out[k] = v
+                return out
+            save_scan([_serialize(r) for r in results])
         except:
             pass
 
