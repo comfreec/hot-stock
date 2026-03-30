@@ -352,12 +352,22 @@ def send_scan_alert(results: list, send_charts: bool = True):
 
         if lv and entry_low and entry_high:
             split_str = f"₩{entry_low:,.0f}~₩{entry_high:,.0f}"
+            avg_entry = (entry_low + entry_high) / 2
         else:
             split_str = f"₩{r['current_price']:,.0f}"
+            avg_entry = r['current_price']
 
-        target_str = f"₩{lv['target']:,.0f} (+{lv['upside']:.1f}%)" if lv else "-"
-        stop_str   = f"₩{lv['stop']:,.0f} ({lv['downside']:.1f}%)" if lv else "-"
-        rr_str     = f"{lv['rr']:.1f} : 1" if lv else "-"
+        if lv:
+            avg_upside   = (lv['target'] / avg_entry - 1) * 100
+            avg_downside = (lv['stop']   / avg_entry - 1) * 100
+            avg_rr       = avg_upside / abs(avg_downside) if avg_downside != 0 else 0
+            target_str = f"₩{lv['target']:,.0f} (+{avg_upside:.1f}%)"
+            stop_str   = f"₩{lv['stop']:,.0f} ({avg_downside:.1f}%)"
+            rr_str     = f"{avg_rr:.1f} : 1"
+        else:
+            target_str = "-"
+            stop_str   = "-"
+            rr_str     = "-"
 
         per_str = f"PER {fin['per']}" if fin.get("per") else ""
         pbr_str = f"PBR {fin['pbr']}" if fin.get("pbr") else ""
@@ -403,12 +413,18 @@ def send_scan_alert(results: list, send_charts: bool = True):
             img = make_chart_image(r["symbol"], r["name"], price_levels=lv)
             if img:
                 if lv:
+                    entry_low_c  = lv.get('ma240', lv['entry'])
+                    entry_high_c = lv['entry']
+                    avg_entry_c  = (entry_low_c + entry_high_c) / 2
+                    avg_up_c     = (lv['target'] / avg_entry_c - 1) * 100
+                    avg_dn_c     = (lv['stop']   / avg_entry_c - 1) * 100
+                    avg_rr_c     = avg_up_c / abs(avg_dn_c) if avg_dn_c != 0 else 0
                     caption = (
                         f"<b>{r['name']}</b> ⭐{r['total_score']}점\n"
-                        f"📍 분할매수: ₩{lv.get('ma240', lv['entry']):,.0f}~₩{lv['entry']:,.0f}\n"
-                        f"🎯 목표가: ₩{lv['target']:,.0f} (+{lv['upside']:.1f}%)\n"
-                        f"🛑 손절가: ₩{lv['stop']:,.0f} ({lv['downside']:.1f}%)\n"
-                        f"⚖️ 손익비: {lv['rr']:.1f}:1"
+                        f"📍 분할매수: ₩{entry_low_c:,.0f}~₩{entry_high_c:,.0f}\n"
+                        f"🎯 목표가: ₩{lv['target']:,.0f} (+{avg_up_c:.1f}%)\n"
+                        f"🛑 손절가: ₩{lv['stop']:,.0f} ({avg_dn_c:.1f}%)\n"
+                        f"⚖️ 손익비: {avg_rr_c:.1f}:1"
                     )
                 else:
                     caption = f"<b>{r['name']}</b>"
