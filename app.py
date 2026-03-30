@@ -902,7 +902,7 @@ def _calc_price_levels_from_data(data):
         entry_candidates.append(("MA20", ma20))
         valid = [(l,p) for l,p in entry_candidates if p < current * 0.98 and (ma240_v is None or p >= ma240_v * 0.99)]
         if valid:
-            entry_label, entry = min(valid, key=lambda x: abs(x[1]-(ma240_v or x[1])))
+            entry_label, entry = max(valid, key=lambda x: x[1])  # 가장 높은 값 = 현재가에 가장 가까운 지지선
         else:
             entry_label, entry = "현재가", current
         stop_cands = []
