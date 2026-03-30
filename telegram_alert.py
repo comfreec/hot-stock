@@ -327,9 +327,16 @@ def send_scan_alert(results: list, send_charts: bool = True):
         s   = r.get("signals", {})
         sig_str = format_signals(s)
 
-        entry      = f"₩{lv['entry']:,.0f} ({lv['entry_label']})" if lv else f"₩{r['current_price']:,.0f}"
-        target_str = f"₩{lv['target']:,.0f}  (+{lv['upside']:.1f}%)" if lv else "-"
-        stop_str   = f"₩{lv['stop']:,.0f}  ({lv['downside']:.1f}%)" if lv else "-"
+        entry_low  = lv['stop'] if lv else None   # 분할매수 하단 = 손절가 위
+        entry_high = lv['entry'] if lv else None  # 분할매수 상단 = 매수가
+
+        if lv and entry_low and entry_high:
+            split_str = f"₩{entry_low:,.0f}~₩{entry_high:,.0f} (240선 근처 분할매수)"
+        else:
+            split_str = f"₩{r['current_price']:,.0f}"
+
+        target_str = f"₩{lv['target']:,.0f} (+{lv['upside']:.1f}%)" if lv else "-"
+        stop_str   = f"₩{lv['stop']:,.0f} ({lv['downside']:.1f}%)" if lv else "-"
         rr_str     = f"{lv['rr']:.1f} : 1" if lv else "-"
 
         per_str = f"PER {fin['per']}" if fin.get("per") else ""
@@ -338,7 +345,7 @@ def send_scan_alert(results: list, send_charts: bool = True):
 
         block = (
             f"\n<b>{i}. {r['name']} ({r['symbol']})</b> ⭐ {r['total_score']}점\n"
-            f"📍 매수가:  {entry}\n"
+            f"📍 분할매수:  {split_str}\n"
             f"🎯 목표가:  {target_str}\n"
             f"🛑 손절가:  {stop_str}\n"
             f"⚖️ 손익비:  {rr_str}\n"
