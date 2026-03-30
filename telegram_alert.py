@@ -251,19 +251,17 @@ def calc_price_levels(symbol: str) -> dict:
         else:
             entry_label, entry = "현재가", current
 
-        # ── 분할매수 평균가 계산 ──────────────────────────────────
+        # ── 분할매수 평균가 = 실질 매수가 기준 ──────────────────
         entry_low_v = ma240_v if ma240_v else entry
         avg_entry = (entry_low_v + entry) / 2
 
-        # ── 손절가: 평균 매수가 기준 클리핑 ──────────────────────
+        # ── 손절가: 기존 로직 유지 (금액 그대로) ─────────────────
         stop_candidates = []
         if ma240_v:
             stop_candidates.append(ma240_v * 0.995)        # 240선 아래 0.5%
         stop_candidates.append(swing_low_20 - atr * 1.0)  # 스윙저점 - ATR
-
         stop = max(stop_candidates) if stop_candidates else avg_entry * 0.93
-        stop = max(stop, avg_entry * 0.88)   # 평균가 기준 최대 -12%
-        stop = min(stop, avg_entry * 0.97)   # 평균가 기준 최소 -3%
+        stop = max(stop, avg_entry * 0.85)  # 안전망: 평균가 -15% 이하 방지
         risk = max(avg_entry - stop, avg_entry * 0.01)
 
         # 목표가
