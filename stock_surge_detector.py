@@ -172,6 +172,24 @@ class KoreanStockSurgeDetector:
         try:
             ticker = yf.Ticker(symbol)
             data = ticker.history(period="2y")
+
+            # ── 당일 종가 보완: yfinance NaN이면 네이버에서 가져오기 ──
+            if len(data) > 0 and pd.isna(data["Close"].iloc[-1]):
+                try:
+                    code = symbol.replace(".KS","").replace(".KQ","")
+                    url = f"https://finance.naver.com/item/main.naver?code={code}"
+                    res = requests.get(url, headers={"User-Agent":"Mozilla/5.0"}, timeout=3)
+                    soup = BeautifulSoup(res.text, "html.parser")
+                    price_tag = soup.select_one(".no_today .blind")
+                    if price_tag:
+                        today_price = float(price_tag.get_text().replace(",",""))
+                        data.loc[data.index[-1], "Open"]  = today_price
+                        data.loc[data.index[-1], "High"]  = today_price
+                        data.loc[data.index[-1], "Low"]   = today_price
+                        data.loc[data.index[-1], "Close"] = today_price
+                except:
+                    pass
+
             data = data.dropna(subset=["Open","High","Low","Close"])
             if len(data) < 260:
                 return None
