@@ -40,7 +40,39 @@ try:
         send_scan_alert(results, send_charts=True)
         print("텔레그램 전송 완료 (차트 포함)")
     else:
-        send_telegram(f"📊 {date.today()} 장마감\n오늘은 조건을 충족하는 급등 예고 종목이 없습니다.")
+        # 종목 없을 때 이유 분석해서 전송
+        import yfinance as yf
+        import pandas as pd
+
+        reasons = []
+
+        # 1. 시장 상태 확인
+        try:
+            kospi = yf.Ticker("^KS11").history(period="1y").dropna(subset=["Close"])
+            kospi_cur   = float(kospi["Close"].iloc[-1])
+            kospi_prev  = float(kospi["Close"].iloc[-2])
+            kospi_chg   = (kospi_cur - kospi_prev) / kospi_prev * 100
+            kospi_ma200 = float(kospi["Close"].rolling(200).mean().iloc[-1])
+            kospi_ma60  = float(kospi["Close"].rolling(60).mean().iloc[-1])
+
+            if kospi_cur < kospi_ma200 * 0.97:
+                reasons.append(f"📉 KOSPI 하락장 ({kospi_cur:,.0f} / 200일선 {kospi_ma200:,.0f} 아래)")
+            elif kospi_chg < -1.5:
+                reasons.append(f"📉 KOSPI 당일 급락 ({kospi_chg:.1f}%)")
+            else:
+                reasons.append(f"📊 KOSPI {kospi_cur:,.0f} ({kospi_chg:+.2f}%)")
+        except:
+            pass
+
+        # 2. 조건 설명
+        reasons.append(f"🔍 스캔 조건: 240선 돌파 후 {det.max_cross_days}일 이내 + 이격 {det.max_gap_pct}% 이내 + 조정 {det.min_below_days}일+")
+        reasons.append(f"📋 추가 필터: 거래대금 50억+ / 손익비 2.5:1+ / 핵심신호 2개+ / 종합점수 15점+")
+        reasons.append(f"💡 조건이 엄격해 해당 종목이 없습니다. 내일 다시 확인하세요.")
+
+        msg = f"📊 <b>{date.today()} 장마감 스캔 결과</b>\n{'━'*20}\n\n"
+        msg += "오늘 급등 예고 종목 없음\n\n"
+        msg += "\n".join(reasons)
+        send_telegram(msg)
 
     # ── 기존 알림 종목 성과 상태 DB 업데이트만 (알림은 09:10에 별도 전송) ──
     try:
