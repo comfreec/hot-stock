@@ -402,6 +402,11 @@ button[kind="primary"]:hover {
 ::-webkit-scrollbar-thumb { background: #2d3555; border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: #4f8ef7; }
 
+/* ── 차트 터치 스크롤 ── */
+.js-plotly-plot, .plotly, .plot-container { touch-action: pan-y !important; }
+.stPlotlyChart { touch-action: pan-y !important; }
+.stPlotlyChart > div { touch-action: pan-y !important; }
+
 /* ── 모바일 ── */
 @media (max-width: 768px) {
     .main .block-container { padding: 0.3rem 0.3rem !important; }
