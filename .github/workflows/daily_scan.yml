@@ -2,7 +2,7 @@ name: Daily Stock Scan & Telegram Alert
 
 on:
   schedule:
-    - cron: '28 7 * * *'  # 테스트용 KST 16:28
+    - cron: '54 7 * * *'  # 테스트용 KST 16:54
   workflow_dispatch:
 
 jobs:
