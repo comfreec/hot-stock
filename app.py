@@ -897,25 +897,30 @@ def make_candle(data, title, ma240_series=None, cross_date=None, show_levels=Tru
         atr_series = tr.rolling(14).mean().dropna()
         atr = float(atr_series.iloc[-1]) if len(atr_series) > 0 else float((high - low).mean())
 
-        # ── 매수가: 240선 근거 진입가 ───────────────────────────
+        # ── 매수가: 240선 근처 근거 있는 눌림목 진입가 ─────────
         ma240 = close.rolling(240).mean()
         ma240_v = float(ma240.iloc[-1]) if not pd.isna(ma240.iloc[-1]) else None
         swing_low_20 = float(low.tail(20).min())
         ma20 = float(close.rolling(20).mean().dropna().iloc[-1])
 
+        # 우선순위: 240선 → 스윙저점 → MA20
+        # 조건: 현재가 대비 최소 2% 이상 낮아야 의미있는 눌림목 가격
         entry_candidates = []
         if ma240_v:
             entry_candidates.append(("240선", ma240_v * 1.005))
-        entry_candidates.append(("MA20", ma20))
         entry_candidates.append(("스윙저점", swing_low_20))
+        entry_candidates.append(("MA20", ma20))
 
+        # 현재가 대비 2% 이상 낮고, 240선 위인 것만 유효
         valid_entries = [
             (label, price) for label, price in entry_candidates
-            if price < current and (ma240_v is None or price >= ma240_v * 0.995)
+            if price < current * 0.98 and (ma240_v is None or price >= ma240_v * 0.99)
         ]
         if valid_entries:
-            entry_label, entry = max(valid_entries, key=lambda x: x[1])
+            # 240선에 가장 가까운 값 선택 (가장 낮은 값 = 240선 근처)
+            entry_label, entry = min(valid_entries, key=lambda x: abs(x[1] - (ma240_v or x[1])))
         else:
+            # 유효한 후보 없으면 현재가 그대로 (이미 240선 근처에 있는 경우)
             entry_label, entry = "현재가", current
 
         # ── 손절가: 매수가 기준 근거 있는 손절 ──────────────────

@@ -208,28 +208,27 @@ def calc_price_levels(symbol: str) -> dict:
         atr_s = tr.rolling(14).mean().dropna()
         atr = float(atr_s.iloc[-1]) if len(atr_s) > 0 else current * 0.02
 
-        # ── 매수가: 240선 근처 근거 있는 진입가 ──────────────────
+        # ── 매수가: 240선 근처 근거 있는 눌림목 진입가 ──────────────────
         ma240 = close.rolling(240).mean()
         ma20  = float(close.rolling(20).mean().iloc[-1])
         ma240_v = float(ma240.iloc[-1]) if not pd.isna(ma240.iloc[-1]) else None
         swing_low_20 = float(low.tail(20).min())
 
-        # 후보 매수가 목록 (현재가 이하 + 240선 위)
+        # 우선순위: 240선 → 스윙저점 → MA20
+        # 현재가 대비 2% 이상 낮고 240선 위인 것만 유효
         entry_candidates = []
         if ma240_v:
-            entry_candidates.append(("240선+버퍼", ma240_v * 1.005))  # 240선 0.5% 위
-        entry_candidates.append(("MA20", ma20))
+            entry_candidates.append(("240선+버퍼", ma240_v * 1.005))
         entry_candidates.append(("스윙저점", swing_low_20))
+        entry_candidates.append(("MA20", ma20))
 
-        # 현재가 이하이면서 240선 위인 후보 중 가장 높은 값 선택
         valid = [
             (label, price) for label, price in entry_candidates
-            if price < current and (ma240_v is None or price >= ma240_v * 0.995)
+            if price < current * 0.98 and (ma240_v is None or price >= ma240_v * 0.99)
         ]
         if valid:
-            entry_label, entry = max(valid, key=lambda x: x[1])
+            entry_label, entry = min(valid, key=lambda x: abs(x[1] - (ma240_v or x[1])))
         else:
-            # 후보가 없으면 현재가 그대로
             entry_label, entry = "현재가", current
 
         # ── 손절가: 매수가 기준 근거 있는 손절 ──────────────────
