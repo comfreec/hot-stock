@@ -918,10 +918,22 @@ def _calc_price_levels_from_data(data):
 
 def make_candle(data, title, ma240_series=None, cross_date=None, show_levels=True, symbol=None):
     fig = go.Figure()
-    fig.add_trace(go.Ohlc(
-        x=data.index, open=data["Open"], high=data["High"],
-        low=data["Low"], close=data["Close"], name="주가",
-        increasing_line_color="#ff3355", decreasing_line_color="#4f8ef7"))
+
+    # ── Heikin-Ashi 계산 ─────────────────────────────────────────
+    ha_close = (data["Open"] + data["High"] + data["Low"] + data["Close"]) / 4
+    ha_open = ha_close.copy()
+    for i in range(1, len(ha_open)):
+        ha_open.iloc[i] = (ha_open.iloc[i-1] + ha_close.iloc[i-1]) / 2
+    ha_high = pd.concat([data["High"], ha_open, ha_close], axis=1).max(axis=1)
+    ha_low  = pd.concat([data["Low"],  ha_open, ha_close], axis=1).min(axis=1)
+
+    fig.add_trace(go.Candlestick(
+        x=data.index,
+        open=ha_open, high=ha_high, low=ha_low, close=ha_close,
+        name="Heikin-Ashi",
+        increasing=dict(line=dict(color="#ff3355", width=1), fillcolor="#ff3355"),
+        decreasing=dict(line=dict(color="#4f8ef7", width=1), fillcolor="#4f8ef7"),
+    ))
     for w,c,nm in [(20,"#ffd700","MA20"),(60,"#ff8c42","MA60"),(240,"#ff4b6e","MA240")]:
         ma = data["Close"].rolling(w).mean()
         fig.add_trace(go.Scatter(x=data.index, y=ma, name=nm,
