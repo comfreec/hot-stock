@@ -174,21 +174,14 @@ class KoreanStockSurgeDetector:
             data = ticker.history(period="2y")
 
             # ── 당일 종가 보완: yfinance NaN이면 네이버에서 가져오기 ──
+            # _today_price_cache는 analyze_all_stocks에서 사전 조회한 값
             if len(data) > 0 and pd.isna(data["Close"].iloc[-1]):
-                try:
-                    code = symbol.replace(".KS","").replace(".KQ","")
-                    url = f"https://finance.naver.com/item/main.naver?code={code}"
-                    res = requests.get(url, headers={"User-Agent":"Mozilla/5.0"}, timeout=3)
-                    soup = BeautifulSoup(res.text, "html.parser")
-                    price_tag = soup.select_one(".no_today .blind")
-                    if price_tag:
-                        today_price = float(price_tag.get_text().replace(",",""))
-                        data.loc[data.index[-1], "Open"]  = today_price
-                        data.loc[data.index[-1], "High"]  = today_price
-                        data.loc[data.index[-1], "Low"]   = today_price
-                        data.loc[data.index[-1], "Close"] = today_price
-                except:
-                    pass
+                today_price = getattr(self, '_today_price_cache', {}).get(symbol)
+                if today_price:
+                    data.loc[data.index[-1], "Open"]  = today_price
+                    data.loc[data.index[-1], "High"]  = today_price
+                    data.loc[data.index[-1], "Low"]   = today_price
+                    data.loc[data.index[-1], "Close"] = today_price
 
             data = data.dropna(subset=["Open","High","Low","Close"])
             if len(data) < 260:
@@ -832,6 +825,32 @@ class KoreanStockSurgeDetector:
 
         if not kospi_filter:
             return []
+
+        # ── 당일 종가 NaN 여부 사전 체크 (삼성전자로 대표 확인) ──
+        self._today_price_cache = {}
+        try:
+            test_df = yf.Ticker("005930.KS").history(period="3d")
+            need_today_price = len(test_df) > 0 and pd.isna(test_df["Close"].iloc[-1])
+            if need_today_price:
+                print("[당일종가] yfinance NaN → 네이버에서 병렬 수집 중...")
+                def _fetch_naver_price(sym):
+                    try:
+                        code = sym.replace(".KS","").replace(".KQ","")
+                        url = f"https://finance.naver.com/item/main.naver?code={code}"
+                        res = requests.get(url, headers={"User-Agent":"Mozilla/5.0"}, timeout=2)
+                        soup = BeautifulSoup(res.text, "html.parser")
+                        tag = soup.select_one(".no_today .blind")
+                        return (sym, float(tag.get_text().replace(",","")) if tag else None)
+                    except:
+                        return (sym, None)
+                from concurrent.futures import ThreadPoolExecutor as TPE
+                with TPE(max_workers=20) as ex:
+                    for sym, price in ex.map(_fetch_naver_price, self.all_symbols):
+                        if price:
+                            self._today_price_cache[sym] = price
+                print(f"[당일종가] {len(self._today_price_cache)}개 수집 완료")
+        except:
+            pass
 
         from concurrent.futures import ThreadPoolExecutor, as_completed
         with ThreadPoolExecutor(max_workers=8) as executor:
