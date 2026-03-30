@@ -743,28 +743,12 @@ def metric_card(col, label, value):
 
 
 def calc_rsi_wilder(close, period=20):
-    """Wilder's Smoothing RSI - 이베스트증권 표준 방식
-    첫 period일 단순평균으로 시드값, 이후 Wilder smoothing 적용
-    """
+    """Wilder's Smoothing RSI (EWM 방식 - stock_surge_detector._rsi와 동일)"""
     d = close.diff()
     gain = d.where(d > 0, 0.0)
     loss = -d.where(d < 0, 0.0)
-
-    avg_gain = gain.copy() * 0.0
-    avg_loss = loss.copy() * 0.0
-
-    # 첫 시드값: period일 단순평균
-    avg_gain.iloc[period] = gain.iloc[1:period+1].mean()
-    avg_loss.iloc[period] = loss.iloc[1:period+1].mean()
-
-    # 이후 Wilder smoothing
-    for i in range(period + 1, len(close)):
-        avg_gain.iloc[i] = (avg_gain.iloc[i-1] * (period - 1) + gain.iloc[i]) / period
-        avg_loss.iloc[i] = (avg_loss.iloc[i-1] * (period - 1) + loss.iloc[i]) / period
-
-    avg_gain.iloc[:period] = float('nan')
-    avg_loss.iloc[:period] = float('nan')
-
+    avg_gain = gain.ewm(alpha=1/period, min_periods=period, adjust=False).mean()
+    avg_loss = loss.ewm(alpha=1/period, min_periods=period, adjust=False).mean()
     rs = avg_gain / avg_loss.replace(0, float('nan'))
     return 100 - (100 / (1 + rs))
 
@@ -2264,6 +2248,42 @@ elif mode == "📈 성과 추적":
                   매수가 대기: <b style='color:#8b92a5;'>{perf.get('pending',0)}개</b> &nbsp;|&nbsp;
                   만료: <b style='color:#8b92a5;'>{perf['expired']}개</b>
                 </div>""", unsafe_allow_html=True)
+
+            # ── 수익률 곡선 차트 ──────────────────────────────
+            history_all = get_alert_history(200)
+            closed = [h for h in history_all if h["status"] in ("hit_target","hit_stop") and h["return_pct"] is not None and h["exit_date"]]
+            if len(closed) >= 2:
+                closed_sorted = sorted(closed, key=lambda x: x["exit_date"])
+                cumulative = 0
+                dates, cum_rets, colors, names = [], [], [], []
+                for h in closed_sorted:
+                    cumulative += h["return_pct"]
+                    dates.append(h["exit_date"])
+                    cum_rets.append(round(cumulative, 2))
+                    colors.append("#00d4aa" if h["return_pct"] > 0 else "#ff3355")
+                    names.append(h["name"])
+
+                fig_perf = go.Figure()
+                fig_perf.add_trace(go.Scatter(
+                    x=dates, y=cum_rets,
+                    mode="lines+markers",
+                    line=dict(color="#4f8ef7", width=2),
+                    marker=dict(color=colors, size=8),
+                    text=names,
+                    hovertemplate="%{text}<br>누적: %{y:+.1f}%<extra></extra>",
+                    fill="tozeroy",
+                    fillcolor="rgba(79,142,247,0.08)"
+                ))
+                fig_perf.add_hline(y=0, line_dash="dash", line_color="rgba(255,255,255,0.2)")
+                fig_perf.update_layout(
+                    title="누적 수익률 곡선",
+                    paper_bgcolor="#0f1628", plot_bgcolor="#0f1628",
+                    font=dict(color="#8b92a5"),
+                    height=280, margin=dict(l=0,r=0,t=40,b=0),
+                    xaxis=dict(gridcolor="#1e2540"),
+                    yaxis=dict(gridcolor="#1e2540", ticksuffix="%"),
+                )
+                st.plotly_chart(fig_perf, use_container_width=True)
         else:
             st.info("아직 성과 데이터가 없어요. 텔레그램 알림이 발송되면 자동으로 기록됩니다.")
 

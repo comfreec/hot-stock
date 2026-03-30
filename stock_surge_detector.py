@@ -32,27 +32,27 @@ ALL_SYMBOLS = [
     "161390.KS","175330.KS","180640.KS","192400.KS","204320.KS",
     "267250.KS","316140.KS","326030.KS","329180.KS","336260.KS",
     # 추가 코스피 200 종목
-    "000810.KS","001450.KS","002790.KS","003230.KS","003600.KS",
+    "000810.KS","001450.KS","002790.KS","003230.KS",
     "003670.KS","004170.KS","004370.KS","004990.KS","005250.KS",
     "005830.KS","006260.KS","006360.KS","006650.KS","007310.KS",
     "008770.KS","009150.KS","009240.KS","009540.KS","009830.KS",
-    "010140.KS","010620.KS","011170.KS","011780.KS","012450.KS",
+    "010140.KS","011170.KS","011780.KS","012450.KS",
     "012630.KS","014680.KS","015760.KS","016880.KS","017800.KS",
-    "018880.KS","019170.KS","019440.KS","020150.KS","021080.KS",
+    "018880.KS","019170.KS","020150.KS","021080.KS",
     "023150.KS","024070.KS","025540.KS","026960.KS","027740.KS",
     "028050.KS","030000.KS","030610.KS","032830.KS","033240.KS",
-    "034730.KS","035000.KS","035250.KS","036490.KS","037270.KS",
+    "034730.KS","035000.KS","035250.KS","037270.KS",
     "039130.KS","040910.KS","041650.KS","042700.KS","044490.KS",
-    "045390.KS","046080.KS","047810.KS","049770.KS","051900.KS",
+    "045390.KS","047810.KS","051900.KS",
     "052690.KS","053210.KS","055490.KS","057050.KS","058430.KS",
     "060310.KS","061040.KS","063160.KS","064960.KS","066790.KS",
-    "067160.KS","068400.KS","069260.KS","069620.KS","071840.KS",
+    "067160.KS","069260.KS","069620.KS","071840.KS",
     "072130.KS","073240.KS","075580.KS","077970.KS","079550.KS",
     "081660.KS","082640.KS","083420.KS","084010.KS","085620.KS",
-    "086790.KS","088350.KS","089590.KS","090080.KS","091990.KS",
+    "086790.KS","088350.KS","089590.KS","090080.KS",
     "092200.KS","093050.KS","095570.KS","096040.KS","097520.KS",
-    "099140.KS","100250.KS","101530.KS","102280.KS","103140.KS",
-    "105630.KS","108670.KS","111770.KS","114090.KS","115390.KS",
+    "099140.KS","100250.KS","101530.KS","103140.KS",
+    "105630.KS","108670.KS","111770.KS","114090.KS",
     "120110.KS","128940.KS","130660.KS","138040.KS","139130.KS",
     "145990.KS","148150.KS","152100.KS","155660.KS","158430.KS",
     "163560.KS","170900.KS","178920.KS","185750.KS","187660.KS",
@@ -60,14 +60,14 @@ ALL_SYMBOLS = [
     # ── 코스닥 우량 성장주 (섹터별 엄선) ──────────────────────────
     # 반도체/장비
     "039030.KQ","058470.KQ","064760.KQ","091580.KQ","095340.KQ",
-    "101490.KQ","108320.KQ","122870.KQ","131970.KQ","155900.KQ",
+    "101490.KQ","108320.KQ","122870.KQ","131970.KQ",
     "166090.KQ","183300.KQ","236200.KQ",
     # 바이오/헬스케어
     "086900.KQ","096530.KQ","137310.KQ","141080.KQ","145020.KQ",
     "196170.KQ","206650.KQ","214370.KQ","237690.KQ","247540.KQ",
-    "950140.KQ","068760.KQ","091990.KQ","086520.KQ",
+    "950140.KQ","068760.KQ","086520.KQ",
     # 2차전지/소재
-    "066970.KQ","078600.KQ",
+    "078600.KQ",
     # 엔터/미디어
     "035900.KQ","036030.KQ","041510.KQ","251270.KQ","253450.KQ",
     # IT/소프트웨어
@@ -75,8 +75,7 @@ ALL_SYMBOLS = [
     # 방산/항공
     "047810.KQ",
     # 기타 우량 코스닥
-    "048260.KQ","200130.KQ",
-    "357780.KQ","041960.KQ","039440.KQ","033290.KQ","032500.KQ",
+    "048260.KQ","200130.KQ",    "357780.KQ","041960.KQ","039440.KQ","033290.KQ","032500.KQ",
 ]
 
 STOCK_NAMES = {
@@ -435,15 +434,8 @@ class KoreanStockSurgeDetector:
             if avg_amount < 2_000_000_000:    # 20억 미만 제외
                 return None
 
-            # ── 하락장 필터: KOSPI 200일선 아래면 알림 차단 ──────────
-            try:
-                kospi = yf.Ticker("^KS11").history(period="1y").dropna(subset=["Close"])
-                kospi_cur  = float(kospi["Close"].iloc[-1])
-                kospi_ma200 = float(kospi["Close"].rolling(200).mean().iloc[-1])
-                if kospi_cur < kospi_ma200 * 0.97:  # 200일선 3% 이상 아래 = 하락장
-                    return None
-            except:
-                pass  # KOSPI 데이터 없으면 통과
+            # ── 하락장 필터: analyze_all_stocks에서 사전 체크 완료 ──
+            # (KOSPI 200일선 체크는 analyze_all_stocks에서 1회만 수행)
 
             ma240 = close.rolling(240).mean()
             ma120 = close.rolling(120).mean()
@@ -1006,6 +998,22 @@ class KoreanStockSurgeDetector:
     def analyze_all_stocks(self):
         results = []
         print("스캔 중 (240일선 조건 필터)...")
+
+        # ── KOSPI 상태 1회만 가져와서 공유 (종목별 중복 호출 제거) ──
+        kospi_filter = True  # 기본값: 통과
+        try:
+            kospi_df = yf.Ticker("^KS11").history(period="1y").dropna(subset=["Close"])
+            kospi_cur   = float(kospi_df["Close"].iloc[-1])
+            kospi_ma200 = float(kospi_df["Close"].rolling(200).mean().iloc[-1])
+            if kospi_cur < kospi_ma200 * 0.97:
+                kospi_filter = False  # 하락장 → 전체 차단
+                print(f"[하락장 감지] KOSPI {kospi_cur:,.0f} / 200일선 {kospi_ma200:,.0f} → 스캔 중단")
+        except:
+            pass
+
+        if not kospi_filter:
+            return []
+
         from concurrent.futures import ThreadPoolExecutor, as_completed
         with ThreadPoolExecutor(max_workers=8) as executor:
             futures = {executor.submit(self.analyze_stock, sym): sym for sym in self.all_symbols}
@@ -1015,11 +1023,11 @@ class KoreanStockSurgeDetector:
                     r = future.result()
                     if r:
                         results.append(r)
-                        print(f"  ✅ {sym} ({r['total_score']}점)")
+                        print(f"  OK {sym} ({r['total_score']}pt)")
                     else:
-                        print(f"  ❌ {sym}")
+                        print(f"  [X] {sym}")
                 except Exception as e:
-                    print(f"  ⚠️ {sym}: {e}")
+                    print(f"  [!] {sym}: {e}")
         return sorted(results, key=lambda x: x["total_score"], reverse=True)
 
     def run_analysis(self):

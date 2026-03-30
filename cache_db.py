@@ -206,14 +206,19 @@ def update_alert_status():
 
                 if status == 'active':
                     ret = (cur - entry) / entry * 100
-                    if cur >= target:
+                    # 당일 고가로 목표가 체크, 당일 저가로 손절가 체크 (더 정확한 체결 시뮬레이션)
+                    if day_high >= target:
+                        exit_price = target  # 목표가에서 체결된 것으로 처리
+                        ret = (exit_price - entry) / entry * 100
                         conn.execute("""UPDATE alert_history
                             SET status='hit_target', exit_price=?, exit_date=?, return_pct=?
-                            WHERE id=?""", (cur, today, ret, rid))
-                    elif cur <= stop:
+                            WHERE id=?""", (exit_price, today, ret, rid))
+                    elif day_low <= stop:
+                        exit_price = stop  # 손절가에서 체결된 것으로 처리
+                        ret = (exit_price - entry) / entry * 100
                         conn.execute("""UPDATE alert_history
                             SET status='hit_stop', exit_price=?, exit_date=?, return_pct=?
-                            WHERE id=?""", (cur, today, ret, rid))
+                            WHERE id=?""", (exit_price, today, ret, rid))
             except:
                 pass
 
