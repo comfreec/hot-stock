@@ -16,7 +16,7 @@ from cache_db import update_alert_status
 print(f"[{date.today()}] 스캔 시작...")
 
 try:
-    det = KoreanStockSurgeDetector(max_gap_pct=15, min_below_days=120, max_cross_days=60)
+    det = KoreanStockSurgeDetector(max_gap_pct=10, min_below_days=120, max_cross_days=60)
     results = det.analyze_all_stocks()
     results = [r for r in results if r.get("total_score", 0) >= 15]
     results = sorted(results, key=lambda x: x["total_score"], reverse=True)

@@ -64,12 +64,20 @@ def make_chart_image(symbol: str, name: str, price_levels: dict = None) -> bytes
         ax1.set_facecolor("#0e1117")
         ax2.set_facecolor("#0e1117")
 
-        # 캔들차트
-        for i, (idx, row) in enumerate(df.iterrows()):
-            color = "#ff3355" if row["Close"] >= row["Open"] else "#4f8ef7"
-            ax1.plot([i, i], [row["Low"], row["High"]], color=color, linewidth=0.8)
-            ax1.bar(i, abs(row["Close"] - row["Open"]),
-                    bottom=min(row["Open"], row["Close"]),
+        # Heikin-Ashi 계산
+        ha_close = (df["Open"] + df["High"] + df["Low"] + df["Close"]) / 4
+        ha_open = ha_close.copy()
+        for i in range(1, len(ha_open)):
+            ha_open.iloc[i] = (ha_open.iloc[i-1] + ha_close.iloc[i-1]) / 2
+        ha_high = pd.concat([df["High"], ha_open, ha_close], axis=1).max(axis=1)
+        ha_low  = pd.concat([df["Low"],  ha_open, ha_close], axis=1).min(axis=1)
+
+        # Heikin-Ashi 캔들차트
+        for i in range(len(df)):
+            color = "#ff3355" if ha_close.iloc[i] >= ha_open.iloc[i] else "#4f8ef7"
+            ax1.plot([i, i], [ha_low.iloc[i], ha_high.iloc[i]], color=color, linewidth=0.8)
+            ax1.bar(i, abs(ha_close.iloc[i] - ha_open.iloc[i]),
+                    bottom=min(ha_open.iloc[i], ha_close.iloc[i]),
                     color=color, width=0.6, alpha=0.9)
 
         close = df["Close"]
