@@ -975,6 +975,15 @@ if mode == "🔍 급등 예고 종목 탐지":
         try:
             cached_today = load_scan()  # 오늘 날짜 기본값
             if cached_today:
+                # 리스트로 저장된 시리즈 데이터를 pandas Series로 복원
+                import pandas as _pd
+                series_keys = ["close_series","open_series","high_series","low_series",
+                               "volume_series","ma240_series","ma60_series","ma20_series",
+                               "rsi_series","vol_ma_series"]
+                for r in cached_today:
+                    for k in series_keys:
+                        if k in r and isinstance(r[k], list):
+                            r[k] = _pd.Series(r[k])
                 st.session_state["scan_results"] = cached_today
                 st.info(f"📦 오늘 캐시된 스캔 결과 {len(cached_today)}개 로드됨 (재스캔하려면 '스캔 시작' 클릭)")
         except:
