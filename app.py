@@ -1263,14 +1263,18 @@ if mode == "🔍 급등 예고 종목 탐지":
                         cd = pd.DataFrame({"Open":open_s,"High":high_s,"Low":low_s,"Close":close_s,"Volume":vol_s})
                         # 당일 종가가 스캔 데이터에 없으면 current_price로 추가
                         from datetime import date as _date
+                        import pandas as _pd
                         today_str = _date.today().isoformat()
                         last_date = str(cd.index[-1])[:10]
                         if last_date < today_str:
                             cur_p = float(r.get("current_price", 0))
                             if cur_p > 0:
-                                import pandas as _pd
                                 new_idx = _pd.Timestamp(today_str, tz=cd.index.tz)
-                                cd.loc[new_idx] = [cur_p, cur_p, cur_p, cur_p, 0]
+                                new_row = _pd.DataFrame(
+                                    {"Open":[cur_p],"High":[cur_p],"Low":[cur_p],"Close":[cur_p],"Volume":[0]},
+                                    index=[new_idx]
+                                )
+                                cd = _pd.concat([cd, new_row])
                     # 실패 시 스캔 데이터로 폴백
                     if cd is None or len(cd) == 0:
                         close_s = r.get("close_series")
