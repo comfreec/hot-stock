@@ -502,7 +502,8 @@ def make_sparkline(prices, color):
         x = i / (len(prices)-1) * w
         y = h - (p - mn) / rng * h
         pts.append(f"{x:.1f},{y:.1f}")
-    return f'<svg width="{w}" height="{h}" style="display:inline-block;vertical-align:middle;"><polyline points="{" ".join(pts)}" fill="none" stroke="{color}" stroke-width="1.5"/></svg>'
+    pts_str = " ".join(pts)
+    return f'<svg width="{w}" height="{h}" style="display:inline-block;vertical-align:middle;"><polyline points="{pts_str}" fill="none" stroke="{color}" stroke-width="1.5"/></svg>'
 
 @st.cache_data(ttl=60)
 def get_realtime_price(symbol):
