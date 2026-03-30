@@ -428,11 +428,11 @@ class KoreanStockSurgeDetector:
             vol   = data["Volume"]
             n     = len(close)
 
-            # ── 거래대금 필터: 일평균 50억 미만 제외 ────────────────
+            # ── 거래대금 필터: 일평균 20억 미만 제외 ────────────────
             avg_price  = float(close.tail(20).mean())
             avg_vol    = float(vol.tail(20).mean())
             avg_amount = avg_price * avg_vol  # 일평균 거래대금 (원)
-            if avg_amount < 5_000_000_000:    # 50억 미만 제외
+            if avg_amount < 2_000_000_000:    # 20억 미만 제외
                 return None
 
             # ── 하락장 필터: KOSPI 200일선 아래면 알림 차단 ──────────
@@ -918,13 +918,36 @@ class KoreanStockSurgeDetector:
                 stop_f = min(stop_f, entry_f * 0.95)
                 risk_f = max(entry_f - stop_f, entry_f * 0.01)
 
-                # 목표가 (간단 추정: ATR×3)
-                target_f = entry_f + atr_f * 3.0
-                rr_f = (target_f - entry_f) / risk_f
+                # 목표가: 피보나치 확장 + ATR 복합 (앱과 동일 방식)
+                recent_high_f = float(high.tail(120).max())
+                recent_low_f  = float(low.tail(120).min())
+                swing_range_f = max(recent_high_f - recent_low_f, entry_f * 0.01)
 
+                target_cands = sorted([
+                    x for x in [
+                        recent_low_f + swing_range_f * 1.272,
+                        recent_low_f + swing_range_f * 1.618,
+                        recent_low_f + swing_range_f * 2.0,
+                        recent_high_f * 1.05,
+                        entry_f + atr_f * 3.0,
+                        entry_f + atr_f * 5.0,
+                    ] if x > entry_f * 1.03
+                ])
+                min_rr3 = entry_f + risk_f * 3.0
+                valid_t = [x for x in target_cands if x >= min_rr3]
+                if valid_t:
+                    weights = [1 / (x - entry_f) for x in valid_t]
+                    target_f = sum(x * w for x, w in zip(valid_t, weights)) / sum(weights)
+                elif target_cands:
+                    target_f = target_cands[-1]
+                else:
+                    target_f = entry_f + risk_f * 3.0
+                target_f = min(target_f, entry_f * 2.0)
+
+                rr_f = (target_f - entry_f) / risk_f
                 signals["rr_ratio"] = round(rr_f, 2)
-                if rr_f < 2.5:
-                    return None  # 손익비 2.5:1 미만 제외
+                if rr_f < 2.0:  # 기준 완화: 2.5 → 2.0 (피보나치 기반이라 더 현실적)
+                    return None
             except:
                 signals["rr_ratio"] = 0
 
