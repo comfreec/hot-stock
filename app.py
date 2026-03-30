@@ -1352,7 +1352,7 @@ if mode == "🔍 급등 예고 종목 탐지":
                             if close_s is not None and r["days_since_cross"] < len(close_s):
                                 cross_date = close_s.index[-(r["days_since_cross"]+1)]
                             _c1 = make_candle(cd, f"{r['name']} ({r['symbol']})", cross_date=cross_date, symbol=r["symbol"])
-                            st.plotly_chart(_c1, config={"scrollZoom":False,"displayModeBar":False}, width='stretch', key=f"candle_{r['symbol']}_{i}")
+                            st.plotly_chart(_c1, config={"scrollZoom":False,"displayModeBar":False,"staticPlot":True}, width='stretch', key=f"candle_{r['symbol']}_{i}")
                             show_price_levels(_c1, split_buy=True)
                         except Exception as chart_err:
                             st.caption(f"차트 오류: {chart_err}")
@@ -2370,7 +2370,7 @@ elif mode == "📈 성과 추적":
                     xaxis=dict(gridcolor="#1e2540"),
                     yaxis=dict(gridcolor="#1e2540", ticksuffix="%"),
                 )
-                st.plotly_chart(fig_perf, config={"scrollZoom":False,"displayModeBar":False}, width='stretch')
+                st.plotly_chart(fig_perf, config={"scrollZoom":False,"displayModeBar":False,"staticPlot":True}, width='stretch')
         else:
             st.info("아직 성과 데이터가 없어요. 텔레그램 알림이 발송되면 자동으로 기록됩니다.")
 
