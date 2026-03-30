@@ -613,14 +613,14 @@ with st.sidebar:
 
     if "max_gap"   not in st.session_state: st.session_state["max_gap"]   = 15
     if "min_below" not in st.session_state: st.session_state["min_below"] = 120
-    if "max_cross" not in st.session_state: st.session_state["max_cross"] = 120
+    if "max_cross" not in st.session_state: st.session_state["max_cross"] = 60
     if "min_score" not in st.session_state: st.session_state["min_score"] = 15
 
     if st.button("⚡ 최적 셋팅", use_container_width=True):
-        st.session_state["max_gap"]   = 15   # 240선 근처 15% 이내
-        st.session_state["min_below"] = 120  # 최소 6개월 조정
-        st.session_state["max_cross"] = 120  # 돌파 후 6개월 이내
-        st.session_state["min_score"] = 15   # 종합점수 15점 이상
+        st.session_state["max_gap"]   = 15
+        st.session_state["min_below"] = 120
+        st.session_state["max_cross"] = 60   # 돌파 후 60일 이내
+        st.session_state["min_score"] = 15
         st.rerun()
 
     max_gap   = st.slider("📍 240선 근처 범위 (%)", 1, 20, key="max_gap",

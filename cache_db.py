@@ -264,7 +264,7 @@ def _run_scan_job():
     try:
         from stock_surge_detector import KoreanStockSurgeDetector
         from telegram_alert import send_scan_alert
-        det = KoreanStockSurgeDetector(max_gap_pct=15, min_below_days=120, max_cross_days=120)
+        det = KoreanStockSurgeDetector(max_gap_pct=15, min_below_days=120, max_cross_days=60)
         results = det.analyze_all_stocks()
         if results:
             save_scan(results)

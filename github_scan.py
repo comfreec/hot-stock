@@ -27,7 +27,7 @@ from telegram_alert import send_scan_alert, send_telegram
 print(f"[{date.today()}] 스캔 시작 (병렬 처리)...")
 
 try:
-    det = KoreanStockSurgeDetector(max_gap_pct=15, min_below_days=120, max_cross_days=120)
+    det = KoreanStockSurgeDetector(max_gap_pct=15, min_below_days=120, max_cross_days=60)
     results = det.analyze_all_stocks()
 
     # 최소 종합점수 10점 이상 (앱 최적 셋팅 기본값과 동일)

@@ -248,11 +248,11 @@ STOCK_NAMES = {
 
 
 class KoreanStockSurgeDetector:
-    def __init__(self, max_gap_pct=15.0, min_below_days=90, max_cross_days=180):
+    def __init__(self, max_gap_pct=15.0, min_below_days=90, max_cross_days=60):  # max_cross 120→60
         self.all_symbols    = ALL_SYMBOLS
-        self.max_gap_pct    = max_gap_pct    # 현재가가 240선 위 최대 %
-        self.min_below_days = min_below_days # 240선 아래 최소 일수
-        self.max_cross_days = max_cross_days # 돌파 후 최대 경과 일수
+        self.max_gap_pct    = max_gap_pct
+        self.min_below_days = min_below_days
+        self.max_cross_days = max_cross_days
 
     # ── 보조 지표 ────────────────────────────────────────────────
 
@@ -427,6 +427,23 @@ class KoreanStockSurgeDetector:
             low   = data["Low"]
             vol   = data["Volume"]
             n     = len(close)
+
+            # ── 거래대금 필터: 일평균 50억 미만 제외 ────────────────
+            avg_price  = float(close.tail(20).mean())
+            avg_vol    = float(vol.tail(20).mean())
+            avg_amount = avg_price * avg_vol  # 일평균 거래대금 (원)
+            if avg_amount < 5_000_000_000:    # 50억 미만 제외
+                return None
+
+            # ── 하락장 필터: KOSPI 200일선 아래면 알림 차단 ──────────
+            try:
+                kospi = yf.Ticker("^KS11").history(period="1y").dropna(subset=["Close"])
+                kospi_cur  = float(kospi["Close"].iloc[-1])
+                kospi_ma200 = float(kospi["Close"].rolling(200).mean().iloc[-1])
+                if kospi_cur < kospi_ma200 * 0.97:  # 200일선 3% 이상 아래 = 하락장
+                    return None
+            except:
+                pass  # KOSPI 데이터 없으면 통과
 
             ma240 = close.rolling(240).mean()
             ma120 = close.rolling(120).mean()
@@ -868,6 +885,48 @@ class KoreanStockSurgeDetector:
             # ── ML 점수 보정 ─────────────────────────────────────
             ml_adjusted = ml_score_adjustment(signals, score)
             signals["ml_adjusted_score"] = ml_adjusted
+
+            # ── 손익비 필터: 2.5:1 미만 제외 ────────────────────────
+            try:
+                tr_f = pd.concat([
+                    high - low,
+                    (high - close.shift(1)).abs(),
+                    (low  - close.shift(1)).abs()
+                ], axis=1).max(axis=1)
+                atr_f = float(tr_f.rolling(14).mean().dropna().iloc[-1])
+
+                ma240_v_f  = float(ma240.iloc[-1])
+                ma20_v_f   = float(ma20.iloc[-1])
+                swing_low_f = float(low.tail(20).min())
+
+                # 매수가 (240선 근거)
+                entry_cands = []
+                if not pd.isna(ma240_v_f):
+                    entry_cands.append(ma240_v_f * 1.005)
+                entry_cands.append(ma20_v_f)
+                entry_cands.append(swing_low_f)
+                valid_e = [p for p in entry_cands if p < current]
+                entry_f = max(valid_e) if valid_e else current
+
+                # 손절가
+                stop_cands = []
+                if not pd.isna(ma240_v_f):
+                    stop_cands.append(ma240_v_f * 0.995)
+                stop_cands.append(swing_low_f - atr_f * 1.0)
+                stop_f = max(stop_cands) if stop_cands else entry_f * 0.93
+                stop_f = max(stop_f, entry_f * 0.88)
+                stop_f = min(stop_f, entry_f * 0.95)
+                risk_f = max(entry_f - stop_f, entry_f * 0.01)
+
+                # 목표가 (간단 추정: ATR×3)
+                target_f = entry_f + atr_f * 3.0
+                rr_f = (target_f - entry_f) / risk_f
+
+                signals["rr_ratio"] = round(rr_f, 2)
+                if rr_f < 2.5:
+                    return None  # 손익비 2.5:1 미만 제외
+            except:
+                signals["rr_ratio"] = 0
 
             return {
                 "symbol":           symbol,
