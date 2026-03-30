@@ -351,7 +351,7 @@ def send_scan_alert(results: list, send_charts: bool = True):
         entry_high = lv['entry'] if lv else None
 
         if lv and entry_low and entry_high:
-            split_str = f"₩{entry_low:,.0f}~₩{entry_high:,.0f} (240선 근처 분할매수)"
+            split_str = f"₩{entry_low:,.0f}~₩{entry_high:,.0f}"
         else:
             split_str = f"₩{r['current_price']:,.0f}"
 
