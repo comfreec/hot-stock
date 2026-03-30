@@ -296,11 +296,13 @@ def calc_price_levels(symbol: str) -> dict:
         target = round_to_tick(target)
         stop   = round_to_tick(stop)
         rr     = (target - entry) / (entry - stop + 1e-9)
+        ma240_tick = round_to_tick(ma240_v) if ma240_v else entry
 
         return {
             "current":     current,
             "entry":       entry,
             "entry_label": entry_label,
+            "ma240":       ma240_tick,
             "target":      target,
             "stop":        stop,
             "rr":          rr,
@@ -345,8 +347,8 @@ def send_scan_alert(results: list, send_charts: bool = True):
         s   = r.get("signals", {})
         sig_str = format_signals(s)
 
-        entry_low  = lv['stop'] if lv else None   # 분할매수 하단 = 손절가 위
-        entry_high = lv['entry'] if lv else None  # 분할매수 상단 = 매수가
+        entry_low  = lv['ma240'] if lv and lv.get('ma240') else (lv['stop'] if lv else None)
+        entry_high = lv['entry'] if lv else None
 
         if lv and entry_low and entry_high:
             split_str = f"₩{entry_low:,.0f}~₩{entry_high:,.0f} (240선 근처 분할매수)"
