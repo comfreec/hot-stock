@@ -620,8 +620,9 @@ with st.sidebar:
     if st.button("⚡ 최적 셋팅", width='stretch'):
         st.session_state["max_gap"]   = 15
         st.session_state["min_below"] = 120
-        st.session_state["max_cross"] = 60   # 돌파 후 60일 이내
+        st.session_state["max_cross"] = 60
         st.session_state["min_score"] = 15
+        st.session_state.pop("scan_results", None)  # 조건 바뀌면 결과 초기화
         st.rerun()
 
     max_gap   = st.slider("📍 240선 근처 범위 (%)", 1, 20, key="max_gap",
@@ -632,6 +633,13 @@ with st.sidebar:
         help="240일선 돌파 후 최대 경과 일수")
     min_score = st.slider("🎯 최소 종합점수", 0, 40, key="min_score",
         help="이 점수 이상인 종목만 표시 (0=전체, 높을수록 엄격)")
+
+    # 조건이 바뀌면 기존 스캔 결과 초기화
+    _cur_cond = (st.session_state["max_gap"], st.session_state["min_below"],
+                 st.session_state["max_cross"], st.session_state["min_score"])
+    if st.session_state.get("_last_cond") != _cur_cond:
+        st.session_state["_last_cond"] = _cur_cond
+        st.session_state.pop("scan_results", None)
     st.markdown("---")
     st.markdown("""**📊 추가 점수 신호**
 | 신호 | 점수 |
