@@ -2,8 +2,10 @@ name: Daily Stock Scan & Telegram Alert
 
 on:
   schedule:
-    # 한국 시간 15:40 = UTC 06:40 (평일만)
+    # 한국 시간 15:40 = UTC 06:40 (평일만) - 장마감 스캔
     - cron: '40 6 * * 1-5'
+    # 한국 시간 09:10 = UTC 00:10 (평일만) - 성과 업데이트
+    - cron: '10 0 * * 1-5'
   workflow_dispatch:  # 수동 실행 버튼
 
 jobs:
@@ -24,8 +26,17 @@ jobs:
         run: |
           pip install yfinance pandas numpy requests beautifulsoup4 matplotlib
 
-      - name: Run scan & send alert
-        run: python github_scan.py
+      - name: Run scan (15:40 KST) or performance update (09:10 KST)
+        run: |
+          HOUR=$(date -u +%H)
+          MINUTE=$(date -u +%M)
+          if [ "$HOUR" = "00" ]; then
+            echo "09:10 KST - 성과 업데이트 실행"
+            python performance_update.py
+          else
+            echo "15:40 KST - 스캔 실행"
+            python github_scan.py
+          fi
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
