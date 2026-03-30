@@ -2,8 +2,7 @@ name: Daily Stock Scan & Telegram Alert
 
 on:
   schedule:
-    - cron: '40 6 * * 1-5'
-    - cron: '10 0 * * 1-5'
+    - cron: '15 7 * * *'
   workflow_dispatch:
 
 jobs:
@@ -24,16 +23,7 @@ jobs:
         run: pip install yfinance pandas numpy requests beautifulsoup4 matplotlib
 
       - name: Run
-        run: |
-          HOUR=$(date -u +%H)
-          EVENT="${{ github.event_name }}"
-          if [ "$EVENT" = "workflow_dispatch" ]; then
-            python github_scan.py
-          elif [ "$HOUR" = "00" ]; then
-            python performance_update.py
-          else
-            python github_scan.py
-          fi
+        run: python github_scan.py
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
