@@ -933,21 +933,18 @@ def make_candle(data, title, ma240_series=None, cross_date=None, show_levels=Tru
     if show_levels:
         try:
             from telegram_alert import calc_price_levels
-            # symbol이 있으면 telegram_alert의 calc_price_levels 사용 (텔레그램과 동일)
-            # 없으면 data 기반으로 직접 계산
             if symbol:
                 lv = calc_price_levels(symbol)
             else:
-                # data만 있을 때 임시 심볼 없이 계산 (개별 종목 탭 등)
                 lv = _calc_price_levels_from_data(data)
 
             if lv and lv.get("target"):
-                target  = lv["target"]
-                entry   = lv["entry"]
+                target   = lv["target"]
+                entry    = lv["entry"]
                 entry_label = lv.get("entry_label", "매수")
-                stop    = lv["stop"]
-                current = lv["current"]
-                upside  = lv["upside"]
+                stop     = lv["stop"]
+                current  = lv["current"]
+                upside   = lv["upside"]
                 downside = lv["downside"]
                 rr_ratio = lv["rr"]
 
@@ -962,7 +959,30 @@ def make_candle(data, title, ma240_series=None, cross_date=None, show_levels=Tru
                                          entry_label=entry_label, stop=stop,
                                          upside=upside, downside=downside, rr_ratio=rr_ratio)
         except Exception:
-            pass
+            # calc_price_levels 실패 시 data 기반으로 폴백
+            try:
+                lv = _calc_price_levels_from_data(data)
+                if lv and lv.get("target"):
+                    target   = lv["target"]
+                    entry    = lv["entry"]
+                    entry_label = lv.get("entry_label", "매수")
+                    stop     = lv["stop"]
+                    current  = lv["current"]
+                    upside   = lv["upside"]
+                    downside = lv["downside"]
+                    rr_ratio = lv["rr"]
+                    fig.add_hline(y=target, line=dict(color="#00ff88", width=2, dash="dash"))
+                    fig.add_hrect(y0=entry, y1=target, fillcolor="rgba(0,255,136,0.08)", line_width=0)
+                    if entry < current:
+                        fig.add_hline(y=entry, line=dict(color="#ffd700", width=2, dash="dashdot"))
+                        fig.add_hrect(y0=stop, y1=entry, fillcolor="rgba(255,51,85,0.08)", line_width=0)
+                    fig.add_hline(y=current, line=dict(color="#ffffff", width=1.5, dash="dot"))
+                    fig.add_hline(y=stop, line=dict(color="#ff3355", width=2, dash="dash"))
+                    fig._price_levels = dict(target=target, current=current, entry=entry,
+                                             entry_label=entry_label, stop=stop,
+                                             upside=upside, downside=downside, rr_ratio=rr_ratio)
+            except Exception:
+                pass
 
     fig.update_layout(
         title=dict(text=title, font=dict(color="#e0e6f0", size=13)),
