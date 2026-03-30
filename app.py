@@ -873,6 +873,15 @@ def make_rsi_chart(rsi_s, chart_data=None):
 
 def _calc_price_levels_from_data(data):
     """symbol 없이 data DataFrame으로 가격 레벨 계산 (telegram_alert.calc_price_levels와 동일 로직)"""
+    def _tick(p):
+        if p < 2000:      t = 1
+        elif p < 5000:    t = 5
+        elif p < 20000:   t = 10
+        elif p < 50000:   t = 50
+        elif p < 200000:  t = 100
+        elif p < 500000:  t = 500
+        else:             t = 1000
+        return int(round(p / t) * t)
     try:
         import numpy as np
         df = data.dropna(subset=["Close","High","Low"])
@@ -917,6 +926,10 @@ def _calc_price_levels_from_data(data):
         else: target = entry + risk * 3.0
         target = min(target, entry * 2.0)
         rr = (target - entry) / (entry - stop + 1e-9)
+        entry  = _tick(entry)
+        target = _tick(target)
+        stop   = _tick(stop)
+        rr     = (target - entry) / (entry - stop + 1e-9)
         return {"current":current,"entry":entry,"entry_label":entry_label,"target":target,
                 "stop":stop,"rr":rr,"upside":(target/entry-1)*100,"downside":(stop/entry-1)*100}
     except:

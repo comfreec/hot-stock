@@ -176,6 +176,18 @@ def _get_korean_font():
     return None
 
 
+def round_to_tick(price: float) -> int:
+    """한국 주식 호가 단위로 반올림"""
+    if price < 2000:      tick = 1
+    elif price < 5000:    tick = 5
+    elif price < 20000:   tick = 10
+    elif price < 50000:   tick = 50
+    elif price < 200000:  tick = 100
+    elif price < 500000:  tick = 500
+    else:                 tick = 1000
+    return int(round(price / tick) * tick)
+
+
 def get_financial_data(symbol: str) -> dict:
     """재무 데이터 (PER, PBR) 조회"""
     try:
@@ -278,6 +290,12 @@ def calc_price_levels(symbol: str) -> dict:
 
         target = min(target, entry * 2.0)
         rr = (target - entry) / (entry - stop + 1e-9)
+
+        # 호가 단위 적용
+        entry  = round_to_tick(entry)
+        target = round_to_tick(target)
+        stop   = round_to_tick(stop)
+        rr     = (target - entry) / (entry - stop + 1e-9)
 
         return {
             "current":     current,
