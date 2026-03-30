@@ -106,9 +106,9 @@ def make_chart_image(symbol: str, name: str, price_levels: dict = None) -> bytes
 
             # 매수가 (240선 근거)
             if entry < current:
-                label_en = {"240선": "MA240", "MA20": "MA20", "스윙저점": "SwingLow", "현재가": "Close"}.get(entry_label, entry_label)
+                label_en = {"240선": "MA240", "240선+버퍼": "MA240", "MA20": "MA20", "스윙저점": "SwingLow", "현재가": "Close"}.get(entry_label, entry_label)
                 ax1.axhline(y=entry, color="#ffd700", linewidth=1.5, linestyle="-.", alpha=0.9)
-                ax1.text(len(df)-1, entry, f" Buy({label_en}) ₩{entry:,.0f}",
+                ax1.text(len(df)-1, entry, f" Buy ₩{entry:,.0f}",
                          color="#ffd700", fontsize=7, va="bottom", ha="right")
 
             ax1.axhline(y=current, color="#ffffff", linewidth=1.0, linestyle="--", alpha=0.6)
@@ -405,7 +405,7 @@ def send_scan_alert(results: list, send_charts: bool = True):
                 if lv:
                     caption = (
                         f"<b>{r['name']}</b> ⭐{r['total_score']}점\n"
-                        f"매수({lv['entry_label']}) ₩{lv['entry']:,.0f}  "
+                        f"분할매수 ₩{lv.get('ma240', lv['entry']):,.0f}~₩{lv['entry']:,.0f}  "
                         f"목표 ₩{lv['target']:,.0f}(+{lv['upside']:.1f}%)  "
                         f"손절 ₩{lv['stop']:,.0f}({lv['downside']:.1f}%)"
                     )
