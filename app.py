@@ -765,7 +765,7 @@ def calc_rsi_wilder(close, period=20):
     rs = avg_gain / avg_loss.replace(0, float('nan'))
     return 100 - (100 / (1 + rs))
 
-def show_price_levels(fig):
+def show_price_levels(fig, split_buy=False):
     """차트 아래에 목표가/매수가/손절가 박스 표시"""
     if not hasattr(fig, '_price_levels') or fig._price_levels is None:
         return
@@ -789,10 +789,7 @@ def show_price_levels(fig):
       </div>
       <div style='flex:1;background:rgba(255,215,0,0.08);border:1px solid #ffd700;
            border-radius:10px;padding:12px;text-align:center;'>
-        <div style='color:#8b92a5;font-size:10px;letter-spacing:1px;'>📍 매수가</div>
-        <div style='color:#ffd700;font-size:18px;font-weight:700;margin:4px 0;'>₩{lv["entry"]:,.0f}</div>
-        <div style='color:#ffd700;font-size:12px;'>{lv.get("entry_label","근거가")} 기준</div>
-        <div style='color:#4a5568;font-size:10px;margin-top:4px;'>240선 근거 진입가</div>
+        {'<div style="color:#8b92a5;font-size:10px;letter-spacing:1px;">📍 분할매수</div><div style="color:#ffd700;font-size:18px;font-weight:700;margin:4px 0;">₩' + f'{lv.get("ma240", lv["entry"]):,.0f}' + ' ~ ₩' + f'{lv["entry"]:,.0f}' + '</div><div style="color:#4a5568;font-size:10px;margin-top:4px;">240선 근처 분할매수</div>' if split_buy else '<div style="color:#8b92a5;font-size:10px;letter-spacing:1px;">📍 매수가</div><div style="color:#ffd700;font-size:18px;font-weight:700;margin:4px 0;">₩' + f'{lv["entry"]:,.0f}' + '</div><div style="color:#ffd700;font-size:12px;">' + lv.get("entry_label","근거가") + ' 기준</div><div style="color:#4a5568;font-size:10px;margin-top:4px;">240선 근거 진입가</div>'}
       </div>
       <div style='flex:1;background:rgba(255,51,85,0.08);border:1px solid #ff3355;
            border-radius:10px;padding:12px;text-align:center;'>
@@ -1332,7 +1329,7 @@ if mode == "🔍 급등 예고 종목 탐지":
                                 cross_date = close_s.index[-(r["days_since_cross"]+1)]
                             _c1 = make_candle(cd, f"{r['name']} ({r['symbol']})", cross_date=cross_date, symbol=r["symbol"])
                             st.plotly_chart(_c1, width='stretch', key=f"candle_{r['symbol']}_{i}")
-                            show_price_levels(_c1)
+                            show_price_levels(_c1, split_buy=True)
                         except Exception as chart_err:
                             st.caption(f"차트 오류: {chart_err}")
 
