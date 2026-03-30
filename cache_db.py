@@ -127,11 +127,18 @@ def is_favorite(symbol: str) -> bool:
 
 # ── 성과 추적 ────────────────────────────────────────────────────
 def save_alert_history(results: list, price_levels_map: dict = None):
-    """알림 발송 종목을 성과 추적 DB에 저장"""
+    """알림 발송 종목을 성과 추적 DB에 저장 (같은 날 중복 방지)"""
     today = date.today().isoformat()
     conn = _get_conn()
     for r in results:
         sym = r.get("symbol", "")
+        # 오늘 이미 저장된 종목이면 스킵
+        existing = conn.execute(
+            "SELECT id FROM alert_history WHERE alert_date=? AND symbol=?",
+            (today, sym)
+        ).fetchone()
+        if existing:
+            continue
         lv  = (price_levels_map or {}).get(sym, {})
         conn.execute("""
             INSERT INTO alert_history
