@@ -92,33 +92,30 @@ def make_chart_image(symbol: str, name: str, price_levels: dict = None) -> bytes
 
             if target:
                 ax1.axhline(y=target, color="#00ff88", linewidth=1.5, linestyle="--", alpha=0.9)
-                ax1.text(len(df)-1, target, f" 목표 ₩{target:,.0f} (+{upside:.1f}%)",
-                         color="#00ff88", fontsize=7, va="bottom", ha="right",
-                         fontproperties=_get_korean_font())
+                ax1.text(len(df)-1, target, f" Target ₩{target:,.0f} (+{upside:.1f}%)",
+                         color="#00ff88", fontsize=7, va="bottom", ha="right")
                 ax1.axhspan(entry, target, alpha=0.05, color="#00ff88")
 
             # 매수가 (240선 근거)
             if entry < current:
+                label_en = {"240선": "MA240", "MA20": "MA20", "스윙저점": "SwingLow", "현재가": "Close"}.get(entry_label, entry_label)
                 ax1.axhline(y=entry, color="#ffd700", linewidth=1.5, linestyle="-.", alpha=0.9)
-                ax1.text(len(df)-1, entry, f" 매수({entry_label}) ₩{entry:,.0f}",
-                         color="#ffd700", fontsize=7, va="bottom", ha="right",
-                         fontproperties=_get_korean_font())
+                ax1.text(len(df)-1, entry, f" Buy({label_en}) ₩{entry:,.0f}",
+                         color="#ffd700", fontsize=7, va="bottom", ha="right")
 
             ax1.axhline(y=current, color="#ffffff", linewidth=1.0, linestyle="--", alpha=0.6)
-            ax1.text(len(df)-1, current, f" 현재 ₩{current:,.0f}",
-                     color="#ffffff", fontsize=7, va="bottom", ha="right",
-                     fontproperties=_get_korean_font())
+            ax1.text(len(df)-1, current, f" Close ₩{current:,.0f}",
+                     color="#ffffff", fontsize=7, va="bottom", ha="right")
 
             if stop:
                 ax1.axhline(y=stop, color="#ff3355", linewidth=1.5, linestyle="--", alpha=0.9)
-                ax1.text(len(df)-1, stop, f" 손절 ₩{stop:,.0f} ({downside:.1f}%)",
-                         color="#ff3355", fontsize=7, va="top", ha="right",
-                         fontproperties=_get_korean_font())
+                ax1.text(len(df)-1, stop, f" Stop ₩{stop:,.0f} ({downside:.1f}%)",
+                         color="#ff3355", fontsize=7, va="top", ha="right")
                 ax1.axhspan(stop, entry, alpha=0.05, color="#ff3355")
         else:
             ax1.axhline(y=current, color="#ffffff", linewidth=0.8, linestyle="--", alpha=0.5)
 
-        ax1.set_title(f"{name} ({symbol})", color="#e0e6f0", fontsize=12, pad=8)
+        ax1.set_title(f"{symbol}", color="#e0e6f0", fontsize=12, pad=8)
         ax1.tick_params(colors="#8b92a5", labelsize=8)
         ax1.spines[:].set_color("#2d3555")
         ax1.yaxis.set_label_position("right")
@@ -136,7 +133,7 @@ def make_chart_image(symbol: str, name: str, price_levels: dict = None) -> bytes
         ax2.spines[:].set_color("#2d3555")
         ax2.yaxis.set_label_position("right")
         ax2.yaxis.tick_right()
-        ax2.set_ylabel("Volume", color="#8b92a5", fontsize=7)
+        ax2.set_ylabel("Vol", color="#8b92a5", fontsize=7)
 
         step = max(1, len(df) // 6)
         ax1.set_xticks([])
