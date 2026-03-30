@@ -251,18 +251,19 @@ def calc_price_levels(symbol: str) -> dict:
         else:
             entry_label, entry = "현재가", current
 
-        # ── 분할매수 평균가 = 실질 매수가 기준 ──────────────────
+        # ── 분할매수 평균가 계산 (표시용) ───────────────────────
         entry_low_v = ma240_v if ma240_v else entry
         avg_entry = (entry_low_v + entry) / 2
 
-        # ── 손절가: 기존 로직 유지 (금액 그대로) ─────────────────
+        # ── 손절가: entry(노란선) 기준 ───────────────────────────
         stop_candidates = []
         if ma240_v:
-            stop_candidates.append(ma240_v * 0.995)        # 240선 아래 0.5%
-        stop_candidates.append(swing_low_20 - atr * 1.0)  # 스윙저점 - ATR
-        stop = max(stop_candidates) if stop_candidates else avg_entry * 0.93
-        stop = max(stop, avg_entry * 0.85)  # 안전망: 평균가 -15% 이하 방지
-        risk = max(avg_entry - stop, avg_entry * 0.01)
+            stop_candidates.append(ma240_v * 0.995)
+        stop_candidates.append(swing_low_20 - atr * 1.0)
+        stop = max(stop_candidates) if stop_candidates else entry * 0.93
+        stop = max(stop, entry * 0.88)
+        stop = min(stop, entry * 0.95)
+        risk = max(entry - stop, entry * 0.01)
 
         # 목표가
         recent_high = float(high.tail(120).max())
@@ -298,11 +299,9 @@ def calc_price_levels(symbol: str) -> dict:
         stop       = round_to_tick(stop)
         ma240_tick = round_to_tick(ma240_v) if ma240_v else entry
 
-        # 평균 매수가 기준으로 rr/upside/downside 계산
-        avg_entry_tick = (ma240_tick + entry) / 2
-        rr       = (target - avg_entry_tick) / (avg_entry_tick - stop + 1e-9)
-        upside   = (target / avg_entry_tick - 1) * 100
-        downside = (stop   / avg_entry_tick - 1) * 100
+        rr       = (target - entry) / (entry - stop + 1e-9)
+        upside   = (target / entry - 1) * 100
+        downside = (stop   / entry - 1) * 100
 
         return {
             "current":     current,
@@ -358,22 +357,12 @@ def send_scan_alert(results: list, send_charts: bool = True):
 
         if lv and entry_low and entry_high:
             split_str = f"₩{entry_low:,.0f}~₩{entry_high:,.0f}"
-            avg_entry = (entry_low + entry_high) / 2
         else:
             split_str = f"₩{r['current_price']:,.0f}"
-            avg_entry = r['current_price']
 
-        if lv:
-            avg_upside   = (lv['target'] / avg_entry - 1) * 100
-            avg_downside = (lv['stop']   / avg_entry - 1) * 100
-            avg_rr       = avg_upside / abs(avg_downside) if avg_downside != 0 else 0
-            target_str = f"₩{lv['target']:,.0f} (+{avg_upside:.1f}%)"
-            stop_str   = f"₩{lv['stop']:,.0f} ({avg_downside:.1f}%)"
-            rr_str     = f"{avg_rr:.1f} : 1"
-        else:
-            target_str = "-"
-            stop_str   = "-"
-            rr_str     = "-"
+        target_str = f"₩{lv['target']:,.0f} (+{lv['upside']:.1f}%)" if lv else "-"
+        stop_str   = f"₩{lv['stop']:,.0f} ({lv['downside']:.1f}%)" if lv else "-"
+        rr_str     = f"{lv['rr']:.1f} : 1" if lv else "-"
 
         per_str = f"PER {fin['per']}" if fin.get("per") else ""
         pbr_str = f"PBR {fin['pbr']}" if fin.get("pbr") else ""
@@ -419,18 +408,12 @@ def send_scan_alert(results: list, send_charts: bool = True):
             img = make_chart_image(r["symbol"], r["name"], price_levels=lv)
             if img:
                 if lv:
-                    entry_low_c  = lv.get('ma240', lv['entry'])
-                    entry_high_c = lv['entry']
-                    avg_entry_c  = (entry_low_c + entry_high_c) / 2
-                    avg_up_c     = (lv['target'] / avg_entry_c - 1) * 100
-                    avg_dn_c     = (lv['stop']   / avg_entry_c - 1) * 100
-                    avg_rr_c     = avg_up_c / abs(avg_dn_c) if avg_dn_c != 0 else 0
                     caption = (
                         f"<b>{r['name']}</b> ⭐{r['total_score']}점\n"
-                        f"📍 분할매수: ₩{entry_low_c:,.0f}~₩{entry_high_c:,.0f}\n"
-                        f"🎯 목표가: ₩{lv['target']:,.0f} (+{avg_up_c:.1f}%)\n"
-                        f"🛑 손절가: ₩{lv['stop']:,.0f} ({avg_dn_c:.1f}%)\n"
-                        f"⚖️ 손익비: {avg_rr_c:.1f}:1"
+                        f"📍 분할매수: ₩{lv.get('ma240', lv['entry']):,.0f}~₩{lv['entry']:,.0f}\n"
+                        f"🎯 목표가: ₩{lv['target']:,.0f} (+{lv['upside']:.1f}%)\n"
+                        f"🛑 손절가: ₩{lv['stop']:,.0f} ({lv['downside']:.1f}%)\n"
+                        f"⚖️ 손익비: {lv['rr']:.1f}:1"
                     )
                 else:
                     caption = f"<b>{r['name']}</b>"
