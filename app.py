@@ -790,7 +790,7 @@ def show_price_levels(fig):
       <div style='flex:1;background:rgba(255,215,0,0.08);border:1px solid #ffd700;
            border-radius:10px;padding:12px;text-align:center;'>
         <div style='color:#8b92a5;font-size:10px;letter-spacing:1px;'>📍 분할매수</div>
-        <div style='color:#ffd700;font-size:18px;font-weight:700;margin:4px 0;'>₩{lv["ma240"]:,.0f} ~ ₩{lv["entry"]:,.0f}</div>
+        <div style='color:#ffd700;font-size:18px;font-weight:700;margin:4px 0;'>₩{lv.get("ma240", lv["entry"]):,.0f} ~ ₩{lv["entry"]:,.0f}</div>
         <div style='color:#4a5568;font-size:10px;margin-top:4px;'>240선 근처 분할매수</div>
       </div>
       <div style='flex:1;background:rgba(255,51,85,0.08);border:1px solid #ff3355;
@@ -986,6 +986,7 @@ def make_candle(data, title, ma240_series=None, cross_date=None, show_levels=Tru
                 fig.add_hline(y=stop, line=dict(color="#ff3355", width=2, dash="dash"))
                 fig._price_levels = dict(target=target, current=current, entry=entry,
                                          entry_label=entry_label, stop=stop,
+                                         ma240=lv.get("ma240", entry),
                                          upside=upside, downside=downside, rr_ratio=rr_ratio)
         except Exception:
             pass
