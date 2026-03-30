@@ -251,16 +251,20 @@ def calc_price_levels(symbol: str) -> dict:
         else:
             entry_label, entry = "현재가", current
 
-        # ── 손절가: 매수가 기준 근거 있는 손절 ──────────────────
+        # ── 분할매수 평균가 계산 ──────────────────────────────────
+        entry_low_v = ma240_v if ma240_v else entry
+        avg_entry = (entry_low_v + entry) / 2
+
+        # ── 손절가: 평균 매수가 기준 클리핑 ──────────────────────
         stop_candidates = []
         if ma240_v:
             stop_candidates.append(ma240_v * 0.995)        # 240선 아래 0.5%
         stop_candidates.append(swing_low_20 - atr * 1.0)  # 스윙저점 - ATR
 
-        stop = max(stop_candidates) if stop_candidates else entry * 0.93
-        stop = max(stop, entry * 0.88)
-        stop = min(stop, entry * 0.95)
-        risk = max(entry - stop, entry * 0.01)
+        stop = max(stop_candidates) if stop_candidates else avg_entry * 0.93
+        stop = max(stop, avg_entry * 0.88)   # 평균가 기준 최대 -12%
+        stop = min(stop, avg_entry * 0.97)   # 평균가 기준 최소 -3%
+        risk = max(avg_entry - stop, avg_entry * 0.01)
 
         # 목표가
         recent_high = float(high.tail(120).max())
@@ -289,14 +293,18 @@ def calc_price_levels(symbol: str) -> dict:
             target = entry + risk * 3.0
 
         target = min(target, entry * 2.0)
-        rr = (target - entry) / (entry - stop + 1e-9)
 
         # 호가 단위 적용
-        entry  = round_to_tick(entry)
-        target = round_to_tick(target)
-        stop   = round_to_tick(stop)
-        rr     = (target - entry) / (entry - stop + 1e-9)
+        entry      = round_to_tick(entry)
+        target     = round_to_tick(target)
+        stop       = round_to_tick(stop)
         ma240_tick = round_to_tick(ma240_v) if ma240_v else entry
+
+        # 평균 매수가 기준으로 rr/upside/downside 계산
+        avg_entry_tick = (ma240_tick + entry) / 2
+        rr       = (target - avg_entry_tick) / (avg_entry_tick - stop + 1e-9)
+        upside   = (target / avg_entry_tick - 1) * 100
+        downside = (stop   / avg_entry_tick - 1) * 100
 
         return {
             "current":     current,
@@ -306,8 +314,8 @@ def calc_price_levels(symbol: str) -> dict:
             "target":      target,
             "stop":        stop,
             "rr":          rr,
-            "upside":      (target / entry - 1) * 100,
-            "downside":    (stop / entry - 1) * 100,
+            "upside":      upside,
+            "downside":    downside,
         }
     except:
         return {}
