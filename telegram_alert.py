@@ -261,8 +261,7 @@ def calc_price_levels(symbol: str) -> dict:
             stop_candidates.append(ma240_v * 0.995)
         stop_candidates.append(swing_low_20 - atr * 1.0)
         stop = max(stop_candidates) if stop_candidates else entry * 0.93
-        stop = max(stop, entry * 0.88)
-        stop = min(stop, entry * 0.95)
+        stop = max(stop, entry * 0.85)  # 최대 -15% 안전망만
         risk = max(entry - stop, entry * 0.01)
 
         # 목표가
