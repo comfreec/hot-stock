@@ -1062,13 +1062,14 @@ if mode == "🔍 급등 예고 종목 탐지":
 
         # DB 캐싱 (시리즈 데이터 포함 저장)
         try:
+            import pandas as _pd
             def _serialize(r):
                 out = {}
                 for k, v in r.items():
-                    if hasattr(v, 'tolist'):  # pandas Series/numpy array
+                    if isinstance(v, _pd.Series):
                         out[k] = v.tolist()
-                    elif hasattr(v, 'index'):  # pandas Series with index
-                        out[k] = list(v)
+                    elif hasattr(v, 'tolist'):  # numpy array
+                        out[k] = v.tolist()
                     else:
                         out[k] = v
                 return out

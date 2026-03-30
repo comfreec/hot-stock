@@ -26,14 +26,14 @@ try:
     # DB 저장 (앱에서 캐시로 사용)
     try:
         from cache_db import save_scan
+        import pandas as _pd
         def _serialize(r):
             out = {}
             for k, v in r.items():
-                if hasattr(v, 'tolist'):
+                if isinstance(v, _pd.Series):
                     out[k] = v.tolist()
-                elif hasattr(v, '__iter__') and not isinstance(v, (str, dict, list)):
-                    try: out[k] = list(v)
-                    except: out[k] = v
+                elif hasattr(v, 'tolist'):
+                    out[k] = v.tolist()
                 else:
                     out[k] = v
             return out
