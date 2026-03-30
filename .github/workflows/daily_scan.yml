@@ -30,7 +30,11 @@ jobs:
         run: |
           HOUR=$(date -u +%H)
           MINUTE=$(date -u +%M)
-          if [ "$HOUR" = "00" ]; then
+          EVENT="${{ github.event_name }}"
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            echo "수동 실행 - 스캔 실행"
+            python github_scan.py
+          elif [ "$HOUR" = "00" ]; then
             echo "09:10 KST - 성과 업데이트 실행"
             python performance_update.py
           else
