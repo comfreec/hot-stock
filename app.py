@@ -927,17 +927,17 @@ def _calc_price_levels_from_data(data):
             entry_label, entry = max(valid, key=lambda x: x[1])  # 가장 높은 값 = 현재가에 가장 가까운 지지선
         else:
             entry_label, entry = "현재가", current
-        stop_cands = []
-        if ma240_v: stop_cands.append(ma240_v * 0.995)
-        stop_cands.append(swing_low_20 - atr * 1.0)
-        stop = max(stop_cands) if stop_cands else entry * 0.93
-        stop = max(stop, entry * 0.85)
+        # 손절가: 스윙저점 - ATR*0.5 (변동성 기반 명확한 무효화 지점)
+        stop = swing_low_20 - atr * 0.5
+        stop = max(stop, entry * 0.85)  # 안전망: -15% 이하 방지
         risk = max(entry - stop, entry * 0.01)
         recent_high = float(high.tail(120).max()); recent_low = float(low.tail(120).min())
         swing_range = max(recent_high - recent_low, entry * 0.01)
+        resist_20 = float(high.tail(20).max()); resist_60 = float(high.tail(60).max())
         candidates = sorted([x for x in [
             recent_low+swing_range*1.272, recent_low+swing_range*1.618,
-            recent_low+swing_range*2.0, recent_high*1.05,
+            recent_low+swing_range*2.0,
+            resist_20*1.01, resist_60*1.01, recent_high*1.01,
             entry+atr*3.0, entry+atr*5.0] if x > entry*1.03])
         min_rr3 = entry + risk * 3.0
         valid_t = [x for x in candidates if x >= min_rr3]
