@@ -41,7 +41,7 @@ def send_photo(image_bytes: bytes, caption: str = "") -> bool:
         return False
 
 
-def make_chart_image(symbol: str, name: str, price_levels: dict = None) -> bytes | None:
+def make_chart_image(symbol: str, name: str, price_levels: dict = None, df=None) -> bytes | None:
     """캔들차트 + 240일선 + 목표가/손절가 수평선 이미지 생성"""
     try:
         import yfinance as yf
@@ -49,13 +49,19 @@ def make_chart_image(symbol: str, name: str, price_levels: dict = None) -> bytes
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
 
-        df = yf.Ticker(symbol).history(period="6mo")
-        df = df.dropna(subset=["Open","High","Low","Close"])
-        if len(df) < 20:
-            return None
+        if df is None:
+            df = yf.Ticker(symbol).history(period="6mo")
+            df = df.dropna(subset=["Open","High","Low","Close"])
+            if len(df) < 20:
+                return None
+            df2y = yf.Ticker(symbol).history(period="2y").dropna(subset=["Close"])
+            ma240_full = df2y["Close"].rolling(240).mean()
+        else:
+            df = df.dropna(subset=["Open","High","Low","Close"]).tail(120)
+            if len(df) < 20:
+                return None
+            ma240_full = df["Close"].rolling(240).mean()
 
-        df2y = yf.Ticker(symbol).history(period="2y").dropna(subset=["Close"])
-        ma240_full = df2y["Close"].rolling(240).mean()
         ma240 = ma240_full.reindex(df.index)
 
         fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 7),
@@ -250,13 +256,8 @@ def calc_price_levels(symbol: str) -> dict:
             entry_label, entry = "현재가", current
 
         # ── 손절가: 스윙저점 - ATR*0.5 (변동성 기반 명확한 무효화 지점) ──
-        # ── 손절가: 240선 아래 or 스윙저점 - ATR ──────────────────
-        stop_candidates = []
-        if ma240_v:
-            stop_candidates.append(ma240_v * 0.995)
-        stop_candidates.append(swing_low_20 - atr * 1.0)
-        stop = max(stop_candidates) if stop_candidates else entry * 0.93
-        stop = max(stop, entry * 0.85)
+        # ── 손절가: 매수가 대비 -5% 고정 ────────────────────────
+        stop = entry * 0.95
         risk = max(entry - stop, entry * 0.01)
 
         # 목표가: 피보나치 되돌림 기반
@@ -306,7 +307,126 @@ def calc_price_levels(symbol: str) -> dict:
             "upside":      (target / entry - 1) * 100,
             "downside":    (stop / entry - 1) * 100,
         }
-    except:
+    except Exception as e:
+        print(f"[calc_price_levels] {symbol} 오류: {e}")
+        import traceback; traceback.print_exc()
+        return {}
+
+
+def _calc_levels_from_result(r: dict) -> dict:
+    """스캔 결과에서 직접 가격 레벨 계산 - app.py make_candle과 동일한 로직"""
+    try:
+        current = float(r["current_price"])
+        close_s = r.get("close_series")
+        high_s  = r.get("high_series")
+        low_s   = r.get("low_series")
+
+        # list → Series 변환
+        def to_s(v):
+            if v is None: return None
+            if hasattr(v, 'rolling'): return v
+            return pd.Series(list(v))
+
+        close_s = to_s(close_s)
+        high_s  = to_s(high_s)
+        low_s   = to_s(low_s)
+
+        if close_s is None or len(close_s) < 20:
+            return {}
+
+        high_s  = high_s  if high_s  is not None else close_s
+        low_s   = low_s   if low_s   is not None else close_s
+
+        # ATR
+        tr = pd.concat([high_s - low_s,
+                        (high_s - close_s.shift(1)).abs(),
+                        (low_s  - close_s.shift(1)).abs()], axis=1).max(axis=1)
+        atr_s = tr.rolling(14).mean().dropna()
+        atr = float(atr_s.iloc[-1]) if len(atr_s) > 0 else float((high_s - low_s).mean())
+
+        # 매수가: app.py와 동일
+        ma240_s = close_s.rolling(240).mean()
+        ma240_v = float(ma240_s.iloc[-1]) if not pd.isna(ma240_s.iloc[-1]) else None
+        swing_low_20 = float(low_s.tail(20).min())
+        ma20 = float(close_s.rolling(20).mean().dropna().iloc[-1])
+
+        entry_candidates = []
+        if ma240_v:
+            entry_candidates.append(("240선", ma240_v * 1.005))
+        entry_candidates.append(("MA20", ma20))
+        entry_candidates.append(("스윙저점", swing_low_20))
+
+        valid_entries = [
+            (label, price) for label, price in entry_candidates
+            if price < current and (ma240_v is None or price >= ma240_v * 0.995)
+        ]
+        if valid_entries:
+            entry_label = "+".join(l for l, _ in valid_entries)
+            entry = sum(p for _, p in valid_entries) / len(valid_entries)
+        else:
+            entry_label, entry = "현재가", current
+
+        # 손절가: -5%
+        stop = entry * 0.95
+        risk = max(entry - stop, entry * 0.01)
+
+        # 목표가: app.py와 동일한 다중 기법
+        recent_high = float(high_s.tail(120).max()) if len(high_s) >= 120 else float(high_s.max())
+        recent_low  = float(low_s.tail(120).min())  if len(low_s)  >= 120 else float(low_s.min())
+        swing_range = max(recent_high - recent_low, current * 0.01)
+
+        fib_1272 = recent_low + swing_range * 1.272
+        fib_1618 = recent_low + swing_range * 1.618
+        fib_2000 = recent_low + swing_range * 2.000
+        prev_high_ext = recent_high * 1.05
+        atr_x3 = current + atr * 3.0
+        atr_x5 = current + atr * 5.0
+
+        ma20_s = close_s.rolling(20).mean()
+        std20  = close_s.rolling(20).std()
+        bb_upper = float((ma20_s + std20 * 2.0).dropna().iloc[-1])
+
+        min_rr3 = current + risk * 3.0
+        min_rr2 = current + risk * 2.0
+        all_cands = sorted([x for x in [fib_1272, fib_1618, fib_2000,
+                                         recent_high, prev_high_ext,
+                                         atr_x3, atr_x5, bb_upper]
+                            if x > current * 1.03])
+        valid_3 = [x for x in all_cands if x >= min_rr3]
+        valid_2 = [x for x in all_cands if x >= min_rr2]
+
+        if valid_3:
+            weights = [1 / (x - current) for x in valid_3]
+            target = sum(x * w for x, w in zip(valid_3, weights)) / sum(weights)
+        elif valid_2:
+            target = valid_2[-1]
+        elif all_cands:
+            target = all_cands[-1]
+        else:
+            target = current + risk * 3.0
+
+        target = min(target, current * 2.0)
+
+        # 호가 단위 적용
+        entry  = round_to_tick(entry)
+        stop   = round_to_tick(stop)
+        target = round_to_tick(target)
+
+        rr = (target - entry) / (max(entry - stop, 1) + 1e-9)
+
+        return {
+            "current":  current,
+            "entry":    round(entry),
+            "target":   round(target),
+            "stop":     round(stop),
+            "rr":       rr,
+            "upside":   (target / entry - 1) * 100,
+            "downside": (stop / entry - 1) * 100,
+            "ma240":    round(ma240_v) if ma240_v else round(entry),
+        }
+    except Exception as e:
+        print(f"[_calc_levels_from_result] {r.get('symbol')} 오류: {e}")
+        import traceback; traceback.print_exc()
         return {}
 
 
@@ -339,7 +459,8 @@ def send_scan_alert(results: list, send_charts: bool = True):
     summary_lines = [f"🚀 <b>급등 예고 종목</b> ({today} 장마감) — {len(results[:10])}개\n{'━'*20}"]
 
     for i, r in enumerate(results[:10], 1):
-        lv = calc_price_levels(r["symbol"])
+        # yfinance 재호출 없이 스캔 결과에서 직접 계산
+        lv = _calc_levels_from_result(r)
         fin = get_financial_data(r["symbol"])
         s   = r.get("signals", {})
         sig_str = format_signals(s)
@@ -388,9 +509,34 @@ def send_scan_alert(results: list, send_charts: bool = True):
     price_levels_map = {}
     if send_charts:
         for r in results[:5]:
-            lv = calc_price_levels(r["symbol"])
+            lv = _calc_levels_from_result(r)
             price_levels_map[r["symbol"]] = lv
-            img = make_chart_image(r["symbol"], r["name"], price_levels=lv)
+            close_s = r.get("close_series")
+            img = None
+            try:
+                if close_s is not None:
+                    if not hasattr(close_s, 'rolling'):
+                        close_s = pd.Series(list(close_s))
+                    # datetime 인덱스가 있으면 스캔 데이터로 차트 생성
+                    if len(close_s) > 20 and hasattr(close_s.index[0], 'strftime'):
+                        def _s(v, idx):
+                            if v is None: return pd.Series([0]*len(idx), index=idx)
+                            if not hasattr(v, 'index'): return pd.Series(list(v), index=idx)
+                            return v
+                        idx = close_s.index
+                        df_chart = pd.DataFrame({
+                            "Open":   _s(r.get("open_series"),   idx),
+                            "High":   _s(r.get("high_series"),   idx),
+                            "Low":    _s(r.get("low_series"),    idx),
+                            "Close":  close_s,
+                            "Volume": _s(r.get("volume_series"), idx),
+                        })
+                        img = make_chart_image(r["symbol"], r["name"], price_levels=lv, df=df_chart)
+            except Exception as ce:
+                print(f"스캔데이터 차트 오류 {r['symbol']}: {ce}")
+            # 스캔 데이터로 실패하면 yfinance로 폴백
+            if img is None:
+                img = make_chart_image(r["symbol"], r["name"], price_levels=lv)
             if img:
                 if lv:
                     caption = (

@@ -212,13 +212,13 @@ footer p{color:var(--muted);font-size:13px;line-height:1.8}
         <div class="sn">01</div>
         <div class="si2">📉</div>
         <div class="st">충분한 조정 확인</div>
-        <div class="sd">240일선 아래 120일 이상 조정한 종목만 선별합니다. 충분히 눌린 종목이 터질 때 폭발력이 다릅니다.</div>
+        <div class="sd">240일선 아래 120일(6개월) 이상 조정한 종목만 선별합니다. 충분히 눌린 종목이 터질 때 폭발력이 다릅니다.</div>
       </div>
       <div class="sc fade-up">
         <div class="sn">02</div>
         <div class="si2">🚀</div>
         <div class="st">240일선 돌파 감지</div>
-        <div class="sd">60일 이내 240일선을 상향 돌파한 종목을 포착합니다. 가짜 돌파 방지를 위해 3일 유지 + 0.5% 이상 조건을 적용합니다.</div>
+        <div class="sd">60일 이내 240일선을 상향 돌파하고 현재가가 240일선 위 10% 이내인 종목을 포착합니다. 너무 많이 오른 종목은 제외합니다.</div>
       </div>
       <div class="sc fade-up">
         <div class="sn">03</div>
@@ -244,10 +244,10 @@ footer p{color:var(--muted);font-size:13px;line-height:1.8}
         <div class="tm">
           <div class="tt">🚀 급등 예고 종목 (2025-03-31)</div>
           <div class="tr"><span class="tl">종목</span><span class="tv">에코프로비엠 ⭐ 23점</span></div>
-          <div class="tr"><span class="tl">📍 매수가</span><span class="tv gd">₩87,400 (240선)</span></div>
-          <div class="tr"><span class="tl">🎯 목표가</span><span class="tv up">₩104,200 (+19.2%)</span></div>
-          <div class="tr"><span class="tl">🛑 손절가</span><span class="tv dn">₩83,100 (-4.9%)</span></div>
-          <div class="tr"><span class="tl">⚖️ 손익비</span><span class="tv up">3.9 : 1</span></div>
+          <div class="tr"><span class="tl">📍 매수가</span><span class="tv gd">₩87,400</span></div>
+          <div class="tr"><span class="tl">🎯 목표가</span><span class="tv up">₩104,000 (+19.0%)</span></div>
+          <div class="tr"><span class="tl">🛑 손절가</span><span class="tv dn">₩83,000 (-5.0%)</span></div>
+          <div class="tr"><span class="tl">⚖️ 손익비</span><span class="tv up">3.8 : 1</span></div>
           <div class="tr"><span class="tl">신호</span><span class="tv" style="font-size:11px">⚡정배열 🔥BB확장 📈OBV</span></div>
         </div>
         <div class="ttime">오후 3:42 ✓✓</div>
@@ -256,11 +256,11 @@ footer p{color:var(--muted);font-size:13px;line-height:1.8}
         <h3>매수가·목표가·손절가까지<br>전부 자동 계산</h3>
         <p>알림 하나에 투자 판단에 필요한 모든 정보가 담겨 있습니다. 차트를 열어볼 필요도 없습니다.</p>
         <ul class="fl">
-          <li>피보나치 기반 목표가 자동 산출</li>
-          <li>240일선 기준 근거 있는 매수가</li>
-          <li>손익비 2:1 미만 종목 자동 제외</li>
+          <li>피보나치 + ATR 다중 기법 목표가 자동 산출</li>
+          <li>지지선 평균가 기반 근거 있는 매수가</li>
+          <li>매수가 대비 -5% 손절가 자동 설정</li>
+          <li>한국 주식 호가 단위로 가격 자동 보정</li>
           <li>캔들차트 이미지 함께 전송</li>
-          <li>PER·PBR 재무 데이터 포함</li>
           <li>매일 09:10 성과 업데이트 알림</li>
         </ul>
       </div>

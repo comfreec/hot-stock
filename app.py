@@ -903,6 +903,17 @@ def make_rsi_chart(rsi_s, chart_data=None):
     )
     return fig
 
+def round_to_tick(price: float) -> int:
+    """한국 주식 호가 단위로 반올림"""
+    if price < 2000:      tick = 1
+    elif price < 5000:    tick = 5
+    elif price < 20000:   tick = 10
+    elif price < 50000:   tick = 50
+    elif price < 200000:  tick = 100
+    elif price < 500000:  tick = 500
+    else:                 tick = 1000
+    return int(round(price / tick) * tick)
+
 def make_candle(data, title, ma240_series=None, cross_date=None, show_levels=True):
     fig = go.Figure()
     fig.add_trace(go.Ohlc(
@@ -963,17 +974,8 @@ def make_candle(data, title, ma240_series=None, cross_date=None, show_levels=Tru
         # 1) 240선 아래 0.5% = 240선 지지 붕괴
         # 2) 스윙 저점(20일) - ATR×1.0 = 추세 붕괴
         # 3) entry 대비 -5% ~ -10% 범위 제한
-        # ── 손절가: 스윙저점 - ATR 기반 ──────────────────────────
-        # 스윙저점(20일) - ATR×1.5 = 추세 붕괴 기준
-        stop = swing_low_20 - atr * 1.5
-
-        # 240선이 있고 entry보다 아래면 240선 아래 0.5%도 후보
-        if ma240_v and ma240_v < entry:
-            stop = max(stop, ma240_v * 0.995)  # 둘 중 더 높은(덜 위험한) 값
-
-        # 범위 제한: entry 대비 -3% ~ -15% (너무 가깝거나 너무 먼 손절 방지)
-        stop = min(stop, entry * 0.97)   # 최소 -3% 이상 아래
-        stop = max(stop, entry * 0.85)   # 최대 -15% 이내
+        # ── 손절가: 매수가 대비 -5% 고정 ────────────────────────
+        stop = entry * 0.95
         risk = max(entry - stop, entry * 0.01)
 
         # ── 목표가: 다중 기법 합산 ───────────────────────────────
@@ -1024,9 +1026,15 @@ def make_candle(data, title, ma240_series=None, cross_date=None, show_levels=Tru
             target = current + risk * 3.0
 
         target   = min(target, current * 2.0)  # 상한 100%
-        rr_ratio = (target - entry) / (entry - stop + 1e-9)   # 매수가 기준 손익비
-        upside   = (target / entry - 1) * 100                  # 매수가 대비 수익률
-        downside = (stop / entry - 1) * 100                    # 매수가 대비 손실률
+
+        # 호가 단위 적용
+        entry  = round_to_tick(entry)
+        stop   = round_to_tick(stop)
+        target = round_to_tick(target)
+
+        rr_ratio = (target - entry) / (entry - stop + 1e-9)
+        upside   = (target / entry - 1) * 100
+        downside = (stop / entry - 1) * 100
 
         # 목표가 수평선 (초록)
         fig.add_hline(y=target, line=dict(color="#00ff88", width=2, dash="dash"))
