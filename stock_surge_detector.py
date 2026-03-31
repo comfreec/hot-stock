@@ -30,7 +30,7 @@ except Exception as _e:
     ALL_SYMBOLS = []
     STOCK_NAMES = {}
 class KoreanStockSurgeDetector:
-    def __init__(self, max_gap_pct=15.0, min_below_days=90, max_cross_days=60):  # max_cross 120→60
+    def __init__(self, max_gap_pct=10.0, min_below_days=90, max_cross_days=60):  # max_cross 120→60
         self.all_symbols    = ALL_SYMBOLS
         self.max_gap_pct    = max_gap_pct
         self.min_below_days = min_below_days

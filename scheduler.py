@@ -20,7 +20,7 @@ def run_scan():
         from cache_db import save_scan
         from telegram_alert import send_scan_alert
 
-        det = KoreanStockSurgeDetector(max_gap_pct=15, min_below_days=120, max_cross_days=60)
+        det = KoreanStockSurgeDetector(max_gap_pct=10, min_below_days=120, max_cross_days=60)
         results = det.analyze_all_stocks()
 
         if results:

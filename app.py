@@ -420,7 +420,46 @@ button[kind="primary"]:hover {
     .metric-card .val { font-size: 18px !important; }
     .main .block-container { padding: 0.4rem 0.6rem !important; }
 }
+
+/* ── 차트 터치 스크롤 (모바일) ── */
+.js-plotly-plot, .plotly, .plot-container { touch-action: pan-y !important; }
+.stPlotlyChart { touch-action: pan-y !important; }
+.stPlotlyChart > div { touch-action: pan-y !important; }
 </style>""", unsafe_allow_html=True)
+
+# 모바일 차트 터치 스크롤 JS 인젝션
+st.markdown("""
+<script>
+(function() {
+  function fixChartTouch() {
+    var charts = document.querySelectorAll('.js-plotly-plot, .stPlotlyChart, .plot-container');
+    charts.forEach(function(el) {
+      el.style.touchAction = 'pan-y';
+      var layers = el.querySelectorAll('svg, canvas, .nsewdrag, .drag');
+      layers.forEach(function(layer) {
+        layer.style.touchAction = 'pan-y';
+        layer.addEventListener('touchstart', function(e) {
+          if (e.touches.length === 1) { e.stopPropagation(); }
+        }, {passive: true});
+        layer.addEventListener('touchmove', function(e) {
+          if (e.touches.length === 1) {
+            e.stopPropagation();
+            window.scrollBy(0, -e.touches[0].clientY + (this._lastY || e.touches[0].clientY));
+            this._lastY = e.touches[0].clientY;
+          }
+        }, {passive: true});
+        layer.addEventListener('touchend', function() { this._lastY = null; }, {passive: true});
+      });
+    });
+  }
+  // 초기 실행 + DOM 변경 감지
+  setTimeout(fixChartTouch, 1000);
+  setTimeout(fixChartTouch, 3000);
+  var observer = new MutationObserver(function() { setTimeout(fixChartTouch, 500); });
+  observer.observe(document.body, {childList: true, subtree: true});
+})();
+</script>
+""", unsafe_allow_html=True)
 
 
 
@@ -612,13 +651,13 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("### ⚙️ 핵심 조건 설정")
 
-    if "max_gap"   not in st.session_state: st.session_state["max_gap"]   = 15
+    if "max_gap"   not in st.session_state: st.session_state["max_gap"]   = 10
     if "min_below" not in st.session_state: st.session_state["min_below"] = 120
     if "max_cross" not in st.session_state: st.session_state["max_cross"] = 60
     if "min_score" not in st.session_state: st.session_state["min_score"] = 15
 
     if st.button("⚡ 최적 셋팅", width='stretch'):
-        st.session_state["max_gap"]   = 15
+        st.session_state["max_gap"]   = 10
         st.session_state["min_below"] = 120
         st.session_state["max_cross"] = 60   # 돌파 후 60일 이내
         st.session_state["min_score"] = 15
@@ -914,7 +953,8 @@ def make_candle(data, title, ma240_series=None, cross_date=None, show_levels=Tru
             if price < current and (ma240_v is None or price >= ma240_v * 0.995)
         ]
         if valid_entries:
-            entry_label, entry = max(valid_entries, key=lambda x: x[1])
+            entry_label = "+".join(l for l, _ in valid_entries)
+            entry = sum(p for _, p in valid_entries) / len(valid_entries)  # 평균가
         else:
             entry_label, entry = "현재가", current
 
@@ -923,15 +963,17 @@ def make_candle(data, title, ma240_series=None, cross_date=None, show_levels=Tru
         # 1) 240선 아래 0.5% = 240선 지지 붕괴
         # 2) 스윙 저점(20일) - ATR×1.0 = 추세 붕괴
         # 3) entry 대비 -5% ~ -10% 범위 제한
-        stop_candidates = []
-        if ma240_v:
-            stop_candidates.append(ma240_v * 0.995)   # 240선 아래 0.5%
-        stop_candidates.append(swing_low_20 - atr * 1.0)  # 스윙저점 - ATR
+        # ── 손절가: 스윙저점 - ATR 기반 ──────────────────────────
+        # 스윙저점(20일) - ATR×1.5 = 추세 붕괴 기준
+        stop = swing_low_20 - atr * 1.5
 
-        stop = max(stop_candidates) if stop_candidates else entry * 0.93
-        # 범위 제한: entry 대비 -5% ~ -12%
-        stop = max(stop, entry * 0.88)
-        stop = min(stop, entry * 0.95)
+        # 240선이 있고 entry보다 아래면 240선 아래 0.5%도 후보
+        if ma240_v and ma240_v < entry:
+            stop = max(stop, ma240_v * 0.995)  # 둘 중 더 높은(덜 위험한) 값
+
+        # 범위 제한: entry 대비 -3% ~ -15% (너무 가깝거나 너무 먼 손절 방지)
+        stop = min(stop, entry * 0.97)   # 최소 -3% 이상 아래
+        stop = max(stop, entry * 0.85)   # 최대 -15% 이내
         risk = max(entry - stop, entry * 0.01)
 
         # ── 목표가: 다중 기법 합산 ───────────────────────────────
@@ -1071,7 +1113,31 @@ if mode == "🔍 급등 예고 종목 탐지":
         except:
             pass
 
-    # session_state 없으면 아무것도 표시 안 함 (자동 로드 없음)
+    # session_state 없으면 오늘 DB 캐시 자동 로드
+    if "scan_results" not in st.session_state:
+        try:
+            from datetime import date
+            today = str(date.today())
+            cached_today = load_scan(today)
+            if cached_today:
+                # 차트 데이터 복원 (yfinance 재호출)
+                for r in cached_today:
+                    if r.get("close_series") is None:
+                        try:
+                            cd = get_chart_data(r["symbol"], "2y")
+                            if cd is not None and len(cd) > 20:
+                                r["close_series"]  = cd["Close"]
+                                r["open_series"]   = cd["Open"]
+                                r["high_series"]   = cd["High"]
+                                r["low_series"]    = cd["Low"]
+                                r["volume_series"] = cd["Volume"]
+                        except:
+                            pass
+                st.session_state["scan_results"] = cached_today
+                st.info(f"📦 오늘({today}) 저장된 스캔 결과 {len(cached_today)}개 자동 로드됨")
+        except:
+            pass
+
     results = st.session_state.get("scan_results", [])
 
     if "scan_results" not in st.session_state:
@@ -1283,7 +1349,7 @@ if mode == "🔍 급등 예고 종목 탐지":
                             if r["days_since_cross"] < len(close_s):
                                 cross_date = close_s.index[-(r["days_since_cross"]+1)]
                             _c1 = make_candle(cd, f"{r['name']} ({r['symbol']})", cross_date=cross_date)
-                            st.plotly_chart(_c1, width='stretch', key=f"candle_{r['symbol']}_{i}")
+                            st.plotly_chart(_c1, config={"scrollZoom":False,"displayModeBar":False,"staticPlot":True}, width='stretch', key=f"candle_{r['symbol']}_{i}")
                             show_price_levels(_c1)
                         except Exception as chart_err:
                             st.caption(f"차트 오류: {chart_err}")
@@ -2301,7 +2367,7 @@ elif mode == "📈 성과 추적":
                     xaxis=dict(gridcolor="#1e2540"),
                     yaxis=dict(gridcolor="#1e2540", ticksuffix="%"),
                 )
-                st.plotly_chart(fig_perf, width='stretch')
+                st.plotly_chart(fig_perf, config={"scrollZoom":False,"displayModeBar":False,"staticPlot":True}, width='stretch')
         else:
             st.info("아직 성과 데이터가 없어요. 텔레그램 알림이 발송되면 자동으로 기록됩니다.")
 

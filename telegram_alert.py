@@ -234,16 +234,18 @@ def calc_price_levels(symbol: str) -> dict:
         ma240_v = float(ma240.iloc[-1]) if not pd.isna(ma240.iloc[-1]) else None
         swing_low_20 = float(low.tail(20).min())
 
-        # 현재가 아래 지지선 중 가장 가까운 것 → 분할매수 상단
+        # 현재가 아래 유효 지지선들의 평균 → 매수가
         support_candidates = []
-        if ma20 < current:
+        if ma240_v and ma240_v * 1.005 < current and ma240_v * 1.005 >= ma240_v * 0.995:
+            support_candidates.append(("240선", ma240_v * 1.005))
+        if ma20 < current and (ma240_v is None or ma20 >= ma240_v * 0.995):
             support_candidates.append(("MA20", ma20))
-        if swing_low_20 < current:
+        if swing_low_20 < current and (ma240_v is None or swing_low_20 >= ma240_v * 0.995):
             support_candidates.append(("스윙저점", swing_low_20))
 
         if support_candidates:
-            # 현재가에 가장 가까운 지지선
-            entry_label, entry = max(support_candidates, key=lambda x: x[1])
+            entry_label = "+".join(l for l, _ in support_candidates)
+            entry = sum(p for _, p in support_candidates) / len(support_candidates)  # 평균가
         else:
             entry_label, entry = "현재가", current
 
@@ -342,14 +344,7 @@ def send_scan_alert(results: list, send_charts: bool = True):
         s   = r.get("signals", {})
         sig_str = format_signals(s)
 
-        entry_low  = lv['ma240'] if lv and lv.get('ma240') else (lv['stop'] if lv else None)
-        entry_high = lv['entry'] if lv else None
-
-        if lv and entry_low and entry_high:
-            split_str = f"₩{entry_low:,.0f}~₩{entry_high:,.0f}"
-        else:
-            split_str = f"₩{r['current_price']:,.0f}"
-
+        entry_str  = f"₩{lv['entry']:,.0f}" if lv else f"₩{r['current_price']:,.0f}"
         target_str = f"₩{lv['target']:,.0f} (+{lv['upside']:.1f}%)" if lv else "-"
         stop_str   = f"₩{lv['stop']:,.0f} ({lv['downside']:.1f}%)" if lv else "-"
         rr_str     = f"{lv['rr']:.1f} : 1" if lv else "-"
@@ -360,7 +355,7 @@ def send_scan_alert(results: list, send_charts: bool = True):
 
         block = (
             f"\n<b>{i}. {r['name']} ({r['symbol']})</b> ⭐ {r['total_score']}점\n"
-            f"📍 분할매수:  {split_str}\n"
+            f"📍 매수가:  {entry_str}\n"
             f"🎯 목표가:  {target_str}\n"
             f"🛑 손절가:  {stop_str}\n"
             f"⚖️ 손익비:  {rr_str}\n"
@@ -400,7 +395,7 @@ def send_scan_alert(results: list, send_charts: bool = True):
                 if lv:
                     caption = (
                         f"<b>{r['name']}</b> ⭐{r['total_score']}점\n"
-                        f"📍 분할매수: ₩{lv.get('ma240', lv['entry']):,.0f}~₩{lv['entry']:,.0f}\n"
+                        f"📍 매수가: ₩{lv['entry']:,.0f}\n"
                         f"🎯 목표가: ₩{lv['target']:,.0f} (+{lv['upside']:.1f}%)\n"
                         f"🛑 손절가: ₩{lv['stop']:,.0f} ({lv['downside']:.1f}%)\n"
                         f"⚖️ 손익비: {lv['rr']:.1f}:1"
