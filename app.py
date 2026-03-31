@@ -427,9 +427,15 @@ button[kind="primary"]:hover {
 .stPlotlyChart > div { touch-action: pan-y !important; }
 </style>""", unsafe_allow_html=True)
 
-# 모바일 차트 터치 스크롤 JS 인젝션
+# 모바일 뒤로가기 방지 + 차트 터치 스크롤 JS
 st.markdown("""
 <script>
+// 뒤로가기로 로그인 화면 노출 방지
+history.pushState(null, '', location.href);
+window.addEventListener('popstate', function() {
+  history.pushState(null, '', location.href);
+});
+
 (function() {
   function fixChartTouch() {
     var charts = document.querySelectorAll('.js-plotly-plot, .stPlotlyChart, .plot-container');
@@ -1745,207 +1751,179 @@ elif mode == "🎯 최적 급등 타이밍":
         """)
 
     def calc_surge_timing_score(symbol):
-        """최적 급등 타이밍 종합 점수 계산"""
+        """최적 급등 타이밍 - 필수 3조건 + 가산점"""
         try:
             ticker = yf.Ticker(symbol)
             df = ticker.history(period="2y")
             if df is None or len(df) < 60:
                 return None
 
-            # ── 재무 필터 (급등 탐지와 동일 기준) ───────────────
-            try:
-                info             = ticker.info
-                market_cap       = info.get("marketCap", 0) or 0
-                operating_income = info.get("operatingIncome") or 0
-                per              = info.get("trailingPE") or info.get("forwardPE") or 0
-                revenue_growth   = info.get("revenueGrowth") or None
-                earnings_growth  = info.get("earningsGrowth") or None
-                if market_cap > 0 and market_cap < 100_000_000_000:
-                    return None
-                if operating_income != 0 and operating_income < 0:
-                    return None
-                if per and (per < 0 or per > 200):
-                    return None
-                if revenue_growth is not None and revenue_growth < -0.05:
-                    return None
-                if earnings_growth is not None and earnings_growth < -0.30:
-                    return None
-            except:
-                pass
-
-            close = df["Close"]
-            high  = df["High"]
-            low   = df["Low"]
-            vol   = df["Volume"]
+            close = df["Close"].dropna()
+            high  = df["High"].dropna()
+            low   = df["Low"].dropna()
+            vol   = df["Volume"].dropna()
             n     = len(close)
-
-            score   = 0
-            signals = {}
-
-            # ── 이동평균 ──────────────────────────────────────────
-            ma5   = close.rolling(5).mean()
-            ma20  = close.rolling(20).mean()
-            ma60  = close.rolling(60).mean()
-            ma120 = close.rolling(120).mean()
-            ma240 = close.rolling(240).mean() if n >= 240 else None
+            if n < 60: return None
 
             current = float(close.iloc[-1])
             prev    = float(close.iloc[-2])
             chg     = (current - prev) / prev * 100
 
-            # ── [조건1] 충분한 조정 후 바닥 다지기 ──────────────
-            # 최근 120일 저점 대비 현재 위치 + 저점에서 반등 중
-            low_120  = float(close.tail(120).min())
-            high_120 = float(close.tail(120).max())
-            recovery = (current - low_120) / (high_120 - low_120 + 1e-9)
-            # 저점에서 반등 중인 구간 (0~80%)
-            signals["recovery_zone"] = 0.10 <= recovery <= 0.50
-            signals["recovery_pct"]  = round(recovery * 100, 1)
-            if 0.10 <= recovery <= 0.30: score += 4  # 초기 반등 (최적)
-            elif 0.30 < recovery <= 0.50: score += 2  # 중간 반등
+            ma5   = close.rolling(5).mean()
+            ma20  = close.rolling(20).mean()
+            ma60  = close.rolling(60).mean()
+            ma240 = close.rolling(240).mean() if n >= 240 else None
 
-            # ── [조건2] 세력 매집 신호 ───────────────────────────
-            # OBV 상승 + 최근 20일 가격 변화 < 거래량 변화 (매집 패턴)
-            obv = [0]
-            for i in range(1, n):
-                if close.iloc[i] > close.iloc[i-1]:
-                    obv.append(obv[-1] + vol.iloc[i])
-                elif close.iloc[i] < close.iloc[i-1]:
-                    obv.append(obv[-1] - vol.iloc[i])
-                else:
-                    obv.append(obv[-1])
-            obv_s = pd.Series(obv, index=close.index)
+            score   = 0
+            signals = {}
 
-            obv_20_chg   = (float(obv_s.iloc[-1]) - float(obv_s.iloc[-20])) / (abs(float(obv_s.iloc[-20])) + 1e-9)
-            price_20_chg = (current - float(close.iloc[-20])) / float(close.iloc[-20])
-            # OBV는 오르는데 가격은 횡보 = 매집
-            signals["accumulation"] = obv_20_chg > 0.03 and abs(price_20_chg) < 0.08
-            signals["obv_rising"]   = obv_20_chg > 0
-            if signals["accumulation"]: score += 3
-            elif signals["obv_rising"]: score += 1
+            # ══════════════════════════════════════════════════════
+            # 필수 조건 1: 240선 위 0~10% + 3일 연속 유지
+            # ══════════════════════════════════════════════════════
+            if ma240 is None or pd.isna(ma240.iloc[-1]):
+                return None
+            ma240_v   = float(ma240.iloc[-1])
+            ma240_gap = (current - ma240_v) / ma240_v * 100
+            if not (0 <= ma240_gap <= 10):
+                return None
+            days_above = sum(1 for i in range(-3, 0) if float(close.iloc[i]) > float(ma240.iloc[i]))
+            if days_above < 3:
+                return None
+            signals["ma240_gap"]       = round(ma240_gap, 1)
+            signals["ma240_confirmed"] = True
 
-            # ── [조건3] 볼린저밴드 수축 ──────────────────────────
-            bb_std = close.rolling(20).std()
-            bb_mid = close.rolling(20).mean()
-            bb_w   = (4 * bb_std) / bb_mid.replace(0, np.nan)
-            bb_w_min_60 = float(bb_w.tail(60).min())
-            bb_w_now    = float(bb_w.iloc[-1])
-            bb_w_prev5  = float(bb_w.iloc[-5])
-            # 현재 BB폭이 60일 최저점 근처 (수축 중)
-            signals["bb_squeeze"]    = bb_w_now <= bb_w_min_60 * 1.2
-            # 수축 후 확장 시작
-            signals["bb_expanding"]  = bb_w_now > bb_w_prev5 * 1.03
-            signals["bb_width"]      = round(bb_w_now, 4)
-            if signals["bb_squeeze"] and signals["bb_expanding"]: score += 3
-            elif signals["bb_squeeze"]:                           score += 2
+            # ══════════════════════════════════════════════════════
+            # 필수 조건 2: 이평선 정배열 (MA5 > MA20 > MA60)
+            # ══════════════════════════════════════════════════════
+            if pd.isna(ma60.iloc[-1]):
+                return None
+            if not (float(ma5.iloc[-1]) > float(ma20.iloc[-1]) > float(ma60.iloc[-1])):
+                return None
+            signals["ma_align"] = True
 
-            # ── [조건4] RSI 바닥 사이클 ──────────────────────────
+            # ══════════════════════════════════════════════════════
+            # 필수 조건 3: 거래량 동반 (최근 5일 평균 > 20일 평균의 1.3배)
+            # ══════════════════════════════════════════════════════
+            vol_ma5  = float(vol.tail(5).mean())
+            vol_ma20 = float(vol.rolling(20).mean().iloc[-1])
+            vol_ratio_5 = vol_ma5 / (vol_ma20 + 1e-9)
+            if vol_ratio_5 < 1.3:
+                return None
+            signals["vol_ratio"] = round(vol_ratio_5, 2)
+
+            # ══════════════════════════════════════════════════════
+            # 가산점 조건들
+            # ══════════════════════════════════════════════════════
+
+            # 240선 기울기 상승 전환 (+3)
+            ma240_slope = (float(ma240.iloc[-1]) - float(ma240.iloc[-20])) / float(ma240.iloc[-20]) * 100 if n >= 20 else 0
+            signals["ma240_slope"] = round(ma240_slope, 2)
+            if ma240_slope >= 0:
+                score += 3
+                signals["ma240_turning_up"] = True
+            elif ma240_slope >= -1.0:
+                score += 1
+                signals["ma240_turning_up"] = False
+            else:
+                signals["ma240_turning_up"] = False
+
+            # 돌파 후 재이탈 없음 (+3)
+            cross_found = False
+            broke_below = False
+            for i in range(n-2, max(n-61, 0), -1):
+                if float(close.iloc[i]) > float(ma240.iloc[i]) and float(close.iloc[i-1]) <= float(ma240.iloc[i-1]):
+                    cross_found = True
+                    broke_below = any(float(close.iloc[j]) < float(ma240.iloc[j]) for j in range(i+1, n))
+                    break
+            signals["ma240_no_rebreak"] = cross_found and not broke_below
+            if signals["ma240_no_rebreak"]: score += 3
+
+            # RSI 바닥 사이클 완성 (+3)
             rsi = calc_rsi_wilder(close, 20)
             cur_rsi = float(rsi.iloc[-1])
             signals["rsi"] = round(cur_rsi, 1)
-
-            # RSI 30 이하 → 30 돌파 → 현재 40~60 (건강한 상승 초기)
             rsi_90 = rsi.tail(90).dropna()
-            had_below30  = (rsi_90 < 30).any()
-            crossed_30   = ((rsi_90.shift(1) <= 30) & (rsi_90 > 30)).any()
-            rsi_healthy  = 40 <= cur_rsi <= 65
+            had_below30 = (rsi_90 < 30).any()
+            crossed_30  = ((rsi_90.shift(1) <= 30) & (rsi_90 > 30)).any()
+            rsi_healthy = 40 <= cur_rsi <= 65
             signals["rsi_cycle"]   = had_below30 and crossed_30 and rsi_healthy
             signals["rsi_healthy"] = rsi_healthy
-            if signals["rsi_cycle"]:   score += 3
-            elif rsi_healthy:          score += 1
+            if signals["rsi_cycle"]: score += 3
+            elif rsi_healthy:        score += 1
 
-            # ── [조건5] 이평선 정배열 ────────────────────────────
-            ma_align_full = (not pd.isna(ma60.iloc[-1]) and
-                             float(ma5.iloc[-1]) > float(ma20.iloc[-1]) > float(ma60.iloc[-1]))
-            ma_align_forming = (float(ma5.iloc[-1]) > float(ma20.iloc[-1]) and
-                                float(ma20.iloc[-1]) > float(ma60.iloc[-1]) * 0.98)
-            signals["ma_align"]         = ma_align_full
-            signals["ma_align_forming"] = ma_align_forming
-            if ma_align_full:    score += 3
-            elif ma_align_forming: score += 1
+            # BB 수축→확장 (+3)
+            bb_std = close.rolling(20).std()
+            bb_mid = close.rolling(20).mean()
+            bb_w   = (4 * bb_std) / bb_mid.replace(0, np.nan)
+            bb_w_min60 = float(bb_w.tail(60).min())
+            bb_w_now   = float(bb_w.iloc[-1])
+            bb_w_prev5 = float(bb_w.iloc[-5])
+            signals["bb_squeeze"]   = bb_w_now <= bb_w_min60 * 1.2
+            signals["bb_expanding"] = bb_w_now > bb_w_prev5 * 1.03
+            signals["bb_width"]     = round(bb_w_now, 4)
+            if signals["bb_squeeze"] and signals["bb_expanding"]: score += 3
+            elif signals["bb_squeeze"]:                           score += 1
 
-            # ── [조건6] MACD 골든크로스 ──────────────────────────
+            # MACD 골든크로스 (+2)
             macd   = close.ewm(span=12, adjust=False).mean() - close.ewm(span=26, adjust=False).mean()
             macd_s = macd.ewm(span=9, adjust=False).mean()
-            macd_hist = macd - macd_s
-            # 히스토그램 0선 상향 돌파 or 직전 (음→양 전환)
-            signals["macd_cross"]    = bool(macd_hist.iloc[-1] > 0 and macd_hist.iloc[-2] <= 0)
-            signals["macd_positive"] = bool(macd_hist.iloc[-1] > 0)
-            signals["macd_rising"]   = bool(macd_hist.iloc[-1] > macd_hist.iloc[-3])
+            macd_h = macd - macd_s
+            signals["macd_cross"]    = bool(macd_h.iloc[-1] > 0 and macd_h.iloc[-2] <= 0)
+            signals["macd_positive"] = bool(macd_h.iloc[-1] > 0)
             if signals["macd_cross"]:    score += 2
-            elif signals["macd_rising"] and signals["macd_positive"]: score += 1
+            elif signals["macd_positive"]: score += 1
 
-            # ── [조건7] 장대양봉 + 거래량 급증 ──────────────────
-            vol_ma20 = vol.rolling(20).mean()
-            vol_ratio = float(vol.iloc[-1] / vol_ma20.iloc[-1]) if vol_ma20.iloc[-1] > 0 else 0
+            # 세력 매집 (+2)
+            obv = [0]
+            for i in range(1, n):
+                obv.append(obv[-1] + (vol.iloc[i] if close.iloc[i] > close.iloc[i-1] else -vol.iloc[i] if close.iloc[i] < close.iloc[i-1] else 0))
+            obv_s = pd.Series(obv, index=close.index)
+            obv_chg   = (float(obv_s.iloc[-1]) - float(obv_s.iloc[-20])) / (abs(float(obv_s.iloc[-20])) + 1e-9)
+            price_chg = abs((current - float(close.iloc[-20])) / float(close.iloc[-20]))
+            signals["accumulation"] = obv_chg > 0.03 and price_chg < 0.08
+            signals["obv_rising"]   = obv_chg > 0
+            if signals["accumulation"]: score += 2
+            elif signals["obv_rising"]: score += 1
+
+            # 장대양봉 (+2)
             body_ratio = (float(close.iloc[-1]) - float(df["Open"].iloc[-1])) / (float(high.iloc[-1]) - float(low.iloc[-1]) + 1e-9)
-            big_bull   = vol_ratio >= 2.0 and body_ratio >= 0.6 and chg > 0
-            vol_surge  = vol_ratio >= 1.5
-            signals["big_bull_candle"] = big_bull
-            signals["vol_surge"]       = vol_surge
-            signals["vol_ratio"]       = round(vol_ratio, 2)
-            if big_bull:   score += 3
-            elif vol_surge: score += 1
+            vol_today  = float(vol.iloc[-1]) / (vol_ma20 + 1e-9)
+            signals["big_bull_candle"] = vol_today >= 2.0 and body_ratio >= 0.6 and chg > 0
+            signals["vol_surge"]       = vol_today >= 1.5
+            if signals["big_bull_candle"]: score += 2
+            elif signals["vol_surge"]:     score += 1
 
-            # ── [조건8] 52주 신고가 돌파 직전 ───────────────────
-            high_52w = float(high.tail(252).max())
+            # 52주 신고가 근처 (+2)
+            high_52w   = float(high.tail(252).max())
             high_ratio = current / high_52w
-            near_high  = high_ratio >= 0.92  # 52주 고점 8% 이내
-            at_high    = high_ratio >= 0.98  # 돌파 직전
-            signals["near_52w_high"] = near_high
+            signals["near_52w_high"] = high_ratio >= 0.92
             signals["high_ratio"]    = round(high_ratio * 100, 1)
-            if at_high:   score += 3
-            elif near_high: score += 2
+            if high_ratio >= 0.98:   score += 2
+            elif high_ratio >= 0.92: score += 1
 
-            # ── 보너스: 240일선 돌파 후 근처 + 강화된 조건 ────────
-            if ma240 is not None and not pd.isna(ma240.iloc[-1]):
-                ma240_v = float(ma240.iloc[-1])
-                ma240_gap = (current - ma240_v) / ma240_v * 100
-                signals["ma240_gap"] = round(ma240_gap, 1)
+            # 눌림목 반등 구간 (+2)
+            low_120  = float(close.tail(120).min())
+            high_120 = float(close.tail(120).max())
+            recovery = (current - low_120) / (high_120 - low_120 + 1e-9)
+            signals["recovery_zone"] = 0.10 <= recovery <= 0.50
+            signals["recovery_pct"]  = round(recovery * 100, 1)
+            if 0.10 <= recovery <= 0.30: score += 2
+            elif 0.30 < recovery <= 0.50: score += 1
 
-                if 0 <= ma240_gap <= 10:
-                    # 가짜 돌파 방지: 최근 3일 연속 240선 위 유지 확인
-                    days_above = sum(1 for i in range(-3, 0) if float(close.iloc[i]) > float(ma240.iloc[i]))
-                    signals["ma240_confirmed"] = days_above >= 3
-
-                    # 240선 기울기: 수평 또는 상승 전환 중이어야 함
-                    ma240_slope = (float(ma240.iloc[-1]) - float(ma240.iloc[-20])) / float(ma240.iloc[-20]) * 100 if n >= 20 else 0
-                    signals["ma240_slope"] = round(ma240_slope, 2)
-                    signals["ma240_healthy_slope"] = ma240_slope >= -1.5
-
-                    # 돌파 후 240선 재이탈 없음 확인 (최근 60일 기준)
-                    cross_found = False
-                    broke_below = False
-                    for i in range(n-2, max(n-61, 0), -1):
-                        if float(close.iloc[i]) > float(ma240.iloc[i]) and float(close.iloc[i-1]) <= float(ma240.iloc[i-1]):
-                            cross_found = True
-                            # 돌파 이후 재이탈 체크
-                            broke_below = any(float(close.iloc[j]) < float(ma240.iloc[j]) for j in range(i+1, n))
-                            break
-                    signals["ma240_no_rebreak"] = cross_found and not broke_below
-
-                    if signals["ma240_confirmed"] and signals["ma240_healthy_slope"] and signals["ma240_no_rebreak"]:
-                        score += 4  # 모든 조건 충족 = 강한 신호
-                    elif signals["ma240_confirmed"] and signals["ma240_healthy_slope"]:
-                        score += 2
-                    elif 0 <= ma240_gap <= 10:
-                        score += 1
-            else:
-                signals["ma240_gap"] = None
-                signals["ma240_confirmed"] = False
-                signals["ma240_no_rebreak"] = False
+            signals["ma240_gap"]       = round(ma240_gap, 1)
+            signals["ma_align_forming"] = False
 
             return {
-                "symbol":        symbol,
-                "name":          STOCK_NAMES.get(symbol, symbol),
-                "current_price": current,
+                "symbol":          symbol,
+                "name":            STOCK_NAMES.get(symbol, symbol),
+                "current_price":   current,
                 "price_change_1d": round(chg, 2),
-                "total_score":   score,
-                "max_score":     30,  # 만점 업데이트 (240선 보너스 4점 추가)
-                "signals":       signals,
-                "rsi":           cur_rsi,
-                "rsi_series":    rsi,
-                "df":            df,
+                "total_score":     score,
+                "max_score":       22,
+                "signals":         signals,
+                "rsi":             cur_rsi,
+                "rsi_series":      rsi,
+                "df":              df,
             }
         except Exception:
             return None
@@ -1971,7 +1949,7 @@ elif mode == "🎯 최적 급등 타이밍":
                 prog.progress(completed[0] / total)
                 try:
                     r = future.result()
-                    if r and r["total_score"] >= 7:
+                    if r and r["total_score"] >= 5:
                         results.append(r)
                 except:
                     pass

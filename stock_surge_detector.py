@@ -89,30 +89,75 @@ class KoreanStockSurgeDetector:
             return False, []
 
     def _institutional_flow(self, symbol):
-        """기관/외국인 순매수 크롤링 (네이버 금융) - timeout 3초 제한
-        Returns: (inst_net: int, foreign_net: int)  단위: 주
+        """기관/외국인 순매수 크롤링 (네이버 금융 메인 페이지)
+        Returns: (inst_net: int, foreign_net: int)  단위: 주, 최근 5일 합산
         """
         code = symbol.replace(".KS","").replace(".KQ","")
         try:
-            url = f"https://finance.naver.com/item/frgn.naver?code={code}"
-            res = requests.get(url, headers={"User-Agent":"Mozilla/5.0"}, timeout=2)
+            url = f"https://finance.naver.com/item/main.naver?code={code}"
+            res = requests.get(url, headers={"User-Agent":"Mozilla/5.0"}, timeout=3)
             soup = BeautifulSoup(res.text, "html.parser")
-            rows = soup.select("table.type2 tr")
-            inst_net    = 0
+            inst_net = 0
             foreign_net = 0
-            for row in rows[1:6]:
-                cols = row.select("td")
-                if len(cols) < 5:
-                    continue
-                try:
-                    f_val = cols[4].get_text(strip=True).replace(",","").replace("+","")
-                    if f_val and f_val != "-":
-                        foreign_net += int(f_val)
-                    i_val = cols[5].get_text(strip=True).replace(",","").replace("+","") if len(cols) > 5 else "0"
-                    if i_val and i_val != "-":
-                        inst_net += int(i_val)
-                except:
-                    pass
+            for table in soup.select("table"):
+                # 헤더(th)에 외국인/기관 있는 테이블 찾기
+                ths = [th.get_text(strip=True) for th in table.select("th")]
+                if "외국인" in ths and "기관" in ths:
+                    fi = ths.index("외국인")
+                    ii = ths.index("기관")
+                    for row in table.select("tr"):
+                        cols = row.select("td")
+                        if len(cols) > max(fi, ii):
+                            try:
+                                fv = cols[fi].get_text(strip=True).replace(",","").replace("+","")
+                                iv = cols[ii].get_text(strip=True).replace(",","").replace("+","")
+                                if fv and fv not in ("-",""):
+                                    foreign_net += int(fv)
+                                if iv and iv not in ("-",""):
+                                    inst_net += int(iv)
+                            except:
+                                pass
+                    break
+                # th 없이 td만 있는 경우: 날짜/종가/전일비/외국인/기관 순서
+                tds_header = table.select("tr:first-child td")
+                header_texts = [td.get_text(strip=True) for td in tds_header]
+                if "외국인" in header_texts and "기관" in header_texts:
+                    fi = header_texts.index("외국인")
+                    ii = header_texts.index("기관")
+                    for row in table.select("tr")[1:6]:
+                        cols = row.select("td")
+                        if len(cols) > max(fi, ii):
+                            try:
+                                fv = cols[fi].get_text(strip=True).replace(",","").replace("+","")
+                                iv = cols[ii].get_text(strip=True).replace(",","").replace("+","")
+                                if fv and fv not in ("-",""):
+                                    foreign_net += int(fv)
+                                if iv and iv not in ("-",""):
+                                    inst_net += int(iv)
+                            except:
+                                pass
+                    break
+                # 고정 인덱스: 날짜(0)/종가(1)/전일비(2)/외국인(3)/기관(4) - 4컬럼이면 종가없이 전일비/외국인/기관
+                rows_data = [r for r in table.select("tr") if len(r.select("td")) == 4]
+                if rows_data:
+                    # 헤더 확인
+                    first_vals = [td.get_text(strip=True) for td in rows_data[0].select("td")]
+                    # 숫자+부호 패턴이면 데이터 행
+                    import re
+                    if any(re.search(r'[+\-]\d', v) for v in first_vals):
+                        for row in rows_data[:5]:
+                            cols = row.select("td")
+                            try:
+                                fv = cols[2].get_text(strip=True).replace(",","").replace("+","")
+                                iv = cols[3].get_text(strip=True).replace(",","").replace("+","")
+                                if fv and fv not in ("-",""):
+                                    foreign_net += int(fv)
+                                if iv and iv not in ("-",""):
+                                    inst_net += int(iv)
+                            except:
+                                pass
+                        if foreign_net != 0 or inst_net != 0:
+                            break
             return inst_net, foreign_net
         except:
             return 0, 0
@@ -645,8 +690,8 @@ class KoreanStockSurgeDetector:
             signals["foreign_net_buy"] = foreign_net
             signals["smart_money_in"]  = inst_net > 0 or foreign_net > 0
             signals["both_buying"]     = inst_net > 0 and foreign_net > 0
-            if signals["both_buying"]:     score += 4  # 기관+외국인 동시 순매수 = 강한 신호
-            elif signals["smart_money_in"]: score += 2  # 둘 중 하나라도 순매수
+            if signals["both_buying"]:     score += 6  # 기관+외국인 동시 순매수 = 강한 신호
+            elif signals["smart_money_in"]: score += 3  # 둘 중 하나라도 순매수
 
             # ── 필수 신호 최소 개수 조건 ─────────────────────────
             # 핵심 신호 중 최소 2개 이상 충족해야 통과
@@ -664,6 +709,12 @@ class KoreanStockSurgeDetector:
             signals["core_signal_count"] = core_count
             if core_count < 2:
                 return None  # 핵심 신호 2개 미만 = 제외
+
+            # 거래량 또는 수급 중 하나는 반드시 있어야 함
+            has_volume_signal = signals.get("vol_strong_cross") or signals.get("vol_at_cross") or signals.get("vol_surge_sustained")
+            has_supply_signal = signals.get("smart_money_in")
+            if not has_volume_signal and not has_supply_signal:
+                return None  # 거래량/수급 신호 없으면 제외
 
             # ── ML 점수 보정 ─────────────────────────────────────
             ml_adjusted = ml_score_adjustment(signals, score)
