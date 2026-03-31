@@ -1,4 +1,4 @@
-import streamlit as st
+﻿import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
@@ -893,16 +893,16 @@ def _calc_price_levels_from_data(data):
         ma240_v = float(ma240.iloc[-1]) if not pd.isna(ma240.iloc[-1]) else None
         ma20 = float(close.rolling(20).mean().iloc[-1])
         swing_low_20 = float(low.tail(20).min())
-        entry_candidates = []
-        if ma240_v:
-            entry_candidates.append(("240??버퍼", ma240_v * 1.005))
-        entry_candidates.append(("?�윙?�??, swing_low_20))
-        entry_candidates.append(("MA20", ma20))
-        valid = [(l,p) for l,p in entry_candidates if p < current * 0.98 and (ma240_v is None or p >= ma240_v * 0.99)]
-        if valid:
-            entry_label, entry = max(valid, key=lambda x: x[1])  # 가???��? �?= ?�재가??가??가까운 지지??
+        # 현재가 근처 지지선 -> 분할매수 상단
+        support_candidates = []
+        if ma20 < current:
+            support_candidates.append(("MA20", ma20))
+        if swing_low_20 < current:
+            support_candidates.append(("스윙저점", swing_low_20))
+        if support_candidates:
+            entry_label, entry = max(support_candidates, key=lambda x: x[1])
         else:
-            entry_label, entry = "?�재가", current
+            entry_label, entry = "현재가", current
         stop_cands = []
         if ma240_v: stop_cands.append(ma240_v * 0.995)
         stop_cands.append(swing_low_20 - atr * 1.0)
