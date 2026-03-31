@@ -187,11 +187,11 @@ def update_alert_status():
             rid, sym, entry, target, stop, alert_date, status = row
             if not entry or not target or not stop:
                 continue
-            # 30일 경과 시 만료
+            # 5일 경과 시 만료
             try:
                 from datetime import datetime as dt
                 days_elapsed = (dt.now() - dt.fromisoformat(alert_date)).days
-                if days_elapsed > 30:
+                if days_elapsed > 5:
                     conn.execute("UPDATE alert_history SET status='expired', exit_date=? WHERE id=?",
                                  (today, rid))
                     continue

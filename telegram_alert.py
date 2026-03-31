@@ -479,7 +479,15 @@ def send_performance_update():
                 lines.append(f"• {h['name']} → ₩{h['entry_price']:,.0f} 터치 (모니터링 시작)")
 
         if still_pending:
-            lines.append(f"\n⏳ 매수 대기 중: {len(still_pending)}개 종목")
+            from datetime import datetime as dt
+            lines.append(f"\n⏳ <b>매수 대기 중</b> ({len(still_pending)}개)")
+            for h in still_pending:
+                try:
+                    days = (dt.now() - dt.fromisoformat(h["alert_date"])).days
+                    days_left = 5 - days
+                    lines.append(f"• {h['name']} ₩{h['entry_price']:,.0f} 이하 진입 대기 (D+{days}, {days_left}일 후 만료)")
+                except:
+                    lines.append(f"• {h['name']} ₩{h['entry_price']:,.0f} 이하 진입 대기")
 
         send_telegram("\n".join(lines))
         print(f"[성과추적] 업데이트 알림 전송 완료")
