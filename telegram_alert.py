@@ -588,8 +588,8 @@ def send_performance_update():
         hit_stop_today   = [h for h in history if h["status"] == "hit_stop"   and h.get("exit_date") == today]
         still_pending  = [h for h in history if h["status"] == "pending"]
 
-        # 변경 사항 없으면 전송 안 함
-        if not newly_active and not hit_target_today and not hit_stop_today:
+        # 변경 사항 없고 대기 종목도 없으면 전송 안 함
+        if not newly_active and not hit_target_today and not hit_stop_today and not still_pending:
             print("[성과추적] 오늘 상태 변경 없음 - 알림 생략")
             return
 
@@ -611,7 +611,10 @@ def send_performance_update():
                 lines.append(f"• {h['name']} → ₩{h['entry_price']:,.0f} 터치 (모니터링 시작)")
 
         if still_pending:
-            lines.append(f"\n⏳ 매수 대기 중: {len(still_pending)}개 종목")
+            lines.append(f"\n⏳ <b>매수 대기 중</b> ({len(still_pending)}개)")
+            for h in still_pending:
+                days = (date.today() - date.fromisoformat(h["alert_date"])).days
+                lines.append(f"• {h['name']} | 매수가 ₩{h['entry_price']:,.0f} | {days}일째 대기")
 
         send_telegram("\n".join(lines))
         print(f"[성과추적] 업데이트 알림 전송 완료")
