@@ -931,7 +931,7 @@ def _calc_price_levels_from_data(data):
         if ma240_v: stop_cands.append(ma240_v * 0.995)
         stop_cands.append(swing_low_20 - atr * 1.0)
         stop = max(stop_cands) if stop_cands else entry * 0.93
-        stop = max(stop, entry * 0.88); stop = min(stop, entry * 0.95)
+        stop = max(stop, entry * 0.85)
         risk = max(entry - stop, entry * 0.01)
         recent_high = float(high.tail(120).max()); recent_low = float(low.tail(120).min())
         swing_range = max(recent_high - recent_low, entry * 0.01)
