@@ -402,11 +402,6 @@ button[kind="primary"]:hover {
 ::-webkit-scrollbar-thumb { background: #2d3555; border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: #4f8ef7; }
 
-/* ── 차트 터치 스크롤 ── */
-.js-plotly-plot, .plotly, .plot-container { touch-action: pan-y !important; }
-.stPlotlyChart { touch-action: pan-y !important; }
-.stPlotlyChart > div { touch-action: pan-y !important; }
-
 /* ── 모바일 ── */
 @media (max-width: 768px) {
     .main .block-container { padding: 0.3rem 0.3rem !important; }
@@ -426,25 +421,6 @@ button[kind="primary"]:hover {
     .main .block-container { padding: 0.4rem 0.6rem !important; }
 }
 </style>""", unsafe_allow_html=True)
-
-# 모바일 차트 터치 스크롤 허용 (JS)
-st.markdown("""
-<script>
-(function() {
-  function fixChartTouch() {
-    var charts = document.querySelectorAll('.js-plotly-plot, .plot-container, .stPlotlyChart');
-    charts.forEach(function(el) {
-      el.style.touchAction = 'pan-y';
-      var svgs = el.querySelectorAll('svg, .nsewdrag, .drag');
-      svgs.forEach(function(s) { s.style.touchAction = 'pan-y'; });
-    });
-  }
-  fixChartTouch();
-  var obs = new MutationObserver(fixChartTouch);
-  obs.observe(document.body, {childList: true, subtree: true});
-})();
-</script>
-""", unsafe_allow_html=True)
 
 
 
@@ -927,9 +903,13 @@ def _calc_price_levels_from_data(data):
             entry_label, entry = max(valid, key=lambda x: x[1])  # 가장 높은 값 = 현재가에 가장 가까운 지지선
         else:
             entry_label, entry = "현재가", current
+        stop_cands = []
+        if ma240_v: stop_cands.append(ma240_v * 0.995)
+        stop_cands.append(swing_low_20 - atr * 1.0)
+        stop = max(stop_cands) if stop_cands else entry * 0.93
         # 손절가: 스윙저점 - ATR*0.5 (변동성 기반 명확한 무효화 지점)
         stop = swing_low_20 - atr * 0.5
-        stop = max(stop, entry * 0.85)  # 안전망: -15% 이하 방지
+        stop = max(stop, entry * 0.85)
         risk = max(entry - stop, entry * 0.01)
         recent_high = float(high.tail(120).max()); recent_low = float(low.tail(120).min())
         swing_range = max(recent_high - recent_low, entry * 0.01)
@@ -1352,7 +1332,7 @@ if mode == "🔍 급등 예고 종목 탐지":
                             if close_s is not None and r["days_since_cross"] < len(close_s):
                                 cross_date = close_s.index[-(r["days_since_cross"]+1)]
                             _c1 = make_candle(cd, f"{r['name']} ({r['symbol']})", cross_date=cross_date, symbol=r["symbol"])
-                            st.plotly_chart(_c1, config={"scrollZoom":False,"displayModeBar":False,"staticPlot":True}, width='stretch', key=f"candle_{r['symbol']}_{i}")
+                            st.plotly_chart(_c1, width='stretch', key=f"candle_{r['symbol']}_{i}")
                             show_price_levels(_c1, split_buy=True)
                         except Exception as chart_err:
                             st.caption(f"차트 오류: {chart_err}")
@@ -2370,7 +2350,7 @@ elif mode == "📈 성과 추적":
                     xaxis=dict(gridcolor="#1e2540"),
                     yaxis=dict(gridcolor="#1e2540", ticksuffix="%"),
                 )
-                st.plotly_chart(fig_perf, config={"scrollZoom":False,"displayModeBar":False,"staticPlot":True}, width='stretch')
+                st.plotly_chart(fig_perf, width='stretch')
         else:
             st.info("아직 성과 데이터가 없어요. 텔레그램 알림이 발송되면 자동으로 기록됩니다.")
 

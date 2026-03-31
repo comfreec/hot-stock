@@ -251,11 +251,7 @@ def calc_price_levels(symbol: str) -> dict:
         else:
             entry_label, entry = "현재가", current
 
-        # ── 분할매수 평균가 계산 (표시용) ───────────────────────
-        entry_low_v = ma240_v if ma240_v else entry
-        avg_entry = (entry_low_v + entry) / 2
-
-        # ── 손절가: 스윙저점 - ATR*0.5 (변동성 기반, 명확한 무효화 지점) ──
+        # ── 손절가: 스윙저점 - ATR*0.5 (변동성 기반 명확한 무효화 지점) ──
         stop = swing_low_20 - atr * 0.5
         stop = max(stop, entry * 0.85)  # 안전망: -15% 이하 방지
         risk = max(entry - stop, entry * 0.01)
@@ -264,23 +260,17 @@ def calc_price_levels(symbol: str) -> dict:
         recent_high = float(high.tail(120).max())
         recent_low  = float(low.tail(120).min())
         swing_range = max(recent_high - recent_low, entry * 0.01)
-
-        # 직전 저항 고점들 찾기 (20일, 60일, 120일 고점)
         resist_20  = float(high.tail(20).max())
         resist_60  = float(high.tail(60).max())
-        resist_120 = recent_high
 
         candidates = sorted([
             x for x in [
-                # 피보나치 되돌림 기반
                 recent_low + swing_range * 1.272,
                 recent_low + swing_range * 1.618,
                 recent_low + swing_range * 2.0,
-                # 직전 저항 고점 기반 (가장 현실적)
                 resist_20  * 1.01,
                 resist_60  * 1.01,
-                resist_120 * 1.01,
-                # ATR 배수 기반 (최소 목표)
+                recent_high * 1.01,
                 entry + atr * 3.0,
                 entry + atr * 5.0,
             ] if x > entry * 1.03
@@ -297,16 +287,14 @@ def calc_price_levels(symbol: str) -> dict:
             target = entry + risk * 3.0
 
         target = min(target, entry * 2.0)
+        rr = (target - entry) / (entry - stop + 1e-9)
 
         # 호가 단위 적용
-        entry      = round_to_tick(entry)
-        target     = round_to_tick(target)
-        stop       = round_to_tick(stop)
+        entry  = round_to_tick(entry)
+        target = round_to_tick(target)
+        stop   = round_to_tick(stop)
+        rr     = (target - entry) / (entry - stop + 1e-9)
         ma240_tick = round_to_tick(ma240_v) if ma240_v else entry
-
-        rr       = (target - entry) / (entry - stop + 1e-9)
-        upside   = (target / entry - 1) * 100
-        downside = (stop   / entry - 1) * 100
 
         return {
             "current":     current,
@@ -316,8 +304,8 @@ def calc_price_levels(symbol: str) -> dict:
             "target":      target,
             "stop":        stop,
             "rr":          rr,
-            "upside":      upside,
-            "downside":    downside,
+            "upside":      (target / entry - 1) * 100,
+            "downside":    (stop / entry - 1) * 100,
         }
     except:
         return {}
@@ -485,15 +473,7 @@ def send_performance_update():
                 lines.append(f"• {h['name']} → ₩{h['entry_price']:,.0f} 터치 (모니터링 시작)")
 
         if still_pending:
-            from datetime import datetime as dt
-            lines.append(f"\n⏳ <b>매수 대기 중</b> ({len(still_pending)}개)")
-            for h in still_pending:
-                try:
-                    days = (dt.now() - dt.fromisoformat(h["alert_date"])).days
-                    days_left = 5 - days
-                    lines.append(f"• {h['name']} ₩{h['entry_price']:,.0f} 이하 진입 대기 (D+{days}, {days_left}일 후 만료)")
-                except:
-                    lines.append(f"• {h['name']} ₩{h['entry_price']:,.0f} 이하 진입 대기")
+            lines.append(f"\n⏳ 매수 대기 중: {len(still_pending)}개 종목")
 
         send_telegram("\n".join(lines))
         print(f"[성과추적] 업데이트 알림 전송 완료")
