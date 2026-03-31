@@ -252,25 +252,26 @@ def calc_price_levels(symbol: str) -> dict:
             entry_label, entry = "현재가", current
 
         # ── 손절가: 스윙저점 - ATR*0.5 (변동성 기반 명확한 무효화 지점) ──
-        stop = swing_low_20 - atr * 0.5
-        stop = max(stop, entry * 0.85)  # 안전망: -15% 이하 방지
+        # ── 손절가: 240선 아래 or 스윙저점 - ATR ──────────────────
+        stop_candidates = []
+        if ma240_v:
+            stop_candidates.append(ma240_v * 0.995)
+        stop_candidates.append(swing_low_20 - atr * 1.0)
+        stop = max(stop_candidates) if stop_candidates else entry * 0.93
+        stop = max(stop, entry * 0.85)
         risk = max(entry - stop, entry * 0.01)
 
-        # 목표가
+        # 목표가: 피보나치 되돌림 기반
         recent_high = float(high.tail(120).max())
         recent_low  = float(low.tail(120).min())
         swing_range = max(recent_high - recent_low, entry * 0.01)
-        resist_20  = float(high.tail(20).max())
-        resist_60  = float(high.tail(60).max())
 
         candidates = sorted([
             x for x in [
                 recent_low + swing_range * 1.272,
                 recent_low + swing_range * 1.618,
                 recent_low + swing_range * 2.0,
-                resist_20  * 1.01,
-                resist_60  * 1.01,
-                recent_high * 1.01,
+                recent_high * 1.05,
                 entry + atr * 3.0,
                 entry + atr * 5.0,
             ] if x > entry * 1.03
