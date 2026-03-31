@@ -76,3 +76,6 @@ logs/
 # Cache
 .cache/
 *.cache
+
+scan_cache.db
+*.db
