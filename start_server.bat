@@ -1,6 +1,9 @@
 @echo off
 cd /d C:\Users\dev\급등주
 
+:: .env 환경변수 로드
+for /f "usebackq tokens=1,* delims==" %%A in (".env") do set %%A=%%B
+
 :: Streamlit 서버 시작
 start "Streamlit" cmd /c "streamlit run app.py --server.port 8510 --server.enableCORS false --server.enableXsrfProtection false"
 
