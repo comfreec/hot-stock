@@ -242,36 +242,30 @@ def update_alert_status():
         print(f"[성과추적] 업데이트 오류: {e}")
 
 def get_performance_summary() -> dict:
-    """성과 요약 통계 (매수가 도달 종목만)"""
+    """성과 요약 통계"""
     conn = _get_conn()
-    # 진입 확인된 종목만 (active 포함 - 아직 청산 안 된 것도 포함)
-    rows = conn.execute("""
+    closed_rows = conn.execute("""
         SELECT status, return_pct FROM alert_history
-        WHERE status IN ('hit_target','hit_stop','expired','active')
+        WHERE status IN ('hit_target','hit_stop')
     """).fetchall()
-    pending_cnt = conn.execute(
-        "SELECT COUNT(*) FROM alert_history WHERE status='pending'"
-    ).fetchone()[0]
+    counts = dict(conn.execute("""
+        SELECT status, COUNT(*) FROM alert_history GROUP BY status
+    """).fetchall())
     conn.close()
 
-    closed = [r for r in rows if r[0] in ('hit_target','hit_stop')]
-    if not closed:
-        return {"total": 0, "win": 0, "loss": 0, "win_rate": 0,
-                "avg_return": 0, "avg_win": 0, "avg_loss": 0,
-                "expired": 0, "active": 0, "pending": pending_cnt}
-
-    wins   = [r[1] for r in closed if r[0] == 'hit_target' and r[1] is not None]
-    losses = [r[1] for r in closed if r[0] == 'hit_stop'   and r[1] is not None]
-    all_ret = [r[1] for r in closed if r[1] is not None]
+    wins    = [r[1] for r in closed_rows if r[0] == 'hit_target' and r[1] is not None]
+    losses  = [r[1] for r in closed_rows if r[0] == 'hit_stop'   and r[1] is not None]
+    all_ret = [r[1] for r in closed_rows if r[1] is not None]
+    total   = len(closed_rows)
 
     return {
-        "total":      len(closed),
+        "total":      total,
         "win":        len(wins),
         "loss":       len(losses),
-        "expired":    sum(1 for r in rows if r[0] == 'expired'),
-        "active":     sum(1 for r in rows if r[0] == 'active'),
-        "pending":    pending_cnt,
-        "win_rate":   round(len(wins) / len(closed) * 100, 1) if closed else 0,
+        "expired":    counts.get("expired", 0),
+        "active":     counts.get("active", 0),
+        "pending":    counts.get("pending", 0),
+        "win_rate":   round(len(wins) / total * 100, 1) if total else 0,
         "avg_return": round(sum(all_ret) / len(all_ret), 2) if all_ret else 0,
         "avg_win":    round(sum(wins) / len(wins), 2) if wins else 0,
         "avg_loss":   round(sum(losses) / len(losses), 2) if losses else 0,

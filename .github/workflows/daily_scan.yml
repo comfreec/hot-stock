@@ -23,6 +23,7 @@ jobs:
         run: pip install yfinance pandas numpy requests beautifulsoup4 matplotlib
 
       - name: Run
+        if: false  # 텔레그램 알림 비활성화
         run: python github_scan.py
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
