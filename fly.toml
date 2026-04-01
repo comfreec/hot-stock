@@ -11,21 +11,21 @@ primary_region = "nrt"
 [http_service]
   internal_port = 7860
   force_https = true
-  auto_stop_machines = false   # 스케줄러가 있으므로 슬립 방지
-  auto_start_machines = true
-  min_machines_running = 1
-  processes = ["web"]          # http_service는 web 프로세스만
+  auto_stop_machines = "stop"    # 접속 없으면 자동 중지
+  auto_start_machines = true     # 접속 시 자동 시작
+  min_machines_running = 0       # 평소엔 0대 유지
+  processes = ["web"]
 
-# web VM
+# web VM (접속 시에만 실행)
 [[vm]]
-  memory = "512mb"
+  memory = "256mb"
   cpu_kind = "shared"
   cpus = 1
   processes = ["web"]
 
 # scheduler VM (별도 머신)
 [[vm]]
-  memory = "512mb"
+  memory = "256mb"
   cpu_kind = "shared"
   cpus = 1
   processes = ["scheduler"]
