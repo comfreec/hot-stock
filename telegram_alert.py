@@ -587,76 +587,100 @@ def send_test_alert():
 
 
 def send_performance_update():
-    """성과 업데이트 알림 - 상태 변경된 종목만 전송"""
+    """성과 업데이트 알림"""
     try:
         from cache_db import update_alert_status, get_alert_history, get_performance_summary
         import yfinance as yf
 
-        # 상태 업데이트 실행
         update_alert_status()
 
         today = date.today().isoformat()
+        today_fmt = date.today().strftime("%Y.%m.%d")
         history = get_alert_history(200)
 
-        # 오늘 상태 변경된 종목 찾기
         hit_target_today = [h for h in history if h["status"] == "hit_target" and h.get("exit_date") == today]
         hit_stop_today   = [h for h in history if h["status"] == "hit_stop"   and h.get("exit_date") == today]
         active_list      = [h for h in history if h["status"] == "active"]
         still_pending    = [h for h in history if h["status"] == "pending"]
 
-        # 변경 사항 없고 대기/매수중 종목도 없으면 전송 안 함
         if not hit_target_today and not hit_stop_today and not active_list and not still_pending:
             print("[성과추적] 오늘 상태 변경 없음 - 알림 생략")
             return
 
-        lines = [f"📊 <b>성과 업데이트</b> ({today})\n{'━'*20}"]
+        lines = [
+            f"📊 <b>포트폴리오 현황</b>  {today_fmt}",
+            "─" * 16,
+        ]
 
-        if hit_target_today:
-            lines.append("\n✅ <b>목표가 달성!</b>")
+        # ── 오늘 청산 ──────────────────────────────
+        if hit_target_today or hit_stop_today:
+            lines.append("\n🔔 <b>오늘 청산</b>")
+            lines.append("─" * 16)
             for h in hit_target_today:
-                ret_str = f"{h['return_pct']:.1f}" if h.get("return_pct") is not None else "?"
-                exit_str = f"₩{h['exit_price']:,.0f}" if h.get("exit_price") else "?"
-                lines.append(f"• {h['name']} → {exit_str} (<b>+{ret_str}%</b>) 🎉")
-
-        if hit_stop_today:
-            lines.append("\n🛑 <b>손절가 이탈</b>")
+                ret  = h['return_pct'] if h.get('return_pct') is not None else 0
+                exit_p = f"₩{h['exit_price']:,.0f}" if h.get('exit_price') else "?"
+                lines.append(
+                    f"✅ <b>{h['name']}</b>\n"
+                    f"   체결가 {exit_p}  |  수익 <b>+{ret:.1f}%</b> 🎉"
+                )
             for h in hit_stop_today:
-                ret_str = f"{h['return_pct']:.1f}" if h.get("return_pct") is not None else "?"
-                exit_str = f"₩{h['exit_price']:,.0f}" if h.get("exit_price") else "?"
-                lines.append(f"• {h['name']} → {exit_str} ({ret_str}%)")
+                ret  = h['return_pct'] if h.get('return_pct') is not None else 0
+                exit_p = f"₩{h['exit_price']:,.0f}" if h.get('exit_price') else "?"
+                lines.append(
+                    f"🛑 <b>{h['name']}</b>\n"
+                    f"   체결가 {exit_p}  |  손실 {ret:.1f}%"
+                )
 
+        # ── 매수 중 ────────────────────────────────
         if active_list:
-            import yfinance as yf
-            lines.append(f"\n🟢 <b>매수 중</b> ({len(active_list)}개)")
+            lines.append(f"\n🟢 <b>매수 중</b>  ({len(active_list)}종목)")
+            lines.append("─" * 16)
             for h in active_list:
-                days = (date.today() - date.fromisoformat(h["alert_date"])).days
-                entry_str  = f"₩{h['entry_price']:,.0f}" if h.get("entry_price") else "미정"
+                days       = (date.today() - date.fromisoformat(h["alert_date"])).days
+                entry_str  = f"₩{h['entry_price']:,.0f}"  if h.get("entry_price")  else "미정"
                 target_str = f"₩{h['target_price']:,.0f}" if h.get("target_price") else "?"
-                stop_str   = f"₩{h['stop_price']:,.0f}"  if h.get("stop_price")  else "?"
-                # 현재가 및 수익률
-                ret_str = ""
+                stop_str   = f"₩{h['stop_price']:,.0f}"   if h.get("stop_price")   else "?"
+
+                cur_line = ""
                 try:
                     if h.get("entry_price"):
                         cur = float(yf.Ticker(h["symbol"]).history(period="1d")["Close"].iloc[-1])
                         ret = (cur - h["entry_price"]) / h["entry_price"] * 100
-                        arrow = "📈" if ret >= 0 else "📉"
-                        ret_str = f" | {arrow} 현재 ₩{cur:,.0f} ({ret:+.1f}%)"
+                        bar_filled = min(int(abs(ret) / 2), 8)
+                        bar = ("🟩" if ret >= 0 else "🟥") * bar_filled + "⬜" * (8 - bar_filled)
+                        cur_line = f"\n   {bar}  <b>₩{cur:,.0f}  ({ret:+.1f}%)</b>"
                 except:
                     pass
-                lines.append(f"• {h['name']} | 매수 {entry_str} → 목표 {target_str} / 손절 {stop_str}{ret_str} | {days}일째")
 
+                lines.append(
+                    f"📌 <b>{h['name']}</b>  <i>{days}일째</i>\n"
+                    f"   매수 {entry_str}  →  목표 {target_str}  /  손절 {stop_str}"
+                    + cur_line
+                )
+
+        # ── 매수 대기 ──────────────────────────────
         if still_pending:
-            lines.append(f"\n⏳ <b>매수 대기 중</b> ({len(still_pending)}개)")
+            lines.append(f"\n⏳ <b>매수 대기</b>  ({len(still_pending)}종목)")
+            lines.append("─" * 16)
             for h in still_pending:
-                days = (date.today() - date.fromisoformat(h["alert_date"])).days
-                entry_str = f"₩{h['entry_price']:,.0f}" if h.get("entry_price") else "미정"
-                lines.append(f"• {h['name']} | 매수가 {entry_str} | {days}일째 대기")
+                days      = (date.today() - date.fromisoformat(h["alert_date"])).days
+                entry_str = f"₩{h['entry_price']:,.0f}"  if h.get("entry_price")  else "미정"
+                target_str= f"₩{h['target_price']:,.0f}" if h.get("target_price") else "?"
+                lines.append(
+                    f"🔵 <b>{h['name']}</b>  <i>{days}일째 대기</i>\n"
+                    f"   진입가 {entry_str}  →  목표 {target_str}"
+                )
+
+        lines.append("\n─" * 8)
+        lines.append("⚠️ <i>투자 참고용 정보입니다</i>")
 
         send_telegram("\n".join(lines))
-        print(f"[성과추적] 업데이트 알림 전송 완료")
+        print("[성과추적] 업데이트 알림 전송 완료")
 
     except Exception as e:
         print(f"[성과추적] 알림 오류: {e}")
+        import traceback; traceback.print_exc()
+
 
 
 def send_weekly_summary():
@@ -665,62 +689,112 @@ def send_weekly_summary():
         from cache_db import get_performance_summary, get_alert_history
         from datetime import datetime, timedelta
 
-        # 금요일(4)만 전송
         if datetime.now().weekday() != 4:
             return
 
-        perf = get_performance_summary()
+        perf    = get_performance_summary()
         history = get_alert_history(200)
 
-        # 이번 주 알림 종목 (월~금)
-        today = date.today()
+        today      = date.today()
         week_start = today - timedelta(days=today.weekday())
-        this_week = [h for h in history if h["alert_date"] >= week_start.isoformat()]
+        this_week  = [h for h in history if h["alert_date"] >= week_start.isoformat()]
 
-        # 청산도 없고 이번 주 알림도 없고 대기/매수중도 없으면 생략
         if perf["total"] == 0 and not this_week and perf.get("pending", 0) == 0 and perf.get("active", 0) == 0:
             print("[성과추적] 주간 요약 데이터 없음 - 생략")
             return
 
-        win_rate  = perf["win_rate"]
-        avg_ret   = perf["avg_return"]
-        wr_emoji  = "🟢" if win_rate >= 60 else "🟡" if win_rate >= 40 else "🔴"
-        ret_emoji = "📈" if avg_ret >= 0 else "📉"
+        win_rate = perf["win_rate"]
+        avg_ret  = perf["avg_return"]
+        period   = f"{week_start.strftime('%m/%d')} ~ {today.strftime('%m/%d')}"
 
-        msg = f"📈 <b>주간 성과 요약</b> ({week_start.strftime('%m/%d')} ~ {today.strftime('%m/%d')})\n{'━'*20}\n\n"
+        lines = [
+            f"📅 <b>주간 리포트</b>  {period}",
+            "─" * 16,
+        ]
 
-        # 청산 성과
+        # ── 성과 요약 ──────────────────────────────
         if perf["total"] > 0:
-            msg += f"<b>[ 청산 결과 ]</b>\n"
-            msg += f"✅ 목표달성: {perf['win']}개  |  🛑 손절: {perf['loss']}개  |  ⏳ 만료: {perf.get('expired', 0)}개\n"
-            msg += f"{wr_emoji} 승률: <b>{win_rate}%</b>\n"
-            msg += f"{ret_emoji} 평균 수익률: <b>{avg_ret:+.1f}%</b>\n"
+            # 승률 게이지 바
+            filled = round(win_rate / 10)
+            bar = "🟩" * filled + "⬜" * (10 - filled)
+            wr_label = "우수" if win_rate >= 60 else "보통" if win_rate >= 40 else "부진"
+
+            lines.append(f"\n📊 <b>청산 성과</b>  ({perf['total']}건)")
+            lines.append(f"  {bar}  {win_rate}%  <i>{wr_label}</i>")
+            lines.append(
+                f"  ✅ 달성 {perf['win']}건  "
+                f"🛑 손절 {perf['loss']}건  "
+                f"⌛ 만료 {perf.get('expired', 0)}건"
+            )
+            ret_arrow = "📈" if avg_ret >= 0 else "📉"
+            lines.append(f"  {ret_arrow} 평균 수익률  <b>{avg_ret:+.1f}%</b>")
             if perf["win"] > 0:
-                msg += f"  평균 수익: <b>+{perf['avg_win']:.1f}%</b>\n"
+                lines.append(f"     수익 평균  <b>+{perf['avg_win']:.1f}%</b>")
             if perf["loss"] > 0:
-                msg += f"  평균 손실: <b>{perf['avg_loss']:.1f}%</b>\n"
-            msg += "\n"
+                lines.append(f"     손실 평균  <b>{perf['avg_loss']:.1f}%</b>")
         else:
-            msg += "이번 주 청산 종목 없음\n\n"
+            lines.append("\n📊 <b>청산 성과</b>")
+            lines.append("  이번 주 청산 종목 없음")
 
-        # 이번 주 알림 종목 목록
+        # ── 이번 주 알림 종목 ──────────────────────
         if this_week:
-            msg += f"<b>[ 이번 주 알림 종목 ({len(this_week)}개) ]</b>\n"
-            status_map = {"pending": "⏳대기", "active": "🟢매수중",
-                          "hit_target": "✅달성", "hit_stop": "🛑손절", "expired": "⌛만료"}
+            # active 먼저, 그 다음 pending, 나머지
+            status_order = {"active": 0, "pending": 1, "hit_target": 2, "hit_stop": 3, "expired": 4}
+            this_week = sorted(this_week, key=lambda h: status_order.get(h["status"], 9))
+            lines.append(f"\n🗓 <b>이번 주 알림</b>  ({len(this_week)}종목)")
+            lines.append("─" * 16)
+            import yfinance as yf
+            status_icon = {
+                "pending":    "⏳",
+                "active":     "🟢",
+                "hit_target": "✅",
+                "hit_stop":   "🛑",
+                "expired":    "⌛",
+            }
             for h in this_week:
-                st = status_map.get(h["status"], h["status"])
+                icon      = status_icon.get(h["status"], "•")
                 entry_str = f"₩{h['entry_price']:,.0f}" if h.get("entry_price") else "미정"
-                ret_str = f" ({h['return_pct']:+.1f}%)" if h.get("return_pct") is not None else ""
-                msg += f"• {h['name']} | {st} | 매수가 {entry_str}{ret_str}\n"
-            msg += "\n"
+                target_str= f"₩{h['target_price']:,.0f}" if h.get("target_price") else "?"
+                stop_str  = f"₩{h['stop_price']:,.0f}"  if h.get("stop_price")  else "?"
 
-        # 현재 진행 중
-        msg += f"🟢 매수 중: {perf.get('active', 0)}개  |  ⏳ 매수 대기: {perf.get('pending', 0)}개\n"
-        msg += "\n⚠️ 투자 참고용 정보입니다."
+                # 청산 종목은 수익률 표시
+                if h.get("return_pct") is not None:
+                    ret_str = f"  <b>{h['return_pct']:+.1f}%</b>"
+                    lines.append(f"{icon} <b>{h['name']}</b>{ret_str}\n   진입가 {entry_str}")
 
-        send_telegram(msg)
+                # 매수 중 종목은 현재가 + 수익률 바
+                elif h["status"] == "active":
+                    cur_line = ""
+                    try:
+                        if h.get("entry_price"):
+                            cur = float(yf.Ticker(h["symbol"]).history(period="1d")["Close"].iloc[-1])
+                            ret = (cur - h["entry_price"]) / h["entry_price"] * 100
+                            filled = min(int(abs(ret) / 2), 8)
+                            bar = ("🟩" if ret >= 0 else "🟥") * filled + "⬜" * (8 - filled)
+                            cur_line = f"\n   {bar}  ₩{cur:,.0f}  <b>({ret:+.1f}%)</b>"
+                    except:
+                        pass
+                    lines.append(
+                        f"{icon} <b>{h['name']}</b>\n"
+                        f"   매수 {entry_str}  →  목표 {target_str}  /  손절 {stop_str}"
+                        + cur_line
+                    )
+
+                # 대기 종목
+                else:
+                    days = (date.today() - date.fromisoformat(h["alert_date"])).days
+                    lines.append(f"{icon} <b>{h['name']}</b>  <i>{days}일째</i>\n   진입가 {entry_str}  →  목표 {target_str}")
+
+        # ── 현재 진행 중 요약 ─────────────────────
+        active_cnt  = perf.get('active', 0)
+        pending_cnt = perf.get('pending', 0)
+        lines.append(f"\n🟢 매수 중 {active_cnt}종목  ·  ⏳ 대기 {pending_cnt}종목")
+        lines.append("─" * 16)
+        lines.append("⚠️ <i>투자 참고용 정보입니다</i>")
+
+        send_telegram("\n".join(lines))
         print("[성과추적] 주간 요약 전송 완료")
 
     except Exception as e:
         print(f"[성과추적] 주간 요약 오류: {e}")
+        import traceback; traceback.print_exc()
