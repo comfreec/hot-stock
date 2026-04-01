@@ -3,6 +3,10 @@ primary_region = "nrt"
 
 [build]
 
+[mounts]
+  source = "hotstock_data"
+  destination = "/data"
+
 # 프로세스 정의
 [processes]
   web       = "streamlit run app.py --server.port=7860 --server.address=0.0.0.0 --server.headless=true --server.enableCORS=false"
@@ -11,9 +15,9 @@ primary_region = "nrt"
 [http_service]
   internal_port = 7860
   force_https = true
-  auto_stop_machines = "stop"    # 접속 없으면 자동 중지
-  auto_start_machines = true     # 접속 시 자동 시작
-  min_machines_running = 0       # 평소엔 0대 유지
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
   processes = ["web"]
 
 # web VM (접속 시에만 실행)
