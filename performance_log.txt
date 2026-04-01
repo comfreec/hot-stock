@@ -1,3 +1,6 @@
 성과 추적 업데이트 시작...
 [성과추적] 업데이트 알림 전송 완료
 완료
+성과 추적 업데이트 시작...
+[성과추적] 알림 오류: unsupported format string passed to NoneType.__format__
+완료
