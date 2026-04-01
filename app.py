@@ -25,7 +25,10 @@ except Exception as e:
     st.warning(f"캐시/백테스트 모듈 로드 실패: {e}")
 
 # ── 접근 제어 ────────────────────────────────────────────────────
-PASSWORDS = ["hotstock2026", "vip1234", "comfreec"]  # 허가된 비밀번호 목록
+try:
+    PASSWORDS = list(st.secrets.get("PASSWORDS", ["hotstock2026", "vip1234", "comfreec"]))
+except Exception:
+    PASSWORDS = ["hotstock2026", "vip1234", "comfreec"]
 
 if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False

@@ -11,14 +11,29 @@ import numpy as np
 import io
 from datetime import date
 
-TELEGRAM_TOKEN   = "8686257393:AAGWPuisi_qy995cKC7pIWnCGqpQMljQxgc"
-TELEGRAM_CHAT_ID = "-1003815975342"  # 주식 급등 알림 채널
+import os
+
+def _get_telegram_config():
+    """환경변수 → Streamlit secrets 순으로 텔레그램 설정 로드"""
+    token   = os.environ.get("TELEGRAM_TOKEN", "")
+    chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
+    if not token or not chat_id:
+        try:
+            import streamlit as st
+            token   = token   or st.secrets.get("TELEGRAM_TOKEN", "")
+            chat_id = chat_id or st.secrets.get("TELEGRAM_CHAT_ID", "")
+        except Exception:
+            pass
+    return token, chat_id
+
+TELEGRAM_TOKEN, TELEGRAM_CHAT_ID = _get_telegram_config()
 
 def send_telegram(message: str) -> bool:
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    token, chat_id = _get_telegram_config()
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
     try:
         resp = requests.post(url, json={
-            "chat_id": TELEGRAM_CHAT_ID,
+            "chat_id": chat_id,
             "text": message,
             "parse_mode": "HTML"
         }, timeout=10)
@@ -29,10 +44,11 @@ def send_telegram(message: str) -> bool:
 
 def send_photo(image_bytes: bytes, caption: str = "") -> bool:
     """이미지 전송"""
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
+    token, chat_id = _get_telegram_config()
+    url = f"https://api.telegram.org/bot{token}/sendPhoto"
     try:
         resp = requests.post(url, data={
-            "chat_id": TELEGRAM_CHAT_ID,
+            "chat_id": chat_id,
             "caption": caption,
             "parse_mode": "HTML"
         }, files={"photo": ("chart.png", image_bytes, "image/png")}, timeout=30)

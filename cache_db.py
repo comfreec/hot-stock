@@ -147,6 +147,13 @@ def save_alert_history(results: list, price_levels_map: dict = None):
         if in_progress:
             continue
         lv  = (price_levels_map or {}).get(sym, {})
+        # 레벨 없으면 yfinance로 직접 계산 재시도
+        if not lv or not lv.get("entry"):
+            try:
+                from telegram_alert import calc_price_levels
+                lv = calc_price_levels(sym) or {}
+            except Exception:
+                lv = {}
         conn.execute("""
             INSERT INTO alert_history
             (alert_date, symbol, name, score, entry_price, entry_label,
@@ -194,11 +201,17 @@ def update_alert_status():
             rid, sym, entry, target, stop, alert_date, status = row
             if not entry or not target or not stop:
                 continue
-            # 5일 경과 시 만료
+            # 거래일 기준 5일 경과 시 만료 (주말 제외)
             try:
                 from datetime import datetime as dt
-                days_elapsed = (dt.now() - dt.fromisoformat(alert_date)).days
-                if days_elapsed > 5:
+                alert_dt = dt.fromisoformat(alert_date).date()
+                trading_days = 0
+                cur_day = alert_dt
+                while cur_day < date.today():
+                    cur_day += __import__('datetime').timedelta(days=1)
+                    if cur_day.weekday() < 5:  # 월~금만 카운트
+                        trading_days += 1
+                if trading_days > 5:
                     conn.execute("UPDATE alert_history SET status='expired', exit_date=? WHERE id=?",
                                  (today, rid))
                     continue

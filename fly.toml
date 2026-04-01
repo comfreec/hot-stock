@@ -4,7 +4,7 @@ primary_region = "nrt"
 [build]
 
 [http_service]
-  internal_port = 8501
+  internal_port = 7860
   force_https = true
   auto_stop_machines = true
   auto_start_machines = true
