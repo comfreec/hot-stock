@@ -9,7 +9,13 @@ import os
 from datetime import datetime, date
 import threading
 
-DB_PATH = os.environ.get("DB_PATH", os.path.join(os.path.dirname(__file__), "scan_cache.db"))
+import os as _os
+_data_path = "/data/scan_cache.db"
+_local_path = _os.path.join(_os.path.dirname(__file__), "scan_cache.db")
+# /data 디렉토리가 있으면 볼륨 경로, 없으면 로컬 경로
+DB_PATH = _os.environ.get("DB_PATH",
+    _data_path if _os.path.isdir("/data") else _local_path
+)
 
 def _get_conn():
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
