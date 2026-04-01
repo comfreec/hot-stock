@@ -683,14 +683,14 @@ def send_performance_update():
 
 
 
-def send_weekly_summary():
+def send_weekly_summary(force: bool = False):
     """주간 성과 요약 - 매주 금요일 전송"""
     try:
         from cache_db import get_performance_summary, get_alert_history
         from datetime import datetime, timedelta
         import yfinance as yf
 
-        if datetime.now().weekday() != 4:
+        if not force and datetime.now().weekday() != 4:
             return
 
         perf       = get_performance_summary()
