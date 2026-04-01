@@ -1,17 +1,21 @@
 """
 독립 스케줄러 - 앱과 별도 프로세스로 실행
 평일 15:40 자동 스캔 + 텔레그램 알림
+KST(UTC+9) 기준으로 동작
 """
 import time
 import os
 import sys
-from datetime import datetime, date
+from datetime import datetime, date, timezone, timedelta
+
+KST = timezone(timedelta(hours=9))
 
 # 작업 디렉토리 설정
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 def log(msg):
-    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {msg}", flush=True)
+    now_kst = datetime.now(KST).strftime('%Y-%m-%d %H:%M:%S KST')
+    print(f"[{now_kst}] {msg}", flush=True)
 
 def run_scan():
     log("스캔 시작...")
@@ -43,13 +47,13 @@ def run_performance():
         log(f"성과 업데이트 오류: {e}")
 
 def main():
-    log("스케줄러 시작 (평일 15:40 스캔 / 09:10 성과 업데이트)")
+    log("스케줄러 시작 (평일 15:40 스캔 / 09:10 성과 업데이트) - KST 기준")
     last_scan_date = None
     last_perf_date = None
 
     while True:
-        now = datetime.now()
-        today = date.today()
+        now = datetime.now(KST)
+        today = now.date()
         is_weekday = now.weekday() < 5  # 월~금
 
         # 09:10 성과 업데이트

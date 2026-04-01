@@ -2,7 +2,7 @@ name: Daily Stock Scan & Telegram Alert
 
 on:
   schedule:
-    - cron: '40 6 * * 1-5'  # KST 15:40 평일만 (UTC 06:40)
+    - cron: '40 6 * * 1-5'  # KST 15:40 평일 (UTC 06:40)
   workflow_dispatch:
 
 jobs:
@@ -20,16 +20,16 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install yfinance pandas numpy requests beautifulsoup4 matplotlib
+        run: pip install yfinance pandas numpy requests beautifulsoup4 matplotlib scikit-learn
 
-      - name: Run
-        if: false  # 텔레그램 알림 비활성화
+      - name: Run scan & alert
         run: python github_scan.py
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
 
-      - name: Keep workflow active (prevent auto-disable)
+      - name: Keep workflow active
+        if: always()
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"

@@ -3,14 +3,29 @@ primary_region = "nrt"
 
 [build]
 
+# 프로세스 정의
+[processes]
+  web       = "streamlit run app.py --server.port=7860 --server.address=0.0.0.0 --server.headless=true --server.enableCORS=false"
+  scheduler = "python scheduler.py"
+
 [http_service]
   internal_port = 7860
   force_https = true
-  auto_stop_machines = true
+  auto_stop_machines = false   # 스케줄러가 있으므로 슬립 방지
   auto_start_machines = true
-  min_machines_running = 0
+  min_machines_running = 1
+  processes = ["web"]          # http_service는 web 프로세스만
 
+# web VM
 [[vm]]
-  memory = "1gb"
+  memory = "512mb"
   cpu_kind = "shared"
   cpus = 1
+  processes = ["web"]
+
+# scheduler VM (별도 머신)
+[[vm]]
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1
+  processes = ["scheduler"]
