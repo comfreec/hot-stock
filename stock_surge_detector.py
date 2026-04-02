@@ -60,33 +60,73 @@ class KoreanStockSurgeDetector:
         return pd.Series(obv, index=data.index)
 
     def _news_sentiment(self, symbol):
+        """뉴스 감성 분석 - 네이버 + 한국경제 멀티소스"""
         code = symbol.replace(".KS","").replace(".KQ","")
-        pos = ["급등","상승","돌파","신고가","수주","흑자","성장","호실적","매수","상향","계약"]
-        neg = ["급락","하락","적자","손실","매도","하향","감소","부진","우려"]
+        pos = ["급등","상승","돌파","신고가","수주","흑자","성장","호실적","매수","상향","계약",
+               "수익","개선","확대","증가","강세","반등","회복","기대","호재","수혜","선정",
+               "수상","특허","승인","허가","출시","신제품","협약","MOU","투자유치"]
+        neg = ["급락","하락","적자","손실","매도","하향","감소","부진","우려","위기","악화",
+               "하락세","조정","약세","실망","경고","리스크","소송","제재","벌금","횡령","배임"]
+        titles = []
         try:
-            url = "https://finance.naver.com/item/news_news.naver?code=" + code + "&page=1"
-            res = requests.get(url, headers={"User-Agent":"Mozilla/5.0"}, timeout=2)
+            # 네이버 금융 뉴스
+            url = f"https://finance.naver.com/item/news_news.naver?code={code}&page=1"
+            res = requests.get(url, headers={"User-Agent":"Mozilla/5.0"}, timeout=3)
             soup = BeautifulSoup(res.text, "html.parser")
-            titles = [a.get_text() for a in soup.select(".title")]
-            p = sum(1 for t in titles for k in pos if k in t)
-            n = sum(1 for t in titles for k in neg if k in t)
-            total = p + n
-            return round((p-n)/total, 2) if total > 0 else 0, p, n
+            titles += [a.get_text().strip() for a in soup.select(".title") if a.get_text().strip()]
         except:
+            pass
+        try:
+            # 한국경제 종목 뉴스
+            name = STOCK_NAMES.get(symbol, "").replace(" ", "+")
+            if name:
+                url2 = f"https://search.hankyung.com/search/news?query={name}&sort=date"
+                res2 = requests.get(url2, headers={"User-Agent":"Mozilla/5.0"}, timeout=3)
+                soup2 = BeautifulSoup(res2.text, "html.parser")
+                titles += [a.get_text().strip() for a in soup2.select(".article-title, .tit") if a.get_text().strip()][:10]
+        except:
+            pass
+        if not titles:
             return 0, 0, 0
+        p = sum(1 for t in titles for k in pos if k in t)
+        n = sum(1 for t in titles for k in neg if k in t)
+        total = p + n
+        return round((p - n) / total, 2) if total > 0 else 0, p, n
 
     def _dart_disclosure(self, symbol):
+        """호재 공시 수집 - KIND(한국거래소) + 네이버 공시 멀티소스"""
         code = symbol.replace(".KS","").replace(".KQ","")
-        keys = ["자기주식취득","수주","공급계약","투자","합병"]
+        good_keys = ["자기주식취득","수주","공급계약","투자","합병","분할","신규사업",
+                     "특허","허가","승인","MOU","협약","유상증자철회","자사주","배당확대"]
+        bad_keys  = ["횡령","배임","소송","제재","상장폐지","감사의견","영업정지"]
+        hits = []
         try:
-            url = "https://finance.naver.com/item/news_dis.naver?code=" + code
-            res = requests.get(url, headers={"User-Agent":"Mozilla/5.0"}, timeout=2)
+            # KIND 공시 직접 크롤링
+            url = f"https://kind.krx.co.kr/disclosure/searchtotalinfo.do?method=searchTotalInfoSub&forward=searchtotalinfo_sub&searchCodeType=&searchCorpName={code}&searchCorpCode={code}&marketType=&reportType=&startDate=&endDate=&currentPage=1&maxResults=10"
+            res = requests.get(url, headers={"User-Agent":"Mozilla/5.0", "Referer":"https://kind.krx.co.kr/"}, timeout=4)
             soup = BeautifulSoup(res.text, "html.parser")
-            titles = [a.get_text() for a in soup.select(".title")]
-            hits = [k for t in titles for k in keys if k in t]
-            return len(hits) > 0, hits[:3]
+            titles_kind = [a.get_text().strip() for a in soup.select("td.title a, .tit a") if a.get_text().strip()]
+            hits += [k for t in titles_kind for k in good_keys if k in t]
+            # 악재 공시 있으면 패널티
+            bad_hits = [k for t in titles_kind for k in bad_keys if k in t]
+            if bad_hits:
+                return False, []
         except:
-            return False, []
+            pass
+        try:
+            # 네이버 공시 폴백
+            url2 = f"https://finance.naver.com/item/news_dis.naver?code={code}"
+            res2 = requests.get(url2, headers={"User-Agent":"Mozilla/5.0"}, timeout=3)
+            soup2 = BeautifulSoup(res2.text, "html.parser")
+            titles_naver = [a.get_text().strip() for a in soup2.select(".title") if a.get_text().strip()]
+            hits += [k for t in titles_naver for k in good_keys if k in t]
+            bad_hits2 = [k for t in titles_naver for k in bad_keys if k in t]
+            if bad_hits2:
+                return False, []
+        except:
+            pass
+        unique_hits = list(dict.fromkeys(hits))  # 중복 제거
+        return len(unique_hits) > 0, unique_hits[:3]
 
     def _institutional_flow(self, symbol):
         """기관/외국인 순매수 크롤링 (네이버 금융 메인 페이지)
@@ -239,8 +279,10 @@ class KoreanStockSurgeDetector:
                 per              = info.get("trailingPE") or info.get("forwardPE") or 0
                 operating_income = info.get("operatingIncome") or 0
                 revenue          = info.get("totalRevenue") or 0
-                revenue_growth   = info.get("revenueGrowth") or None   # 전년비 매출 성장률 (소수)
-                earnings_growth  = info.get("earningsGrowth") or None  # 전년비 이익 성장률
+                revenue_growth   = info.get("revenueGrowth") or None
+                earnings_growth  = info.get("earningsGrowth") or None
+                roe              = info.get("returnOnEquity") or None   # ROE
+                debt_to_equity   = info.get("debtToEquity") or None     # 부채비율
 
                 # 시총 1000억 미만 제외
                 if market_cap > 0 and market_cap < 100_000_000_000:
@@ -251,12 +293,18 @@ class KoreanStockSurgeDetector:
                 # PER 비정상 제외 (음수 or 200 초과)
                 if per and (per < 0 or per > 200):
                     return None
-                # ▶ 추가: 매출 성장률 마이너스 제외 (데이터 있을 때만)
+                # 매출 성장률 마이너스 제외 (데이터 있을 때만)
                 if revenue_growth is not None and revenue_growth < -0.05:
-                    return None  # 매출 5% 이상 역성장 제외
-                # ▶ 추가: 이익 성장률 심각한 역성장 제외
+                    return None
+                # 이익 성장률 심각한 역성장 제외
                 if earnings_growth is not None and earnings_growth < -0.30:
-                    return None  # 이익 30% 이상 역성장 제외
+                    return None
+                # ROE 마이너스 제외 (데이터 있을 때만)
+                if roe is not None and roe < 0:
+                    return None
+                # 부채비율 500% 초과 제외 (과도한 레버리지)
+                if debt_to_equity is not None and debt_to_equity > 500:
+                    return None
             except:
                 pass  # 재무 데이터 없으면 통과 (데이터 누락 방어)
 
@@ -655,14 +703,52 @@ class KoreanStockSurgeDetector:
             # 같은 섹터 상위 3개 종목 동반 상승 여부 체크
             try:
                 sector_peers = {
-                    "005930.KS": ["000660.KS","011070.KS"],  # 반도체
-                    "000660.KS": ["005930.KS","011070.KS"],
-                    "005380.KS": ["000270.KS","012330.KS"],  # 자동차
-                    "000270.KS": ["005380.KS","012330.KS"],
-                    "006400.KS": ["051910.KS","373220.KS"],  # 2차전지
-                    "051910.KS": ["006400.KS","373220.KS"],
-                    "207940.KS": ["068270.KS","196170.KQ"],  # 바이오
-                    "068270.KS": ["207940.KS","196170.KQ"],
+                    # 반도체
+                    "005930.KS": ["000660.KS","011070.KS","042700.KS"],
+                    "000660.KS": ["005930.KS","011070.KS","042700.KS"],
+                    "011070.KS": ["005930.KS","000660.KS","042700.KS"],
+                    "042700.KS": ["005930.KS","000660.KS","011070.KS"],
+                    # 2차전지
+                    "006400.KS": ["051910.KS","373220.KS","247540.KQ","066970.KQ"],
+                    "051910.KS": ["006400.KS","373220.KS","247540.KQ","066970.KQ"],
+                    "373220.KS": ["006400.KS","051910.KS","247540.KQ","066970.KQ"],
+                    "247540.KQ": ["006400.KS","051910.KS","373220.KS","066970.KQ"],
+                    "066970.KQ": ["006400.KS","051910.KS","373220.KS","247540.KQ"],
+                    # 자동차
+                    "005380.KS": ["000270.KS","012330.KS","204320.KS"],
+                    "000270.KS": ["005380.KS","012330.KS","204320.KS"],
+                    "012330.KS": ["005380.KS","000270.KS","204320.KS"],
+                    "204320.KS": ["005380.KS","000270.KS","012330.KS"],
+                    # 바이오/제약
+                    "207940.KS": ["068270.KS","196170.KQ","141080.KQ","298380.KQ"],
+                    "068270.KS": ["207940.KS","196170.KQ","141080.KQ","298380.KQ"],
+                    "196170.KQ": ["207940.KS","068270.KS","141080.KQ","298380.KQ"],
+                    "141080.KQ": ["207940.KS","068270.KS","196170.KQ","298380.KQ"],
+                    "298380.KQ": ["207940.KS","068270.KS","196170.KQ","141080.KQ"],
+                    # 인터넷/플랫폼
+                    "035420.KS": ["035720.KS","323410.KS","251270.KQ"],
+                    "035720.KS": ["035420.KS","323410.KS","251270.KQ"],
+                    "323410.KS": ["035420.KS","035720.KS","251270.KQ"],
+                    # 엔터/게임
+                    "041510.KQ": ["035900.KQ","036030.KQ","112040.KQ"],
+                    "035900.KQ": ["041510.KQ","036030.KQ","112040.KQ"],
+                    "036030.KQ": ["041510.KQ","035900.KQ","112040.KQ"],
+                    "112040.KQ": ["041510.KQ","035900.KQ","036030.KQ"],
+                    # 조선/방산
+                    "329180.KS": ["042660.KS","267250.KS","064350.KS"],
+                    "042660.KS": ["329180.KS","267250.KS","064350.KS"],
+                    "064350.KS": ["329180.KS","042660.KS","267250.KS"],
+                    # 금융
+                    "105560.KS": ["055550.KS","316140.KS","175330.KS"],
+                    "055550.KS": ["105560.KS","316140.KS","175330.KS"],
+                    "316140.KS": ["105560.KS","055550.KS","175330.KS"],
+                    # 화장품/뷰티
+                    "090430.KS": ["214150.KQ","145020.KQ","950140.KQ"],
+                    "214150.KQ": ["090430.KS","145020.KQ","950140.KQ"],
+                    "145020.KQ": ["090430.KS","214150.KQ","950140.KQ"],
+                    "950140.KQ": ["090430.KS","214150.KQ","145020.KQ"],
+                    # 로봇/AI
+                    "277810.KQ": ["042700.KS","005930.KS"],
                 }
                 peers = sector_peers.get(symbol, [])
                 if peers:
