@@ -16,13 +16,11 @@
 html{scroll-behavior:smooth}
 body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text);overflow-x:hidden}
 a{text-decoration:none;color:inherit}
-/* NAV */
 nav{position:fixed;top:0;left:0;right:0;z-index:100;background:rgba(6,10,18,.9);backdrop-filter:blur(20px);border-bottom:1px solid var(--border);padding:0 5%}
 .nav-inner{max-width:1200px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;height:64px}
 .logo{font-size:20px;font-weight:900;background:linear-gradient(90deg,var(--blue),var(--teal));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
 .nav-cta{background:linear-gradient(135deg,var(--blue),#1a56db);color:#fff!important;border:none;padding:10px 24px;border-radius:8px;font-weight:700;font-size:14px;cursor:pointer;transition:.2s}
 .nav-cta:hover{transform:translateY(-1px);box-shadow:0 4px 20px rgba(79,142,247,.4)}
-/* HERO */
 .hero{min-height:100vh;display:flex;align-items:center;justify-content:center;text-align:center;padding:120px 5% 80px;position:relative;overflow:hidden}
 .hero::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 80% 60% at 50% 40%,rgba(79,142,247,.08) 0%,transparent 70%),radial-gradient(ellipse 40% 40% at 80% 20%,rgba(0,212,170,.05) 0%,transparent 60%)}
 .hero-content{position:relative;z-index:1}
@@ -42,20 +40,17 @@ h1{font-size:clamp(36px,6vw,72px);font-weight:900;line-height:1.15;letter-spacin
 </head>
 <body>
 <style>
-/* STATS */
 .stats{padding:60px 5%;background:var(--bg2);border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
 .stats-grid{max-width:1000px;margin:0 auto;display:grid;grid-template-columns:repeat(4,1fr)}
 .stat-item{text-align:center;padding:32px 20px;position:relative}
 .stat-item:not(:last-child)::after{content:'';position:absolute;right:0;top:20%;height:60%;width:1px;background:var(--border)}
 .stat-num{font-size:clamp(32px,4vw,48px);font-weight:900;background:linear-gradient(135deg,var(--blue),var(--teal));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
 .stat-label{color:var(--muted);font-size:14px;margin-top:6px}
-/* SECTIONS */
 section{padding:100px 5%}
 .si{max-width:1200px;margin:0 auto}
 .tag{display:inline-block;background:rgba(79,142,247,.1);border:1px solid rgba(79,142,247,.25);color:var(--blue);font-size:12px;font-weight:700;letter-spacing:2px;text-transform:uppercase;padding:5px 14px;border-radius:20px;margin-bottom:16px}
 h2{font-size:clamp(28px,4vw,44px);font-weight:900;line-height:1.2;margin-bottom:16px}
 .sdesc{color:#9ca3af;font-size:17px;line-height:1.7;max-width:560px}
-/* HOW */
 .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:24px;margin-top:60px}
 .sc{background:var(--bg3);border:1px solid var(--border);border-radius:20px;padding:36px 28px;position:relative;overflow:hidden;transition:.3s}
 .sc:hover{border-color:rgba(79,142,247,.4);transform:translateY(-4px);box-shadow:0 20px 60px rgba(0,0,0,.4)}
@@ -64,14 +59,12 @@ h2{font-size:clamp(28px,4vw,44px);font-weight:900;line-height:1.2;margin-bottom:
 .si2{font-size:32px;margin-bottom:12px}
 .st{font-size:18px;font-weight:700;margin-bottom:10px}
 .sd{color:#9ca3af;font-size:14px;line-height:1.7}
-/* SIGNALS */
 .sg{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-top:48px}
 .chip{background:var(--bg3);border:1px solid var(--border);border-radius:12px;padding:14px 18px;display:flex;align-items:center;gap:10px;transition:.2s}
 .chip:hover{border-color:rgba(79,142,247,.4);background:rgba(79,142,247,.05)}
 .chip .ci{font-size:20px}
 .chip .cn{font-size:13px;font-weight:600;color:#d1d5db}
 .chip .cp{margin-left:auto;font-size:12px;font-weight:700;color:var(--teal)}
-/* PREVIEW */
 .pw{display:grid;grid-template-columns:1fr 1fr;gap:60px;align-items:center;margin-top:60px}
 .pm{background:var(--bg3);border:1px solid var(--border);border-radius:24px;padding:24px;max-width:360px}
 .th{display:flex;align-items:center;gap:10px;margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid var(--border)}
@@ -95,7 +88,6 @@ h2{font-size:clamp(28px,4vw,44px);font-weight:900;line-height:1.2;margin-bottom:
 .fl li::before{content:'✓';color:var(--teal);font-weight:700;flex-shrink:0;margin-top:2px}
 </style>
 <style>
-/* PRICING */
 .pg{display:grid;grid-template-columns:repeat(3,1fr);gap:24px;margin-top:60px}
 .pc{background:var(--bg3);border:1px solid var(--border);border-radius:24px;padding:40px 32px;position:relative;transition:.3s}
 .pc:hover{transform:translateY(-4px)}
@@ -115,7 +107,6 @@ h2{font-size:clamp(28px,4vw,44px);font-weight:900;line-height:1.2;margin-bottom:
 .pb.ol:hover{border-color:var(--blue);color:var(--blue)}
 .pb.fi{background:linear-gradient(135deg,var(--blue),#1a56db);color:#fff;box-shadow:0 4px 20px rgba(79,142,247,.3)}
 .pb.fi:hover{box-shadow:0 8px 32px rgba(79,142,247,.5);transform:translateY(-1px)}
-/* TESTIMONIALS */
 .tg2{display:grid;grid-template-columns:repeat(3,1fr);gap:24px;margin-top:60px}
 .tc{background:var(--bg3);border:1px solid var(--border);border-radius:20px;padding:28px}
 .stars{color:var(--gold);font-size:16px;margin-bottom:14px;letter-spacing:2px}
@@ -124,7 +115,6 @@ h2{font-size:clamp(28px,4vw,44px);font-weight:900;line-height:1.2;margin-bottom:
 .tav{width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,#1e3a5f,#0d1528);display:flex;align-items:center;justify-content:center;font-size:18px;border:1px solid var(--border)}
 .tname{font-weight:700;font-size:14px}
 .trole{font-size:12px;color:var(--muted)}
-/* FAQ */
 .faq-list{max-width:760px;margin:48px auto 0}
 .fi2{border-bottom:1px solid var(--border);padding:20px 0;cursor:pointer}
 .fq{font-size:16px;font-weight:700;display:flex;justify-content:space-between;align-items:center;gap:16px}
@@ -132,7 +122,6 @@ h2{font-size:clamp(28px,4vw,44px);font-weight:900;line-height:1.2;margin-bottom:
 .fan{font-size:14px;color:#9ca3af;line-height:1.8;margin-top:12px;display:none}
 .fi2.open .fan{display:block}
 .fi2.open .fa2{transform:rotate(45deg)}
-/* CTA */
 .cta{background:linear-gradient(135deg,#0d1528,#111827);padding:100px 5%;text-align:center;border-top:1px solid var(--border);position:relative;overflow:hidden}
 .cta::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 60% 80% at 50% 50%,rgba(79,142,247,.06) 0%,transparent 70%)}
 .cta-inner{position:relative;z-index:1}
@@ -157,7 +146,6 @@ footer p{color:var(--muted);font-size:13px;line-height:1.8}
 }
 </style>
 
-<!-- NAV -->
 <nav>
   <div class="nav-inner">
     <div class="logo">🚀 급등주 레이더</div>
@@ -165,12 +153,11 @@ footer p{color:var(--muted);font-size:13px;line-height:1.8}
   </div>
 </nav>
 
-<!-- HERO -->
 <section class="hero">
   <div class="hero-content">
     <div class="badge"><span class="dot"></span> 매일 KST 15:40 자동 알림</div>
     <h1>급등하기 <span class="accent">전에</span><br>먼저 알 수 있다면?</h1>
-    <p class="hero-sub">240일선 돌파 패턴 + 20개 복합 신호로<br>급등 직전 종목을 매일 자동으로 포착합니다</p>
+    <p class="hero-sub">240일선 돌파 패턴 + 25개 복합 신호로<br>급등 직전 종목을 매일 자동으로 포착합니다</p>
     <div class="btns">
       <a href="#pricing" class="btn-p">7일 무료 체험 →</a>
       <a href="#how" class="btn-s">작동 원리 보기</a>
@@ -179,62 +166,59 @@ footer p{color:var(--muted);font-size:13px;line-height:1.8}
   </div>
 </section>
 
-<!-- STATS -->
 <div class="stats">
   <div class="stats-grid">
     <div class="stat-item fade-up">
-      <div class="stat-num">544</div>
+      <div class="stat-num">545+</div>
       <div class="stat-label">코스피·코스닥 스캔 종목</div>
     </div>
     <div class="stat-item fade-up">
-      <div class="stat-num">20+</div>
+      <div class="stat-num">25+</div>
       <div class="stat-label">복합 신호 지표</div>
     </div>
     <div class="stat-item fade-up">
       <div class="stat-num">2:1+</div>
-      <div class="stat-label">최소 손익비</div>
+      <div class="stat-label">최소 손익비 기준</div>
     </div>
     <div class="stat-item fade-up">
-      <div class="stat-num">매일</div>
-      <div class="stat-label">자동 텔레그램 알림</div>
+      <div class="stat-num">2회</div>
+      <div class="stat-label">매일 자동 텔레그램 알림</div>
     </div>
   </div>
 </div>
 
-<!-- HOW IT WORKS -->
 <section id="how" style="background:var(--bg)">
   <div class="si">
     <div class="tag">HOW IT WORKS</div>
     <h2>3단계로 급등 전 종목을<br>자동으로 찾아냅니다</h2>
-    <p class="sdesc">감이 아닌 데이터. 수작업이 아닌 자동화. 매일 장마감 후 544개 종목을 전수 스캔해 조건 충족 종목만 알림을 보냅니다.</p>
+    <p class="sdesc">감이 아닌 데이터. 수작업이 아닌 자동화. 매일 장마감 후 545개 종목을 전수 스캔해 조건 충족 종목만 알림을 보냅니다.</p>
     <div class="steps">
       <div class="sc fade-up">
         <div class="sn">01</div>
         <div class="si2">📉</div>
         <div class="st">충분한 조정 확인</div>
-        <div class="sd">240일선 아래 120일(6개월) 이상 조정한 종목만 선별합니다. 충분히 눌린 종목이 터질 때 폭발력이 다릅니다.</div>
+        <div class="sd">240일선 아래 120일(6개월) 이상 조정한 종목만 선별합니다. 충분히 눌린 종목이 터질 때 폭발력이 다릅니다. ROE·부채비율·영업이익 재무 필터도 함께 적용합니다.</div>
       </div>
       <div class="sc fade-up">
         <div class="sn">02</div>
         <div class="si2">🚀</div>
         <div class="st">240일선 돌파 감지</div>
-        <div class="sd">60일 이내 240일선을 상향 돌파하고 현재가가 240일선 위 10% 이내인 종목을 포착합니다. 너무 많이 오른 종목은 제외합니다.</div>
+        <div class="sd">60일 이내 240일선을 상향 돌파하고 현재가가 240일선 위 10% 이내인 종목을 포착합니다. 거래대금 50억 이상, 손익비 2:1 이상 필터로 퀄리티를 높입니다.</div>
       </div>
       <div class="sc fade-up">
         <div class="sn">03</div>
         <div class="si2">🎯</div>
         <div class="st">복합 신호 점수화</div>
-        <div class="sd">OBV, MACD, 일목균형표, ADX, 거래량 등 20개 신호를 점수화해 15점 이상 종목만 알림을 발송합니다.</div>
+        <div class="sd">ta 라이브러리 기반 RSI·MACD·ADX·MFI·Stochastic 등 25개 신호를 점수화합니다. KIND 공시·멀티소스 뉴스·기관/외국인 수급까지 반영해 15점 이상만 알림 발송합니다.</div>
       </div>
     </div>
   </div>
 </section>
 
-<!-- ALERT PREVIEW -->
 <section style="background:var(--bg2)">
   <div class="si">
     <div class="tag">TELEGRAM ALERT</div>
-    <h2>매일 장마감 후<br>이런 알림이 옵니다</h2>
+    <h2>매일 두 번<br>이런 알림이 옵니다</h2>
     <div class="pw">
       <div class="pm fade-up">
         <div class="th">
@@ -242,13 +226,13 @@ footer p{color:var(--muted);font-size:13px;line-height:1.8}
           <div><div class="tn">급등주 레이더</div><div class="ts">● 실시간 알림</div></div>
         </div>
         <div class="tm">
-          <div class="tt">🚀 급등 예고 종목 (2025-03-31)</div>
-          <div class="tr"><span class="tl">종목</span><span class="tv">에코프로비엠 ⭐ 23점</span></div>
+          <div class="tt">🚀 급등 예고 종목 (2026-04-02)</div>
+          <div class="tr"><span class="tl">종목</span><span class="tv">에코프로비엠 ⭐ 26점</span></div>
           <div class="tr"><span class="tl">📍 매수가</span><span class="tv gd">₩87,400</span></div>
           <div class="tr"><span class="tl">🎯 목표가</span><span class="tv up">₩104,000 (+19.0%)</span></div>
           <div class="tr"><span class="tl">🛑 손절가</span><span class="tv dn">₩83,000 (-5.0%)</span></div>
           <div class="tr"><span class="tl">⚖️ 손익비</span><span class="tv up">3.8 : 1</span></div>
-          <div class="tr"><span class="tl">신호</span><span class="tv" style="font-size:11px">⚡정배열 🔥BB확장 📈OBV</span></div>
+          <div class="tr"><span class="tl">신호</span><span class="tv" style="font-size:11px">⚡정배열 🔥BB확장 📈OBV ☁️일목</span></div>
         </div>
         <div class="ttime">오후 3:42 ✓✓</div>
       </div>
@@ -260,20 +244,21 @@ footer p{color:var(--muted);font-size:13px;line-height:1.8}
           <li>지지선 평균가 기반 근거 있는 매수가</li>
           <li>매수가 대비 -5% 손절가 자동 설정</li>
           <li>한국 주식 호가 단위로 가격 자동 보정</li>
-          <li>캔들차트 이미지 함께 전송</li>
-          <li>매일 09:10 성과 업데이트 알림</li>
+          <li>캔들차트 이미지 함께 전송 (상위 5종목)</li>
+          <li>매일 15:40 급등 예고 + 09:10 성과 업데이트</li>
+          <li>KIND 공시·한경 뉴스 멀티소스 감성 분석</li>
+          <li>10개 섹터 동반 상승 모멘텀 감지</li>
         </ul>
       </div>
     </div>
   </div>
 </section>
 
-<!-- SIGNALS -->
 <section style="background:var(--bg)">
   <div class="si">
     <div class="tag">SIGNALS</div>
-    <h2>20개 복합 신호가<br>동시에 작동합니다</h2>
-    <p class="sdesc">단일 지표의 한계를 넘어, 여러 신호가 동시에 켜질 때만 알림을 보냅니다.</p>
+    <h2>25개 복합 신호가<br>동시에 작동합니다</h2>
+    <p class="sdesc">단일 지표의 한계를 넘어, 여러 신호가 동시에 켜질 때만 알림을 보냅니다. ta 라이브러리 기반 검증된 알고리즘을 사용합니다.</p>
     <div class="sg">
       <div class="chip fade-up"><span class="ci">⚡</span><span class="cn">이평선 정배열</span><span class="cp">+3pt</span></div>
       <div class="chip fade-up"><span class="ci">🔥</span><span class="cn">BB 수축→확장</span><span class="cp">+3pt</span></div>
@@ -287,11 +272,16 @@ footer p{color:var(--muted);font-size:13px;line-height:1.8}
       <div class="chip fade-up"><span class="ci">💰</span><span class="cn">MFI 과매도 반등</span><span class="cp">+2pt</span></div>
       <div class="chip fade-up"><span class="ci">📍</span><span class="cn">VWAP 위</span><span class="cp">+2pt</span></div>
       <div class="chip fade-up"><span class="ci">🏆</span><span class="cn">52주 신고가 근처</span><span class="cp">+2pt</span></div>
+      <div class="chip fade-up"><span class="ci">🕵️</span><span class="cn">세력 매집 감지</span><span class="cp">+3pt</span></div>
+      <div class="chip fade-up"><span class="ci">🎯</span><span class="cn">눌림목 반등</span><span class="cp">+3pt</span></div>
+      <div class="chip fade-up"><span class="ci">📰</span><span class="cn">멀티소스 뉴스 호재</span><span class="cp">+2pt</span></div>
+      <div class="chip fade-up"><span class="ci">📋</span><span class="cn">KIND 공시 호재</span><span class="cp">+2pt</span></div>
+      <div class="chip fade-up"><span class="ci">🔗</span><span class="cn">섹터 동반 상승</span><span class="cp">+3pt</span></div>
+      <div class="chip fade-up"><span class="ci">📦</span><span class="cn">3일 연속 거래량</span><span class="cp">+3pt</span></div>
     </div>
   </div>
 </section>
 
-<!-- PRICING -->
 <section id="pricing" style="background:var(--bg2)">
   <div class="si" style="text-align:center">
     <div class="tag">PRICING</div>
@@ -304,11 +294,11 @@ footer p{color:var(--muted);font-size:13px;line-height:1.8}
         <div class="pper">매월 자동 결제</div>
         <ul class="pf">
           <li>매일 급등 예고 종목 알림</li>
-          <li>텔레그램 자동 발송</li>
+          <li>텔레그램 자동 발송 (15:40)</li>
           <li>매수가 / 목표가 / 손절가</li>
           <li>손익비 자동 계산</li>
           <li class="no">캔들차트 이미지</li>
-          <li class="no">성과 추적 리포트</li>
+          <li class="no">성과 추적 리포트 (09:10)</li>
           <li class="no">웹 대시보드 접근</li>
         </ul>
         <button class="pb ol" onclick="window.location.href='tel:01024177936'">시작하기</button>
@@ -319,11 +309,11 @@ footer p{color:var(--muted);font-size:13px;line-height:1.8}
         <div class="pper">매월 자동 결제 · 7일 무료</div>
         <ul class="pf">
           <li>매일 급등 예고 종목 알림</li>
-          <li>텔레그램 자동 발송</li>
+          <li>텔레그램 자동 발송 (15:40)</li>
           <li>매수가 / 목표가 / 손절가</li>
           <li>손익비 자동 계산</li>
           <li>캔들차트 이미지 포함</li>
-          <li>매일 성과 추적 리포트</li>
+          <li>매일 성과 추적 리포트 (09:10)</li>
           <li>웹 대시보드 접근</li>
         </ul>
         <button class="pb fi" onclick="window.location.href='tel:01024177936'">7일 무료 체험 →</button>
@@ -334,7 +324,7 @@ footer p{color:var(--muted);font-size:13px;line-height:1.8}
         <div class="pper">월 ₩20,000 · 33% 절약</div>
         <ul class="pf">
           <li>Pro 플랜 전체 포함</li>
-          <li>주간 성과 요약 리포트</li>
+          <li>주간 성과 요약 리포트 (금요일)</li>
           <li>섹터 분석 리포트</li>
           <li>우선 고객 지원</li>
           <li>신규 기능 우선 제공</li>
@@ -347,7 +337,6 @@ footer p{color:var(--muted);font-size:13px;line-height:1.8}
   </div>
 </section>
 
-<!-- TESTIMONIALS -->
 <section style="background:var(--bg)">
   <div class="si">
     <div class="tag">REVIEWS</div>
@@ -360,7 +349,7 @@ footer p{color:var(--muted);font-size:13px;line-height:1.8}
       </div>
       <div class="tc fade-up">
         <div class="stars">★★★★★</div>
-        <p class="tt2">"매일 544개 종목을 직접 보는 건 불가능한데, 이 서비스가 대신 걸러줍니다. 조건 충족 종목만 텔레그램으로 오니까 놓치는 게 없어요."</p>
+        <p class="tt2">"매일 545개 종목을 직접 보는 건 불가능한데, 이 서비스가 대신 걸러줍니다. 조건 충족 종목만 텔레그램으로 오니까 놓치는 게 없어요."</p>
         <div class="ta2"><div class="tav">👩</div><div><div class="tname">이*진</div><div class="trole">직장인 투자자</div></div></div>
       </div>
       <div class="tc fade-up">
@@ -372,7 +361,6 @@ footer p{color:var(--muted);font-size:13px;line-height:1.8}
   </div>
 </section>
 
-<!-- FAQ -->
 <section style="background:var(--bg2)">
   <div class="si" style="text-align:center">
     <div class="tag">FAQ</div>
@@ -380,7 +368,7 @@ footer p{color:var(--muted);font-size:13px;line-height:1.8}
     <div class="faq-list">
       <div class="fi2">
         <div class="fq">알림은 어떻게 받나요? <span class="fa2">+</span></div>
-        <div class="fan">텔레그램 채널에 초대해드립니다. 매일 KST 15:40 장마감 후 자동으로 알림이 발송되며, 매일 09:10에는 전날 알림 종목의 성과 업데이트도 받을 수 있습니다.</div>
+        <div class="fan">텔레그램 채널에 초대해드립니다. 매일 KST 15:40 장마감 후 급등 예고 종목 알림이 자동 발송되며, 매일 09:10에는 전날 알림 종목의 성과 업데이트도 받을 수 있습니다. 금요일에는 주간 성과 리포트도 추가 발송됩니다.</div>
       </div>
       <div class="fi2">
         <div class="fq">수익을 보장하나요? <span class="fa2">+</span></div>
@@ -388,11 +376,11 @@ footer p{color:var(--muted);font-size:13px;line-height:1.8}
       </div>
       <div class="fi2">
         <div class="fq">하루에 몇 개 종목이 알림 오나요? <span class="fa2">+</span></div>
-        <div class="fan">시장 상황에 따라 다르지만 평균 1~5개입니다. 조건이 엄격하기 때문에 종목이 없는 날도 있으며, 그 경우 시장 상황 분석 메시지를 발송합니다.</div>
+        <div class="fan">시장 상황에 따라 다르지만 평균 1~5개입니다. 조건이 엄격하기 때문에 종목이 없는 날도 있으며, 그 경우 KOSPI 시장 현황 분석 메시지를 발송합니다.</div>
       </div>
       <div class="fi2">
         <div class="fq">코스피·코스닥 모두 스캔하나요? <span class="fa2">+</span></div>
-        <div class="fan">네, 코스피 시총 상위 500개 + 코스닥 우량 성장주 포함 544개 종목을 매일 전수 스캔합니다.</div>
+        <div class="fan">네, 코스피 시총 상위 + 코스닥 우량 성장주 포함 545개 종목을 매일 전수 스캔합니다. ROE, 부채비율, 영업이익 등 재무 필터도 함께 적용해 부실 종목을 사전에 제외합니다.</div>
       </div>
       <div class="fi2">
         <div class="fq">해지는 어떻게 하나요? <span class="fa2">+</span></div>
@@ -402,7 +390,6 @@ footer p{color:var(--muted);font-size:13px;line-height:1.8}
   </div>
 </section>
 
-<!-- CTA -->
 <div class="cta">
   <div class="cta-inner">
     <h2>오늘 급등할 종목,<br><span class="accent">지금 바로 확인하세요</span></h2>
@@ -412,21 +399,15 @@ footer p{color:var(--muted);font-size:13px;line-height:1.8}
   </div>
 </div>
 
-<!-- FOOTER -->
 <footer>
   <p>🚀 급등주 레이더 | 한국 주식 급등 예측 시스템</p>
   <p class="disc">본 서비스는 투자 참고용 정보를 제공하며 투자 권유가 아닙니다. 주식 투자는 원금 손실의 위험이 있으며 투자 판단과 책임은 투자자 본인에게 있습니다. 과거 성과가 미래 수익을 보장하지 않습니다.</p>
 </footer>
 
 <script>
-// FAQ 토글
 document.querySelectorAll('.fi2').forEach(item => {
-  item.addEventListener('click', () => {
-    item.classList.toggle('open');
-  });
+  item.addEventListener('click', () => item.classList.toggle('open'));
 });
-
-// 스크롤 애니메이션
 const observer = new IntersectionObserver((entries) => {
   entries.forEach(e => { if(e.isIntersecting) e.target.classList.add('visible'); });
 }, {threshold: 0.1});
