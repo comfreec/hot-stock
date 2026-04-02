@@ -1,8 +1,9 @@
 name: Daily Stock Scan & Telegram Alert
 
 on:
-  schedule:
-    - cron: '40 6 * * 1-5'  # KST 15:40 평일 (UTC 06:40)
+  # schedule 비활성화 (수동 실행만 허용)
+  # schedule:
+  #   - cron: '40 6 * * 1-5'  # KST 15:40 평일 (UTC 06:40)
   workflow_dispatch:
 
 jobs:
