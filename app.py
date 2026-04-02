@@ -14,13 +14,9 @@ except Exception as e:
 try:
     from cache_db import (save_scan, load_scan, list_scan_dates,
                           add_favorite, remove_favorite, get_favorites,
-                          is_favorite, start_scheduler)
+                          is_favorite)
     from backtest_ml import backtest_signal, SIGNAL_WEIGHTS
     from streamlit_javascript import st_javascript
-    # 스케줄러 시작 (앱 최초 로드 시 1회)
-    if "scheduler_started" not in st.session_state:
-        start_scheduler()
-        st.session_state["scheduler_started"] = True
 except Exception as e:
     st.warning(f"캐시/백테스트 모듈 로드 실패: {e}")
 
