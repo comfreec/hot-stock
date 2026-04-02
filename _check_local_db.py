@@ -1,5 +1,5 @@
-import sqlite3
-conn = sqlite3.connect('/data/scan_cache.db')
+import sqlite3, os
+conn = sqlite3.connect('scan_cache.db')
 
 print('=== 테이블 목록 ===')
 tables = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
