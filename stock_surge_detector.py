@@ -12,6 +12,12 @@ import warnings
 warnings.filterwarnings("ignore")
 
 try:
+    import ta
+    _TA_AVAILABLE = True
+except ImportError:
+    _TA_AVAILABLE = False
+
+try:
     from backtest_ml import ml_score_adjustment
 except:
     def ml_score_adjustment(signals, base_score): return float(base_score)
@@ -39,7 +45,12 @@ class KoreanStockSurgeDetector:
     # ── 보조 지표 ────────────────────────────────────────────────
 
     def _rsi(self, close, period=20):
-        """Wilder's Smoothing RSI - 증권사 표준 방식"""
+        """RSI - ta 라이브러리 사용 (폴백: Wilder's Smoothing)"""
+        if _TA_AVAILABLE:
+            try:
+                return ta.momentum.RSIIndicator(close=close, window=period).rsi()
+            except:
+                pass
         d = close.diff()
         gain = d.where(d > 0, 0.0)
         loss = -d.where(d < 0, 0.0)
@@ -49,6 +60,14 @@ class KoreanStockSurgeDetector:
         return 100 - (100 / (1 + rs))
 
     def _obv(self, data):
+        """OBV - ta 라이브러리 사용 (폴백: 수동 계산)"""
+        if _TA_AVAILABLE:
+            try:
+                return ta.volume.OnBalanceVolumeIndicator(
+                    close=data["Close"], volume=data["Volume"]
+                ).on_balance_volume()
+            except:
+                pass
         obv = [0]
         for i in range(1, len(data)):
             if data["Close"].iloc[i] > data["Close"].iloc[i-1]:
@@ -468,12 +487,25 @@ class KoreanStockSurgeDetector:
             if signals["bb_squeeze_expand"]: score += 3
 
             # [+2] MACD 골든크로스
-            macd    = close.ewm(span=12).mean() - close.ewm(span=26).mean()
-            macd_s  = macd.ewm(span=9).mean()
-            signals["macd_cross"] = bool(
-                macd.iloc[-1] > macd_s.iloc[-1] and
-                macd.iloc[-2] <= macd_s.iloc[-2]
-            )
+            try:
+                if _TA_AVAILABLE:
+                    _macd_ind = ta.trend.MACD(close=close, window_slow=26, window_fast=12, window_sign=9)
+                    macd   = _macd_ind.macd()
+                    macd_s = _macd_ind.macd_signal()
+                else:
+                    macd   = close.ewm(span=12).mean() - close.ewm(span=26).mean()
+                    macd_s = macd.ewm(span=9).mean()
+                signals["macd_cross"] = bool(
+                    macd.iloc[-1] > macd_s.iloc[-1] and
+                    macd.iloc[-2] <= macd_s.iloc[-2]
+                )
+            except:
+                macd   = close.ewm(span=12).mean() - close.ewm(span=26).mean()
+                macd_s = macd.ewm(span=9).mean()
+                signals["macd_cross"] = bool(
+                    macd.iloc[-1] > macd_s.iloc[-1] and
+                    macd.iloc[-2] <= macd_s.iloc[-2]
+                )
             if signals["macd_cross"]: score += 2
 
             # [+3] 240일선 하락→상승 전환
@@ -484,15 +516,18 @@ class KoreanStockSurgeDetector:
 
             # [+2] MFI (Money Flow Index) - RSI에 거래량 가중
             try:
-                tp = (high + low + close) / 3
-                mf = tp * vol
-                pos_mf = mf.where(tp > tp.shift(1), 0).rolling(14).sum()
-                neg_mf = mf.where(tp < tp.shift(1), 0).rolling(14).sum()
-                mfi = 100 - (100 / (1 + pos_mf / neg_mf.replace(0, np.nan)))
-                cur_mfi = float(mfi.iloc[-1])
+                if _TA_AVAILABLE:
+                    mfi_s = ta.volume.MFIIndicator(high=high, low=low, close=close, volume=vol, window=14).money_flow_index()
+                else:
+                    tp = (high + low + close) / 3
+                    mf = tp * vol
+                    pos_mf = mf.where(tp > tp.shift(1), 0).rolling(14).sum()
+                    neg_mf = mf.where(tp < tp.shift(1), 0).rolling(14).sum()
+                    mfi_s = 100 - (100 / (1 + pos_mf / neg_mf.replace(0, np.nan)))
+                cur_mfi = float(mfi_s.iloc[-1])
                 signals["mfi"] = round(cur_mfi, 1)
                 signals["mfi_oversold_recovery"] = (
-                    float(mfi.iloc[-5:].min()) < 25 and cur_mfi > 30
+                    float(mfi_s.iloc[-5:].min()) < 25 and cur_mfi > 30
                 )
                 if signals["mfi_oversold_recovery"]: score += 2
             except:
@@ -501,10 +536,15 @@ class KoreanStockSurgeDetector:
 
             # [+2] 스토캐스틱 골든크로스 (과매도 구간에서)
             try:
-                low14  = low.rolling(14).min()
-                high14 = high.rolling(14).max()
-                k = 100 * (close - low14) / (high14 - low14).replace(0, np.nan)
-                d = k.rolling(3).mean()
+                if _TA_AVAILABLE:
+                    _stoch = ta.momentum.StochasticOscillator(high=high, low=low, close=close, window=14, smooth_window=3)
+                    k = _stoch.stoch()
+                    d = _stoch.stoch_signal()
+                else:
+                    low14  = low.rolling(14).min()
+                    high14 = high.rolling(14).max()
+                    k = 100 * (close - low14) / (high14 - low14).replace(0, np.nan)
+                    d = k.rolling(3).mean()
                 stoch_cross = bool(
                     k.iloc[-1] > d.iloc[-1] and
                     k.iloc[-2] <= d.iloc[-2] and
@@ -519,21 +559,27 @@ class KoreanStockSurgeDetector:
 
             # [+2] ADX (추세 강도) - 25 이상이면 추세 확인
             try:
-                tr_s = pd.concat([
-                    high - low,
-                    (high - close.shift(1)).abs(),
-                    (low  - close.shift(1)).abs()
-                ], axis=1).max(axis=1)
-                dm_plus  = (high - high.shift(1)).where((high - high.shift(1)) > (low.shift(1) - low), 0).clip(lower=0)
-                dm_minus = (low.shift(1) - low).where((low.shift(1) - low) > (high - high.shift(1)), 0).clip(lower=0)
-                atr14    = tr_s.ewm(span=14, adjust=False).mean()
-                di_plus  = 100 * dm_plus.ewm(span=14, adjust=False).mean() / atr14.replace(0, np.nan)
-                di_minus = 100 * dm_minus.ewm(span=14, adjust=False).mean() / atr14.replace(0, np.nan)
-                dx = 100 * (di_plus - di_minus).abs() / (di_plus + di_minus).replace(0, np.nan)
-                adx = dx.ewm(span=14, adjust=False).mean()
+                if _TA_AVAILABLE:
+                    _adx_ind = ta.trend.ADXIndicator(high=high, low=low, close=close, window=14)
+                    adx    = _adx_ind.adx()
+                    di_pos = _adx_ind.adx_pos()
+                    di_neg = _adx_ind.adx_neg()
+                else:
+                    tr_s = pd.concat([
+                        high - low,
+                        (high - close.shift(1)).abs(),
+                        (low  - close.shift(1)).abs()
+                    ], axis=1).max(axis=1)
+                    dm_plus  = (high - high.shift(1)).where((high - high.shift(1)) > (low.shift(1) - low), 0).clip(lower=0)
+                    dm_minus = (low.shift(1) - low).where((low.shift(1) - low) > (high - high.shift(1)), 0).clip(lower=0)
+                    atr14    = tr_s.ewm(span=14, adjust=False).mean()
+                    di_pos   = 100 * dm_plus.ewm(span=14, adjust=False).mean() / atr14.replace(0, np.nan)
+                    di_neg   = 100 * dm_minus.ewm(span=14, adjust=False).mean() / atr14.replace(0, np.nan)
+                    dx       = 100 * (di_pos - di_neg).abs() / (di_pos + di_neg).replace(0, np.nan)
+                    adx      = dx.ewm(span=14, adjust=False).mean()
                 cur_adx = float(adx.iloc[-1])
                 signals["adx"] = round(cur_adx, 1)
-                signals["adx_strong"] = cur_adx >= 25 and float(di_plus.iloc[-1]) > float(di_minus.iloc[-1])
+                signals["adx_strong"] = cur_adx >= 25 and float(di_pos.iloc[-1]) > float(di_neg.iloc[-1])
                 if signals["adx_strong"]: score += 2
             except:
                 signals["adx"] = 0
