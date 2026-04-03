@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>급등주 레이더 | 한국 주식 급등 예측 시스템</title>
-<meta name="description" content="240일선 돌파 패턴 + 복합 신호로 급등 전 종목을 미리 포착. 매일 장마감 후 텔레그램 자동 알림.">
+<title>스윙 레이더 | 돌파 준비 종목 자동 탐지</title>
+<meta name="description" content="240일선 돌파 후 눌림목 구간 종목을 매일 자동으로 탐지. 분할 매수 타이밍과 목표가·손절가를 텔레그램으로 자동 발송.">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -29,7 +29,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;background:rgba(6,10,18,.9);
 @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(1.4)}}
 h1{font-size:clamp(36px,6vw,72px);font-weight:900;line-height:1.15;letter-spacing:-1px;margin-bottom:24px}
 .accent{background:linear-gradient(90deg,var(--blue),var(--teal));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-.hero-sub{font-size:clamp(16px,2vw,20px);color:#9ca3af;max-width:600px;margin:0 auto 40px;line-height:1.7}
+.hero-sub{font-size:clamp(16px,2vw,20px);color:#9ca3af;max-width:640px;margin:0 auto 40px;line-height:1.7}
 .btns{display:flex;gap:16px;justify-content:center;flex-wrap:wrap}
 .btn-p{background:linear-gradient(135deg,var(--blue),#1a56db);color:#fff;border:none;padding:16px 40px;border-radius:12px;font-size:17px;font-weight:700;cursor:pointer;transition:.25s;box-shadow:0 8px 32px rgba(79,142,247,.3)}
 .btn-p:hover{transform:translateY(-2px);box-shadow:0 12px 40px rgba(79,142,247,.5)}
@@ -50,7 +50,7 @@ section{padding:100px 5%}
 .si{max-width:1200px;margin:0 auto}
 .tag{display:inline-block;background:rgba(79,142,247,.1);border:1px solid rgba(79,142,247,.25);color:var(--blue);font-size:12px;font-weight:700;letter-spacing:2px;text-transform:uppercase;padding:5px 14px;border-radius:20px;margin-bottom:16px}
 h2{font-size:clamp(28px,4vw,44px);font-weight:900;line-height:1.2;margin-bottom:16px}
-.sdesc{color:#9ca3af;font-size:17px;line-height:1.7;max-width:560px}
+.sdesc{color:#9ca3af;font-size:17px;line-height:1.7;max-width:600px}
 .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:24px;margin-top:60px}
 .sc{background:var(--bg3);border:1px solid var(--border);border-radius:20px;padding:36px 28px;position:relative;overflow:hidden;transition:.3s}
 .sc:hover{border-color:rgba(79,142,247,.4);transform:translateY(-4px);box-shadow:0 20px 60px rgba(0,0,0,.4)}
@@ -86,8 +86,6 @@ h2{font-size:clamp(28px,4vw,44px);font-weight:900;line-height:1.2;margin-bottom:
 .fl{list-style:none}
 .fl li{display:flex;align-items:flex-start;gap:10px;padding:9px 0;font-size:15px;color:#d1d5db;border-bottom:1px solid rgba(255,255,255,.04)}
 .fl li::before{content:'✓';color:var(--teal);font-weight:700;flex-shrink:0;margin-top:2px}
-</style>
-<style>
 .pg{display:grid;grid-template-columns:repeat(3,1fr);gap:24px;margin-top:60px}
 .pc{background:var(--bg3);border:1px solid var(--border);border-radius:24px;padding:40px 32px;position:relative;transition:.3s}
 .pc:hover{transform:translateY(-4px)}
@@ -132,23 +130,13 @@ footer p{color:var(--muted);font-size:13px;line-height:1.8}
 .disc{max-width:700px;margin:12px auto 0;font-size:12px;color:rgba(107,114,128,.5);line-height:1.7}
 .fade-up{opacity:0;transform:translateY(30px);transition:opacity .6s ease,transform .6s ease}
 .fade-up.visible{opacity:1;transform:translateY(0)}
-@media(max-width:900px){
-  .steps,.pg,.tg2{grid-template-columns:1fr}
-  .pw{grid-template-columns:1fr}
-  .stats-grid{grid-template-columns:repeat(2,1fr)}
-  .sg{grid-template-columns:repeat(2,1fr)}
-}
-@media(max-width:480px){
-  .stats-grid{grid-template-columns:1fr}
-  .stat-item::after{display:none!important}
-  .btns{flex-direction:column;align-items:center}
-  .btn-p,.btn-s{width:100%;max-width:300px;text-align:center}
-}
+@media(max-width:900px){.steps,.pg,.tg2{grid-template-columns:1fr}.pw{grid-template-columns:1fr}.stats-grid{grid-template-columns:repeat(2,1fr)}.sg{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:480px){.stats-grid{grid-template-columns:1fr}.stat-item::after{display:none!important}.btns{flex-direction:column;align-items:center}.btn-p,.btn-s{width:100%;max-width:300px;text-align:center}}
 </style>
 
 <nav>
   <div class="nav-inner">
-    <div class="logo">🚀 급등주 레이더</div>
+    <div class="logo">📡 스윙 레이더</div>
     <a href="tel:01024177936" class="nav-cta">무료 체험 시작</a>
   </div>
 </nav>
@@ -156,8 +144,8 @@ footer p{color:var(--muted);font-size:13px;line-height:1.8}
 <section class="hero">
   <div class="hero-content">
     <div class="badge"><span class="dot"></span> 매일 KST 15:40 자동 알림</div>
-    <h1>급등하기 <span class="accent">전에</span><br>먼저 알 수 있다면?</h1>
-    <p class="hero-sub">240일선 돌파 패턴 + 25개 복합 신호로<br>급등 직전 종목을 매일 자동으로 포착합니다</p>
+    <h1>오를 준비 된 종목,<br><span class="accent">먼저 잡는다</span></h1>
+    <p class="hero-sub">240일선 돌파 후 눌림목 구간에 있는 종목을 매일 자동으로 탐지합니다.<br>단타가 아닌 <b style="color:#f0f4ff">스윙 트레이딩</b> — 분할 매수 후 1~3주 보유 전략입니다.</p>
     <div class="btns">
       <a href="#pricing" class="btn-p">7일 무료 체험 →</a>
       <a href="#how" class="btn-s">작동 원리 보기</a>
@@ -173,8 +161,8 @@ footer p{color:var(--muted);font-size:13px;line-height:1.8}
       <div class="stat-label">코스피·코스닥 스캔 종목</div>
     </div>
     <div class="stat-item fade-up">
-      <div class="stat-num">25+</div>
-      <div class="stat-label">복합 신호 지표</div>
+      <div class="stat-num">1~3주</div>
+      <div class="stat-label">평균 목표가 도달 기간</div>
     </div>
     <div class="stat-item fade-up">
       <div class="stat-num">2:1+</div>
@@ -190,26 +178,26 @@ footer p{color:var(--muted);font-size:13px;line-height:1.8}
 <section id="how" style="background:var(--bg)">
   <div class="si">
     <div class="tag">HOW IT WORKS</div>
-    <h2>3단계로 급등 전 종목을<br>자동으로 찾아냅니다</h2>
-    <p class="sdesc">감이 아닌 데이터. 수작업이 아닌 자동화. 매일 장마감 후 545개 종목을 전수 스캔해 조건 충족 종목만 알림을 보냅니다.</p>
+    <h2>스윙 트레이딩의 핵심,<br>눌림목 타이밍을 자동으로 잡습니다</h2>
+    <p class="sdesc">사고 나서 바로 오르는 단타가 아닙니다. 충분히 조정받은 종목이 돌파 후 눌림목에서 다시 올라가는 패턴을 포착합니다.</p>
     <div class="steps">
       <div class="sc fade-up">
         <div class="sn">01</div>
         <div class="si2">📉</div>
         <div class="st">충분한 조정 확인</div>
-        <div class="sd">240일선 아래 120일(6개월) 이상 조정한 종목만 선별합니다. 충분히 눌린 종목이 터질 때 폭발력이 다릅니다. ROE·부채비율·영업이익 재무 필터도 함께 적용합니다.</div>
+        <div class="sd">240일선 아래 120일(6개월) 이상 충분히 눌린 종목만 선별합니다. 오래 눌릴수록 반등 시 에너지가 큽니다. ROE·부채비율 재무 필터도 함께 적용합니다.</div>
       </div>
       <div class="sc fade-up">
         <div class="sn">02</div>
         <div class="si2">🚀</div>
         <div class="st">240일선 돌파 감지</div>
-        <div class="sd">60일 이내 240일선을 상향 돌파하고 현재가가 240일선 위 10% 이내인 종목을 포착합니다. 거래대금 50억 이상, 손익비 2:1 이상 필터로 퀄리티를 높입니다.</div>
+        <div class="sd">60일 이내 240일선을 상향 돌파하고 현재가가 240일선 위 10% 이내인 종목을 포착합니다. 돌파 직후 눌림목 구간이 분할 매수 타이밍입니다.</div>
       </div>
       <div class="sc fade-up">
         <div class="sn">03</div>
         <div class="si2">🎯</div>
         <div class="st">복합 신호 점수화</div>
-        <div class="sd">ta 라이브러리 기반 RSI·MACD·ADX·MFI·Stochastic 등 25개 신호를 점수화합니다. KIND 공시·멀티소스 뉴스·기관/외국인 수급까지 반영해 15점 이상만 알림 발송합니다.</div>
+        <div class="sd">25개 기술 신호를 점수화해 15점 이상 종목만 알림을 발송합니다. 매수가·목표가·손절가를 자동 계산해 1~3주 내 목표가 도달을 노립니다.</div>
       </div>
     </div>
   </div>
@@ -222,32 +210,31 @@ footer p{color:var(--muted);font-size:13px;line-height:1.8}
     <div class="pw">
       <div class="pm fade-up">
         <div class="th">
-          <div class="ta">🚀</div>
-          <div><div class="tn">급등주 레이더</div><div class="ts">● 실시간 알림</div></div>
+          <div class="ta">📡</div>
+          <div><div class="tn">스윙 레이더</div><div class="ts">● 실시간 알림</div></div>
         </div>
         <div class="tm">
-          <div class="tt">🚀 급등 예고 종목 (2026-04-02)</div>
-          <div class="tr"><span class="tl">종목</span><span class="tv">에코프로비엠 ⭐ 26점</span></div>
-          <div class="tr"><span class="tl">📍 매수가</span><span class="tv gd">₩87,400</span></div>
-          <div class="tr"><span class="tl">🎯 목표가</span><span class="tv up">₩104,000 (+19.0%)</span></div>
-          <div class="tr"><span class="tl">🛑 손절가</span><span class="tv dn">₩83,000 (-5.0%)</span></div>
-          <div class="tr"><span class="tl">⚖️ 손익비</span><span class="tv up">3.8 : 1</span></div>
-          <div class="tr"><span class="tl">신호</span><span class="tv" style="font-size:11px">⚡정배열 🔥BB확장 📈OBV ☁️일목</span></div>
+          <div class="tt">📡 돌파 준비 종목 (2026-04-03)</div>
+          <div class="tr"><span class="tl">종목</span><span class="tv">애경산업 ⭐ 28점</span></div>
+          <div class="tr"><span class="tl">📍 분할매수가</span><span class="tv gd">₩18,500</span></div>
+          <div class="tr"><span class="tl">🎯 목표가</span><span class="tv up">₩22,200 (+20.0%)</span></div>
+          <div class="tr"><span class="tl">🛑 손절가</span><span class="tv dn">₩17,575 (-5.0%)</span></div>
+          <div class="tr"><span class="tl">⚖️ 손익비</span><span class="tv up">4.0 : 1</span></div>
+          <div class="tr"><span class="tl">⏱ 예상 기간</span><span class="tv" style="color:#a78bfa">1~3주</span></div>
         </div>
         <div class="ttime">오후 3:42 ✓✓</div>
       </div>
       <div class="pt fade-up">
-        <h3>매수가·목표가·손절가까지<br>전부 자동 계산</h3>
-        <p>알림 하나에 투자 판단에 필요한 모든 정보가 담겨 있습니다. 차트를 열어볼 필요도 없습니다.</p>
+        <h3>분할 매수 타이밍과<br>목표가까지 전부 자동 계산</h3>
+        <p>사고 나서 바로 오르길 기대하는 단타가 아닙니다. 눌림목에서 분할 매수 후 1~3주 보유하는 스윙 전략입니다.</p>
         <ul class="fl">
+          <li>240일선 기반 근거 있는 분할 매수가 제시</li>
           <li>피보나치 + ATR 다중 기법 목표가 자동 산출</li>
-          <li>지지선 평균가 기반 근거 있는 매수가</li>
           <li>매수가 대비 -5% 손절가 자동 설정</li>
-          <li>한국 주식 호가 단위로 가격 자동 보정</li>
+          <li>손익비 2:1 미만 종목 자동 제외</li>
           <li>캔들차트 이미지 함께 전송 (상위 5종목)</li>
-          <li>매일 15:40 급등 예고 + 09:10 성과 업데이트</li>
-          <li>KIND 공시·한경 뉴스 멀티소스 감성 분석</li>
-          <li>10개 섹터 동반 상승 모멘텀 감지</li>
+          <li>매일 09:10 포트폴리오 현황 리포트</li>
+          <li>KIND 공시·멀티소스 뉴스 감성 분석 반영</li>
         </ul>
       </div>
     </div>
@@ -258,7 +245,7 @@ footer p{color:var(--muted);font-size:13px;line-height:1.8}
   <div class="si">
     <div class="tag">SIGNALS</div>
     <h2>25개 복합 신호가<br>동시에 작동합니다</h2>
-    <p class="sdesc">단일 지표의 한계를 넘어, 여러 신호가 동시에 켜질 때만 알림을 보냅니다. ta 라이브러리 기반 검증된 알고리즘을 사용합니다.</p>
+    <p class="sdesc">단일 지표의 한계를 넘어, 여러 신호가 동시에 켜질 때만 알림을 보냅니다.</p>
     <div class="sg">
       <div class="chip fade-up"><span class="ci">⚡</span><span class="cn">이평선 정배열</span><span class="cp">+3pt</span></div>
       <div class="chip fade-up"><span class="ci">🔥</span><span class="cn">BB 수축→확장</span><span class="cp">+3pt</span></div>
@@ -286,19 +273,19 @@ footer p{color:var(--muted);font-size:13px;line-height:1.8}
   <div class="si" style="text-align:center">
     <div class="tag">PRICING</div>
     <h2>합리적인 가격으로<br>시작하세요</h2>
-    <p class="sdesc" style="margin:0 auto">한 번의 성공적인 매매로 구독료를 충분히 회수할 수 있습니다.</p>
+    <p class="sdesc" style="margin:0 auto">한 번의 성공적인 스윙 매매로 구독료를 충분히 회수할 수 있습니다.</p>
     <div class="pg">
       <div class="pc fade-up">
         <div class="pn">Basic</div>
         <div class="pp">₩10,000<span>/월</span></div>
         <div class="pper">매월 자동 결제</div>
         <ul class="pf">
-          <li>매일 급등 예고 종목 알림</li>
+          <li>매일 돌파 준비 종목 알림</li>
           <li>텔레그램 자동 발송 (15:40)</li>
-          <li>매수가 / 목표가 / 손절가</li>
+          <li>분할매수가 / 목표가 / 손절가</li>
           <li>손익비 자동 계산</li>
           <li class="no">캔들차트 이미지</li>
-          <li class="no">성과 추적 리포트 (09:10)</li>
+          <li class="no">포트폴리오 리포트 (09:10)</li>
           <li class="no">웹 대시보드 접근</li>
         </ul>
         <button class="pb ol" onclick="window.location.href='tel:01024177936'">시작하기</button>
@@ -308,12 +295,12 @@ footer p{color:var(--muted);font-size:13px;line-height:1.8}
         <div class="pp">₩30,000<span>/월</span></div>
         <div class="pper">매월 자동 결제 · 7일 무료</div>
         <ul class="pf">
-          <li>매일 급등 예고 종목 알림</li>
+          <li>매일 돌파 준비 종목 알림</li>
           <li>텔레그램 자동 발송 (15:40)</li>
-          <li>매수가 / 목표가 / 손절가</li>
+          <li>분할매수가 / 목표가 / 손절가</li>
           <li>손익비 자동 계산</li>
           <li>캔들차트 이미지 포함</li>
-          <li>매일 성과 추적 리포트 (09:10)</li>
+          <li>매일 포트폴리오 리포트 (09:10)</li>
           <li>웹 대시보드 접근</li>
         </ul>
         <button class="pb fi" onclick="window.location.href='tel:01024177936'">7일 무료 체험 →</button>
@@ -324,7 +311,7 @@ footer p{color:var(--muted);font-size:13px;line-height:1.8}
         <div class="pper">월 ₩20,000 · 33% 절약</div>
         <ul class="pf">
           <li>Pro 플랜 전체 포함</li>
-          <li>주간 성과 요약 리포트 (금요일)</li>
+          <li>주간 성과 요약 리포트</li>
           <li>섹터 분석 리포트</li>
           <li>우선 고객 지원</li>
           <li>신규 기능 우선 제공</li>
@@ -344,17 +331,17 @@ footer p{color:var(--muted);font-size:13px;line-height:1.8}
     <div class="tg2">
       <div class="tc fade-up">
         <div class="stars">★★★★★</div>
-        <p class="tt2">"알림 온 다음날 바로 5% 올랐어요. 차트 분석 시간을 엄청 아꼈습니다. 손익비까지 계산해줘서 진입 판단이 훨씬 쉬워졌어요."</p>
-        <div class="ta2"><div class="tav">👨</div><div><div class="tname">김*현</div><div class="trole">개인 투자자 · 3년차</div></div></div>
+        <p class="tt2">"알림 받고 분할 매수 후 2주 만에 목표가 도달했어요. 단타처럼 바로 오르길 기대하지 않고 기다렸더니 손익비대로 됐습니다."</p>
+        <div class="ta2"><div class="tav">👨</div><div><div class="tname">김*현</div><div class="trole">스윙 투자자 · 3년차</div></div></div>
       </div>
       <div class="tc fade-up">
         <div class="stars">★★★★★</div>
-        <p class="tt2">"매일 545개 종목을 직접 보는 건 불가능한데, 이 서비스가 대신 걸러줍니다. 조건 충족 종목만 텔레그램으로 오니까 놓치는 게 없어요."</p>
+        <p class="tt2">"매일 545개 종목을 직접 보는 건 불가능한데, 이 서비스가 대신 걸러줍니다. 눌림목 타이밍을 잡아주니까 진입이 훨씬 편해졌어요."</p>
         <div class="ta2"><div class="tav">👩</div><div><div class="tname">이*진</div><div class="trole">직장인 투자자</div></div></div>
       </div>
       <div class="tc fade-up">
         <div class="stars">★★★★☆</div>
-        <p class="tt2">"240일선 전략 자체가 탄탄합니다. 단순 RSI 알림이랑 차원이 다르고, 성과 추적까지 해줘서 내 투자 패턴을 파악하는 데도 도움이 됩니다."</p>
+        <p class="tt2">"240일선 전략이 탄탄합니다. 단순 RSI 알림이랑 차원이 다르고, 손익비 2:1 이상만 걸러주니까 리스크 관리가 훨씬 쉬워졌어요."</p>
         <div class="ta2"><div class="tav">👨</div><div><div class="tname">박*우</div><div class="trole">전업 투자자</div></div></div>
       </div>
     </div>
@@ -367,20 +354,20 @@ footer p{color:var(--muted);font-size:13px;line-height:1.8}
     <h2>자주 묻는 질문</h2>
     <div class="faq-list">
       <div class="fi2">
-        <div class="fq">알림은 어떻게 받나요? <span class="fa2">+</span></div>
-        <div class="fan">텔레그램 채널에 초대해드립니다. 매일 KST 15:40 장마감 후 급등 예고 종목 알림이 자동 발송되며, 매일 09:10에는 전날 알림 종목의 성과 업데이트도 받을 수 있습니다. 금요일에는 주간 성과 리포트도 추가 발송됩니다.</div>
+        <div class="fq">알림 받고 바로 오르나요? <span class="fa2">+</span></div>
+        <div class="fan">아닙니다. 스윙 레이더는 단타 서비스가 아닙니다. 240일선 돌파 후 눌림목 구간 종목을 탐지하는 서비스로, 분할 매수 후 평균 1~3주 보유하는 스윙 전략입니다. 당일 급등을 기대하시면 맞지 않을 수 있습니다.</div>
       </div>
       <div class="fi2">
-        <div class="fq">수익을 보장하나요? <span class="fa2">+</span></div>
-        <div class="fan">투자 수익을 보장하지 않습니다. 본 서비스는 기술적 분석 기반의 참고 정보를 제공하며, 최종 투자 판단과 책임은 본인에게 있습니다.</div>
+        <div class="fq">알림은 어떻게 받나요? <span class="fa2">+</span></div>
+        <div class="fan">텔레그램 채널에 초대해드립니다. 매일 KST 15:40 장마감 후 돌파 준비 종목 알림이 자동 발송되며, 매일 09:10에는 포트폴리오 현황 리포트도 받을 수 있습니다.</div>
       </div>
       <div class="fi2">
         <div class="fq">하루에 몇 개 종목이 알림 오나요? <span class="fa2">+</span></div>
         <div class="fan">시장 상황에 따라 다르지만 평균 1~5개입니다. 조건이 엄격하기 때문에 종목이 없는 날도 있으며, 그 경우 KOSPI 시장 현황 분석 메시지를 발송합니다.</div>
       </div>
       <div class="fi2">
-        <div class="fq">코스피·코스닥 모두 스캔하나요? <span class="fa2">+</span></div>
-        <div class="fan">네, 코스피 시총 상위 + 코스닥 우량 성장주 포함 545개 종목을 매일 전수 스캔합니다. ROE, 부채비율, 영업이익 등 재무 필터도 함께 적용해 부실 종목을 사전에 제외합니다.</div>
+        <div class="fq">수익을 보장하나요? <span class="fa2">+</span></div>
+        <div class="fan">투자 수익을 보장하지 않습니다. 본 서비스는 기술적 분석 기반의 참고 정보를 제공하며, 최종 투자 판단과 책임은 본인에게 있습니다.</div>
       </div>
       <div class="fi2">
         <div class="fq">해지는 어떻게 하나요? <span class="fa2">+</span></div>
@@ -392,7 +379,7 @@ footer p{color:var(--muted);font-size:13px;line-height:1.8}
 
 <div class="cta">
   <div class="cta-inner">
-    <h2>오늘 급등할 종목,<br><span class="accent">지금 바로 확인하세요</span></h2>
+    <h2>오를 준비 된 종목,<br><span class="accent">지금 바로 확인하세요</span></h2>
     <p>7일 무료 체험 후 마음에 들지 않으면 자동으로 종료됩니다</p>
     <a href="tel:01024177936" class="btn-p" style="display:inline-block">7일 무료 체험 시작 →</a>
     <p style="margin-top:16px;font-size:13px;color:var(--muted)">신용카드 불필요 · 언제든 해지 · 스팸 없음</p>
@@ -400,7 +387,7 @@ footer p{color:var(--muted);font-size:13px;line-height:1.8}
 </div>
 
 <footer>
-  <p>🚀 급등주 레이더 | 한국 주식 급등 예측 시스템</p>
+  <p>📡 스윙 레이더 | 돌파 준비 종목 자동 탐지 시스템</p>
   <p class="disc">본 서비스는 투자 참고용 정보를 제공하며 투자 권유가 아닙니다. 주식 투자는 원금 손실의 위험이 있으며 투자 판단과 책임은 투자자 본인에게 있습니다. 과거 성과가 미래 수익을 보장하지 않습니다.</p>
 </footer>
 
