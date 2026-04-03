@@ -85,25 +85,48 @@ def run_performance():
         log(f"주간 리포트 오류: {e}")
 
 def main():
-    log("스케줄러 시작 (평일 15:40 스캔 / 09:10 성과 업데이트) - KST 기준")
-    last_scan_date = None
-    last_perf_date = None
+    log("스케줄러 시작 (평일 15:40 스캔 / 09:10 주간 리포트) - KST 기준")
+
+    # 재시작 시 중복 발송 방지: 오늘 날짜를 파일로 저장
+    _state_file = "/data/.scheduler_state" if os.path.isdir("/data") else ".scheduler_state"
+
+    def _load_state():
+        try:
+            with open(_state_file) as f:
+                import json
+                return json.load(f)
+        except:
+            return {}
+
+    def _save_state(state):
+        try:
+            import json
+            with open(_state_file, "w") as f:
+                json.dump(state, f)
+        except:
+            pass
+
+    state = _load_state()
+    last_scan_date = state.get("last_scan_date")
+    last_perf_date = state.get("last_perf_date")
 
     while True:
         now = datetime.now(KST)
-        today = now.date()
-        is_weekday = now.weekday() < 5  # 월~금
+        today = now.date().isoformat()
+        is_weekday = now.weekday() < 5
 
-        # 09:10 성과 업데이트
+        # 09:10 주간 리포트
         is_perf_time = now.hour == 9 and now.minute >= 10
         if is_weekday and is_perf_time and last_perf_date != today:
             last_perf_date = today
+            _save_state({"last_scan_date": last_scan_date, "last_perf_date": last_perf_date})
             run_performance()
 
         # 15:40 스캔 + 알림
         is_scan_time = now.hour == 15 and now.minute >= 40
         if is_weekday and is_scan_time and last_scan_date != today:
             last_scan_date = today
+            _save_state({"last_scan_date": last_scan_date, "last_perf_date": last_perf_date})
             run_scan()
 
         time.sleep(30)
