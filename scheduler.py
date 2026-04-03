@@ -76,14 +76,13 @@ def run_scan():
         traceback.print_exc()
 
 def run_performance():
-    log("성과 업데이트 시작...")
+    log("주간 리포트 전송 시작...")
     try:
-        from telegram_alert import send_performance_update, send_weekly_summary
-        send_performance_update()
-        send_weekly_summary()
-        log("성과 업데이트 완료")
+        from telegram_alert import send_weekly_summary
+        send_weekly_summary(force=True)  # 매일 09:10 전송
+        log("주간 리포트 전송 완료")
     except Exception as e:
-        log(f"성과 업데이트 오류: {e}")
+        log(f"주간 리포트 오류: {e}")
 
 def main():
     log("스케줄러 시작 (평일 15:40 스캔 / 09:10 성과 업데이트) - KST 기준")
