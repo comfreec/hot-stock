@@ -36,7 +36,7 @@ primary_region = "nrt"
 
 # scheduler VM (별도 머신)
 [[vm]]
-  memory = "256mb"
+  memory = "512mb"
   cpu_kind = "shared"
   cpus = 1
   processes = ["scheduler"]
