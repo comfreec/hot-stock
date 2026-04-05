@@ -2281,7 +2281,9 @@ elif mode == "📈 성과 추적":
     st.markdown("<div class='sec-title'>📈 알림 종목 성과 추적</div>", unsafe_allow_html=True)
 
     try:
-        from cache_db import get_alert_history, get_performance_summary, update_alert_status
+        from cache_db import (get_alert_history, get_alert_history_range,
+                               get_performance_summary, update_alert_status,
+                               get_monthly_stats, get_available_date_range)
 
         col_refresh, col_empty = st.columns([1, 4])
         with col_refresh:
@@ -2291,107 +2293,254 @@ elif mode == "📈 성과 추적":
                 st.success("업데이트 완료!")
                 st.rerun()
 
-        # ── 성과 요약 ──────────────────────────────────────────
-        perf = get_performance_summary()
-        if perf["total"] > 0:
-            c1, c2, c3, c4, c5 = st.columns(5)
-            metric_card(c1, "청산 종목", f"{perf['total']}개")
-            metric_card(c2, "목표가 달성", f"{perf['win']}개")
-            metric_card(c3, "손절 발생", f"{perf['loss']}개")
-            win_color = "#00d4aa" if perf['win_rate'] >= 50 else "#ff3355"
-            c4.markdown(f"""<div class='metric-card'>
-              <div class='lbl'>승률</div>
-              <div class='val' style='color:{win_color};'>{perf['win_rate']}%</div>
-            </div>""", unsafe_allow_html=True)
-            ret_color = "#00d4aa" if perf['avg_return'] >= 0 else "#ff3355"
-            c5.markdown(f"""<div class='metric-card'>
-              <div class='lbl'>평균 수익률</div>
-              <div class='val' style='color:{ret_color};'>{perf['avg_return']:+.1f}%</div>
-            </div>""", unsafe_allow_html=True)
+        # ── 기간 필터 ──────────────────────────────────────────
+        st.markdown("<div class='sec-title'>📅 기간 설정</div>", unsafe_allow_html=True)
+        db_min, db_max = get_available_date_range()
 
-            if perf['win'] > 0 or perf['loss'] > 0:
-                st.markdown(f"""<div class='cond-box' style='margin-top:8px;'>
-                  평균 수익: <b style='color:#00d4aa;'>{perf['avg_win']:+.1f}%</b> &nbsp;|&nbsp;
-                  평균 손실: <b style='color:#ff3355;'>{perf['avg_loss']:+.1f}%</b> &nbsp;|&nbsp;
-                  진입 모니터링: <b style='color:#4f8ef7;'>{perf.get('active',0)}개</b> &nbsp;|&nbsp;
-                  매수가 대기: <b style='color:#8b92a5;'>{perf.get('pending',0)}개</b> &nbsp;|&nbsp;
-                  만료: <b style='color:#8b92a5;'>{perf['expired']}개</b>
+        filter_col1, filter_col2, filter_col3 = st.columns([1, 1, 2])
+        with filter_col1:
+            period_preset = st.selectbox("기간 프리셋", ["전체", "이번 달", "최근 3개월", "최근 6개월", "올해", "직접 입력"], key="perf_period")
+        with filter_col2:
+            view_mode = st.selectbox("보기 모드", ["요약 + 내역", "월별 통계"], key="perf_view")
+
+        from datetime import date as _date, timedelta as _td
+        today_str = _date.today().isoformat()
+        if period_preset == "이번 달":
+            d_from = _date.today().replace(day=1).isoformat()
+            d_to   = today_str
+        elif period_preset == "최근 3개월":
+            d_from = (_date.today() - _td(days=90)).isoformat()
+            d_to   = today_str
+        elif period_preset == "최근 6개월":
+            d_from = (_date.today() - _td(days=180)).isoformat()
+            d_to   = today_str
+        elif period_preset == "올해":
+            d_from = _date.today().replace(month=1, day=1).isoformat()
+            d_to   = today_str
+        elif period_preset == "직접 입력":
+            with filter_col3:
+                dc1, dc2 = st.columns(2)
+                d_from = dc1.text_input("시작일 (YYYY-MM-DD)", value=db_min or today_str, key="perf_from")
+                d_to   = dc2.text_input("종료일 (YYYY-MM-DD)", value=today_str, key="perf_to")
+        else:  # 전체
+            d_from = None
+            d_to   = None
+
+        period_label = period_preset if period_preset != "직접 입력" else f"{d_from} ~ {d_to}"
+
+        # ── 월별 통계 뷰 ──────────────────────────────────────
+        if view_mode == "월별 통계":
+            monthly = get_monthly_stats()
+            if not monthly:
+                st.info("아직 성과 데이터가 없어요.")
+            else:
+                # 기간 필터 적용
+                if d_from:
+                    monthly = [m for m in monthly if m["month"] >= d_from[:7]]
+                if d_to:
+                    monthly = [m for m in monthly if m["month"] <= d_to[:7]]
+
+                if not monthly:
+                    st.warning("해당 기간에 데이터가 없습니다.")
+                else:
+                    months      = [m["month"] for m in monthly]
+                    win_rates   = [m["win_rate"] for m in monthly]
+                    avg_returns = [m["avg_return"] for m in monthly]
+                    total_rets  = [m["total_return"] for m in monthly]
+                    totals      = [m["total"] for m in monthly]
+
+                    # 월별 승률 + 평균수익률 차트
+                    fig_monthly = go.Figure()
+                    fig_monthly.add_trace(go.Bar(
+                        x=months, y=[m["wins"] for m in monthly],
+                        name="목표달성", marker_color="#00d4aa", opacity=0.85
+                    ))
+                    fig_monthly.add_trace(go.Bar(
+                        x=months, y=[m["losses"] for m in monthly],
+                        name="손절", marker_color="#ff3355", opacity=0.85
+                    ))
+                    fig_monthly.add_trace(go.Bar(
+                        x=months, y=[m["expired"] for m in monthly],
+                        name="만료", marker_color="#3d4466", opacity=0.85
+                    ))
+                    fig_monthly.add_trace(go.Scatter(
+                        x=months, y=win_rates,
+                        name="승률(%)", mode="lines+markers",
+                        line=dict(color="#ffd700", width=2),
+                        marker=dict(size=7),
+                        yaxis="y2",
+                        hovertemplate="%{x}<br>승률: %{y:.1f}%<extra></extra>"
+                    ))
+                    fig_monthly.update_layout(
+                        title=f"월별 성과 ({period_label})",
+                        barmode="stack",
+                        paper_bgcolor="#0f1628", plot_bgcolor="#0f1628",
+                        font=dict(color="#8b92a5"),
+                        height=320, margin=dict(l=0,r=0,t=40,b=0),
+                        xaxis=dict(gridcolor="#1e2540"),
+                        yaxis=dict(title="종목 수", gridcolor="#1e2540"),
+                        yaxis2=dict(title="승률(%)", overlaying="y", side="right",
+                                    range=[0,100], ticksuffix="%", gridcolor="rgba(0,0,0,0)"),
+                        legend=dict(orientation="h", y=-0.15),
+                    )
+                    st.plotly_chart(fig_monthly, config={"scrollZoom":False,"displayModeBar":False,"staticPlot":True}, width='stretch')
+
+                    # 월별 수익률 차트
+                    ret_colors = ["#00d4aa" if r >= 0 else "#ff3355" for r in avg_returns]
+                    fig_ret = go.Figure()
+                    fig_ret.add_trace(go.Bar(
+                        x=months, y=avg_returns,
+                        name="평균 수익률",
+                        marker_color=ret_colors,
+                        hovertemplate="%{x}<br>평균: %{y:+.2f}%<extra></extra>"
+                    ))
+                    fig_ret.add_trace(go.Scatter(
+                        x=months, y=total_rets,
+                        name="누적 수익률", mode="lines+markers",
+                        line=dict(color="#4f8ef7", width=2),
+                        marker=dict(size=6),
+                        yaxis="y2",
+                        hovertemplate="%{x}<br>누적: %{y:+.2f}%<extra></extra>"
+                    ))
+                    fig_ret.add_hline(y=0, line_dash="dash", line_color="rgba(255,255,255,0.15)")
+                    fig_ret.update_layout(
+                        title="월별 수익률",
+                        paper_bgcolor="#0f1628", plot_bgcolor="#0f1628",
+                        font=dict(color="#8b92a5"),
+                        height=280, margin=dict(l=0,r=0,t=40,b=0),
+                        xaxis=dict(gridcolor="#1e2540"),
+                        yaxis=dict(title="평균 수익률(%)", gridcolor="#1e2540", ticksuffix="%"),
+                        yaxis2=dict(title="누적(%)", overlaying="y", side="right",
+                                    ticksuffix="%", gridcolor="rgba(0,0,0,0)"),
+                        legend=dict(orientation="h", y=-0.15),
+                    )
+                    st.plotly_chart(fig_ret, config={"scrollZoom":False,"displayModeBar":False,"staticPlot":True}, width='stretch')
+
+                    # 월별 테이블
+                    st.markdown("<div class='sec-title'>📋 월별 상세</div>", unsafe_allow_html=True)
+                    month_rows = []
+                    for m in reversed(monthly):
+                        closed_cnt = m["wins"] + m["losses"]
+                        wr_str = f"{m['win_rate']:.1f}%" if closed_cnt > 0 else "-"
+                        ar_str = f"{m['avg_return']:+.2f}%" if closed_cnt > 0 else "-"
+                        tr_str = f"{m['total_return']:+.2f}%" if closed_cnt > 0 else "-"
+                        month_rows.append({
+                            "월":        m["month"],
+                            "알림 수":   m["total"],
+                            "목표달성":  m["wins"],
+                            "손절":      m["losses"],
+                            "만료":      m["expired"],
+                            "승률":      wr_str,
+                            "평균수익률": ar_str,
+                            "합산수익률": tr_str,
+                        })
+                    st.dataframe(pd.DataFrame(month_rows), width='stretch', hide_index=True)
+
+        # ── 요약 + 내역 뷰 ────────────────────────────────────
+        else:
+            perf = get_performance_summary(d_from, d_to)
+            if perf["total"] > 0:
+                c1, c2, c3, c4, c5 = st.columns(5)
+                metric_card(c1, "청산 종목", f"{perf['total']}개")
+                metric_card(c2, "목표가 달성", f"{perf['win']}개")
+                metric_card(c3, "손절 발생", f"{perf['loss']}개")
+                win_color = "#00d4aa" if perf['win_rate'] >= 50 else "#ff3355"
+                c4.markdown(f"""<div class='metric-card'>
+                  <div class='lbl'>승률</div>
+                  <div class='val' style='color:{win_color};'>{perf['win_rate']}%</div>
+                </div>""", unsafe_allow_html=True)
+                ret_color = "#00d4aa" if perf['avg_return'] >= 0 else "#ff3355"
+                c5.markdown(f"""<div class='metric-card'>
+                  <div class='lbl'>평균 수익률</div>
+                  <div class='val' style='color:{ret_color};'>{perf['avg_return']:+.1f}%</div>
                 </div>""", unsafe_allow_html=True)
 
-            # ── 수익률 곡선 차트 ──────────────────────────────
-            history_all = get_alert_history(200)
-            closed = [h for h in history_all if h["status"] in ("hit_target","hit_stop") and h["return_pct"] is not None and h["exit_date"]]
-            if len(closed) >= 2:
-                closed_sorted = sorted(closed, key=lambda x: x["exit_date"])
-                cumulative = 0
-                dates, cum_rets, colors, names = [], [], [], []
-                for h in closed_sorted:
-                    cumulative += h["return_pct"]
-                    dates.append(h["exit_date"])
-                    cum_rets.append(round(cumulative, 2))
-                    colors.append("#00d4aa" if h["return_pct"] > 0 else "#ff3355")
-                    names.append(h["name"])
+                if perf['win'] > 0 or perf['loss'] > 0:
+                    st.markdown(f"""<div class='cond-box' style='margin-top:8px;'>
+                      평균 수익: <b style='color:#00d4aa;'>{perf['avg_win']:+.1f}%</b> &nbsp;|&nbsp;
+                      평균 손실: <b style='color:#ff3355;'>{perf['avg_loss']:+.1f}%</b> &nbsp;|&nbsp;
+                      진입 모니터링: <b style='color:#4f8ef7;'>{perf.get('active',0)}개</b> &nbsp;|&nbsp;
+                      매수가 대기: <b style='color:#8b92a5;'>{perf.get('pending',0)}개</b> &nbsp;|&nbsp;
+                      만료: <b style='color:#8b92a5;'>{perf['expired']}개</b>
+                    </div>""", unsafe_allow_html=True)
 
-                fig_perf = go.Figure()
-                fig_perf.add_trace(go.Scatter(
-                    x=dates, y=cum_rets,
-                    mode="lines+markers",
-                    line=dict(color="#4f8ef7", width=2),
-                    marker=dict(color=colors, size=8),
-                    text=names,
-                    hovertemplate="%{text}<br>누적: %{y:+.1f}%<extra></extra>",
-                    fill="tozeroy",
-                    fillcolor="rgba(79,142,247,0.08)"
-                ))
-                fig_perf.add_hline(y=0, line_dash="dash", line_color="rgba(255,255,255,0.2)")
-                fig_perf.update_layout(
-                    title="누적 수익률 곡선",
-                    paper_bgcolor="#0f1628", plot_bgcolor="#0f1628",
-                    font=dict(color="#8b92a5"),
-                    height=280, margin=dict(l=0,r=0,t=40,b=0),
-                    xaxis=dict(gridcolor="#1e2540"),
-                    yaxis=dict(gridcolor="#1e2540", ticksuffix="%"),
-                )
-                st.plotly_chart(fig_perf, config={"scrollZoom":False,"displayModeBar":False,"staticPlot":True}, width='stretch')
-        else:
-            st.info("아직 성과 데이터가 없어요. 텔레그램 알림이 발송되면 자동으로 기록됩니다.")
+                # ── 수익률 곡선 차트 ──────────────────────────
+                history_all = get_alert_history_range(d_from, d_to, 500)
+                closed = [h for h in history_all if h["status"] in ("hit_target","hit_stop") and h["return_pct"] is not None and h["exit_date"]]
+                if len(closed) >= 2:
+                    closed_sorted = sorted(closed, key=lambda x: x["exit_date"])
+                    cumulative = 0
+                    dates, cum_rets, colors, names = [], [], [], []
+                    for h in closed_sorted:
+                        cumulative += h["return_pct"]
+                        dates.append(h["exit_date"])
+                        cum_rets.append(round(cumulative, 2))
+                        colors.append("#00d4aa" if h["return_pct"] > 0 else "#ff3355")
+                        names.append(h["name"])
 
-        # ── 상세 내역 ──────────────────────────────────────────
-        history = get_alert_history(100)
-        if history:
-            st.markdown("<div class='sec-title'>📋 알림 내역</div>", unsafe_allow_html=True)
+                    fig_perf = go.Figure()
+                    fig_perf.add_trace(go.Scatter(
+                        x=dates, y=cum_rets,
+                        mode="lines+markers",
+                        line=dict(color="#4f8ef7", width=2),
+                        marker=dict(color=colors, size=8),
+                        text=names,
+                        hovertemplate="%{text}<br>누적: %{y:+.1f}%<extra></extra>",
+                        fill="tozeroy",
+                        fillcolor="rgba(79,142,247,0.08)"
+                    ))
+                    fig_perf.add_hline(y=0, line_dash="dash", line_color="rgba(255,255,255,0.2)")
+                    fig_perf.update_layout(
+                        title=f"누적 수익률 곡선 ({period_label})",
+                        paper_bgcolor="#0f1628", plot_bgcolor="#0f1628",
+                        font=dict(color="#8b92a5"),
+                        height=280, margin=dict(l=0,r=0,t=40,b=0),
+                        xaxis=dict(gridcolor="#1e2540"),
+                        yaxis=dict(gridcolor="#1e2540", ticksuffix="%"),
+                    )
+                    st.plotly_chart(fig_perf, config={"scrollZoom":False,"displayModeBar":False,"staticPlot":True}, width='stretch')
+            else:
+                st.info("해당 기간에 성과 데이터가 없어요.")
 
-            status_filter = st.selectbox("상태 필터", ["전체", "매수대기", "진입중", "목표달성", "손절", "만료"], key="perf_filter")
-            status_map = {"전체": None, "매수대기": "pending", "진입중": "active", "목표달성": "hit_target", "손절": "hit_stop", "만료": "expired"}
-            filtered = [h for h in history if status_map[status_filter] is None or h["status"] == status_map[status_filter]]
+            # ── 상세 내역 ──────────────────────────────────────
+            history = get_alert_history_range(d_from, d_to, 200)
+            if history:
+                st.markdown("<div class='sec-title'>📋 알림 내역</div>", unsafe_allow_html=True)
 
-            rows = []
-            for h in filtered:
-                status_emoji = {"pending": "⏳ 매수대기", "active": "🔵 진입중", "hit_target": "✅ 목표달성", "hit_stop": "🛑 손절", "expired": "⏰ 만료"}.get(h["status"], h["status"])
-                ret_str = f"{h['return_pct']:+.1f}%" if h["return_pct"] is not None else "-"
-                ret_color_str = "🟢" if (h["return_pct"] or 0) > 0 else "🔴" if (h["return_pct"] or 0) < 0 else "⚪"
-                rows.append({
-                    "날짜":    h["alert_date"],
-                    "종목명":  h["name"],
-                    "점수":    h["score"],
-                    "매수가":  f"₩{h['entry_price']:,.0f}" if h["entry_price"] else "-",
-                    "목표가":  f"₩{h['target_price']:,.0f}" if h["target_price"] else "-",
-                    "손절가":  f"₩{h['stop_price']:,.0f}" if h["stop_price"] else "-",
-                    "손익비":  f"{h['rr_ratio']:.1f}:1" if h["rr_ratio"] else "-",
-                    "상태":    status_emoji,
-                    "수익률":  f"{ret_color_str} {ret_str}",
-                    "청산일":  h["exit_date"] or "-",
-                })
-            st.dataframe(pd.DataFrame(rows),
-                column_config={
-                    "점수": st.column_config.ProgressColumn("점수", min_value=0, max_value=50, format="%d점"),
-                },
-                width='stretch', hide_index=True)
-        else:
-            st.info("알림 내역이 없습니다.")
+                status_filter = st.selectbox("상태 필터", ["전체", "매수대기", "진입중", "목표달성", "손절", "만료"], key="perf_filter")
+                status_map = {"전체": None, "매수대기": "pending", "진입중": "active", "목표달성": "hit_target", "손절": "hit_stop", "만료": "expired"}
+                filtered = [h for h in history if status_map[status_filter] is None or h["status"] == status_map[status_filter]]
+
+                rows = []
+                for h in filtered:
+                    status_emoji = {"pending": "⏳ 매수대기", "active": "🔵 진입중", "hit_target": "✅ 목표달성", "hit_stop": "🛑 손절", "expired": "⏰ 만료"}.get(h["status"], h["status"])
+                    ret_str = f"{h['return_pct']:+.1f}%" if h["return_pct"] is not None else "-"
+                    ret_color_str = "🟢" if (h["return_pct"] or 0) > 0 else "🔴" if (h["return_pct"] or 0) < 0 else "⚪"
+                    rows.append({
+                        "날짜":    h["alert_date"],
+                        "종목명":  h["name"],
+                        "점수":    h["score"],
+                        "매수가":  f"₩{h['entry_price']:,.0f}" if h["entry_price"] else "-",
+                        "목표가":  f"₩{h['target_price']:,.0f}" if h["target_price"] else "-",
+                        "손절가":  f"₩{h['stop_price']:,.0f}" if h["stop_price"] else "-",
+                        "손익비":  f"{h['rr_ratio']:.1f}:1" if h["rr_ratio"] else "-",
+                        "상태":    status_emoji,
+                        "수익률":  f"{ret_color_str} {ret_str}",
+                        "청산일":  h["exit_date"] or "-",
+                    })
+                st.dataframe(pd.DataFrame(rows),
+                    column_config={
+                        "점수": st.column_config.ProgressColumn("점수", min_value=0, max_value=50, format="%d점"),
+                    },
+                    width='stretch', hide_index=True)
+            else:
+                st.info("해당 기간에 알림 내역이 없습니다.")
 
     except Exception as e:
-        st.error(f"성과 추적 오류: {e}")
+        if "unable to open database" in str(e) or "no such file" in str(e).lower():
+            st.info("성과 데이터는 스케줄러 서버에서만 접근 가능합니다. 텔레그램 알림으로 확인해주세요.")
+        else:
+            st.error(f"성과 추적 오류: {e}")
 
 # ── 하단 면책조항 ─────────────────────────────────────────────────
 st.markdown("---")

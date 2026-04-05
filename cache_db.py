@@ -12,7 +12,7 @@ import threading
 import os as _os
 _data_path = "/data/scan_cache.db"
 _local_path = _os.path.join(_os.path.dirname(__file__), "scan_cache.db")
-# /data 디렉토리가 있으면 볼륨 경로, 없으면 로컬 경로
+# scheduler는 /data 볼륨 마운트됨, web은 /data 없으면 로컬 경로 (빈 DB)
 DB_PATH = _os.environ.get("DB_PATH",
     _data_path if _os.path.isdir("/data") else _local_path
 )
@@ -260,16 +260,27 @@ def update_alert_status():
     except Exception as e:
         print(f"[성과추적] 업데이트 오류: {e}")
 
-def get_performance_summary() -> dict:
-    """성과 요약 통계"""
+def get_performance_summary(date_from: str = None, date_to: str = None) -> dict:
+    """성과 요약 통계 (기간 필터 지원)"""
     conn = _get_conn()
-    closed_rows = conn.execute("""
-        SELECT status, return_pct FROM alert_history
-        WHERE status IN ('hit_target','hit_stop')
-    """).fetchall()
-    counts = dict(conn.execute("""
-        SELECT status, COUNT(*) FROM alert_history GROUP BY status
-    """).fetchall())
+    params = []
+    where = "WHERE status IN ('hit_target','hit_stop')"
+    if date_from:
+        where += " AND alert_date >= ?"; params.append(date_from)
+    if date_to:
+        where += " AND alert_date <= ?"; params.append(date_to)
+
+    closed_rows = conn.execute(f"SELECT status, return_pct FROM alert_history {where}", params).fetchall()
+
+    count_where = ""
+    count_params = []
+    if date_from or date_to:
+        count_where = "WHERE 1=1"
+        if date_from:
+            count_where += " AND alert_date >= ?"; count_params.append(date_from)
+        if date_to:
+            count_where += " AND alert_date <= ?"; count_params.append(date_to)
+    counts = dict(conn.execute(f"SELECT status, COUNT(*) FROM alert_history {count_where} GROUP BY status", count_params).fetchall())
     conn.close()
 
     wins    = [r[1] for r in closed_rows if r[0] == 'hit_target' and r[1] is not None]
@@ -289,6 +300,71 @@ def get_performance_summary() -> dict:
         "avg_win":    round(sum(wins) / len(wins), 2) if wins else 0,
         "avg_loss":   round(sum(losses) / len(losses), 2) if losses else 0,
     }
+
+def get_alert_history_range(date_from: str = None, date_to: str = None, limit: int = 500) -> list:
+    """기간 필터 적용된 알림 내역 조회"""
+    conn = _get_conn()
+    where = "WHERE 1=1"
+    params = []
+    if date_from:
+        where += " AND alert_date >= ?"; params.append(date_from)
+    if date_to:
+        where += " AND alert_date <= ?"; params.append(date_to)
+    params.append(limit)
+    rows = conn.execute(f"""
+        SELECT id, alert_date, symbol, name, score,
+               entry_price, entry_label, target_price, stop_price, rr_ratio,
+               status, exit_price, exit_date, return_pct, created_at
+        FROM alert_history {where}
+        ORDER BY alert_date DESC, score DESC
+        LIMIT ?
+    """, params).fetchall()
+    conn.close()
+    keys = ["id","alert_date","symbol","name","score",
+            "entry_price","entry_label","target_price","stop_price","rr_ratio",
+            "status","exit_price","exit_date","return_pct","created_at"]
+    return [dict(zip(keys, r)) for r in rows]
+
+def get_monthly_stats() -> list:
+    """월별 성과 통계 반환"""
+    conn = _get_conn()
+    rows = conn.execute("""
+        SELECT
+            strftime('%Y-%m', alert_date) AS month,
+            COUNT(*) AS total,
+            SUM(CASE WHEN status='hit_target' THEN 1 ELSE 0 END) AS wins,
+            SUM(CASE WHEN status='hit_stop'   THEN 1 ELSE 0 END) AS losses,
+            SUM(CASE WHEN status='expired'    THEN 1 ELSE 0 END) AS expired,
+            AVG(CASE WHEN status IN ('hit_target','hit_stop') AND return_pct IS NOT NULL THEN return_pct END) AS avg_return,
+            SUM(CASE WHEN status IN ('hit_target','hit_stop') AND return_pct IS NOT NULL THEN return_pct ELSE 0 END) AS total_return
+        FROM alert_history
+        WHERE alert_date IS NOT NULL
+        GROUP BY month
+        ORDER BY month ASC
+    """).fetchall()
+    conn.close()
+    result = []
+    for r in rows:
+        month, total, wins, losses, expired, avg_ret, total_ret = r
+        closed = (wins or 0) + (losses or 0)
+        result.append({
+            "month":        month,
+            "total":        total or 0,
+            "wins":         wins or 0,
+            "losses":       losses or 0,
+            "expired":      expired or 0,
+            "win_rate":     round((wins or 0) / closed * 100, 1) if closed > 0 else 0,
+            "avg_return":   round(avg_ret, 2) if avg_ret is not None else 0,
+            "total_return": round(total_ret, 2) if total_ret is not None else 0,
+        })
+    return result
+
+def get_available_date_range() -> tuple:
+    """DB에 저장된 최초/최근 날짜 반환"""
+    conn = _get_conn()
+    row = conn.execute("SELECT MIN(alert_date), MAX(alert_date) FROM alert_history").fetchone()
+    conn.close()
+    return row[0], row[1]
 
 # ── 백그라운드 자동 스캔 스케줄러 ────────────────────────────────
 def _run_scan_job():

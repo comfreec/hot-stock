@@ -78,7 +78,11 @@ def run_scan():
 def run_performance():
     log("주간 리포트 전송 시작...")
     try:
+        from cache_db import update_alert_status
         from telegram_alert import send_weekly_summary
+        # 리포트 전송 전 상태 먼저 업데이트
+        update_alert_status()
+        log("성과 추적 업데이트 완료")
         send_weekly_summary(force=True)  # 매일 09:10 전송
         log("주간 리포트 전송 완료")
     except Exception as e:
