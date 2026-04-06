@@ -369,12 +369,12 @@ def get_available_date_range() -> tuple:
     return row[0], row[1]
 
 def get_recent_closed(limit: int = 5) -> list:
-    """최근 청산 종목 (exit_date 최신순)"""
+    """최근 청산 종목 (hit_target/hit_stop만, exit_date 최신순)"""
     conn = _get_conn()
     rows = conn.execute("""
         SELECT name, status, return_pct, exit_date, entry_price, target_price
         FROM alert_history
-        WHERE status IN ('hit_target', 'hit_stop', 'expired') AND exit_date IS NOT NULL
+        WHERE status IN ('hit_target', 'hit_stop') AND exit_date IS NOT NULL
         ORDER BY exit_date DESC
         LIMIT ?
     """, (limit,)).fetchall()
