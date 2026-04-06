@@ -729,7 +729,10 @@ def send_weekly_summary(force: bool = False):
                 cur_line = ""
                 try:
                     if h.get("entry_price"):
-                        cur = float(yf.Ticker(h["symbol"]).history(period="1d")["Close"].iloc[-1])
+                        df_cur = yf.Ticker(h["symbol"]).history(period="5d").dropna(subset=["Close"])
+                        if len(df_cur) == 0:
+                            raise ValueError("no data")
+                        cur = float(df_cur["Close"].iloc[-1])
                         ret = (cur - h["entry_price"]) / h["entry_price"] * 100
                         filled = min(int(abs(ret) / 2), 8)
                         bar = ("🟩" if ret >= 0 else "🟥") * filled + "⬜" * (8 - filled)
