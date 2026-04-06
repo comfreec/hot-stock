@@ -76,7 +76,12 @@ def make_chart_image(symbol: str, name: str, price_levels: dict = None, df=None)
             df = df.dropna(subset=["Open","High","Low","Close"]).tail(120)
             if len(df) < 20:
                 return None
-            ma240_full = df["Close"].rolling(240).mean()
+            # df가 짧으면 2y 데이터로 MA240 계산
+            try:
+                df2y = yf.Ticker(symbol).history(period="2y").dropna(subset=["Close"])
+                ma240_full = df2y["Close"].rolling(240).mean()
+            except Exception:
+                ma240_full = df["Close"].rolling(240).mean()
 
         ma240 = ma240_full.reindex(df.index)
 
