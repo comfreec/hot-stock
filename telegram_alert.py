@@ -763,6 +763,21 @@ def send_weekly_summary(force: bool = False):
         else:
             lines.append("  아직 청산 데이터 없음")
 
+        # ── 최근 청산 내역 5건 ─────────────────────
+        try:
+            from cache_db import get_recent_closed
+            recent = get_recent_closed(5)
+            if recent:
+                lines.append(f"\n📋 <b>최근 청산 내역</b>")
+                lines.append("─" * 16)
+                for r in recent:
+                    icon = "✅" if r["status"] == "hit_target" else ("🛑" if r["status"] == "hit_stop" else "⌛")
+                    ret_str = f"  <b>{r['return_pct']:+.1f}%</b>" if r["return_pct"] is not None else ""
+                    date_str = r["exit_date"][5:] if r["exit_date"] else ""  # MM-DD
+                    lines.append(f"  {icon} {r['name']}{ret_str}  <i>({date_str})</i>")
+        except Exception:
+            pass
+
         # ── 3. 매수 대기 ───────────────────────────
         if pending_list:
             lines.append(f"\n⏳ <b>매수 대기</b>  ({len(pending_list)}종목)")

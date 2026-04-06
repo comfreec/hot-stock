@@ -368,6 +368,20 @@ def get_available_date_range() -> tuple:
     conn.close()
     return row[0], row[1]
 
+def get_recent_closed(limit: int = 5) -> list:
+    """최근 청산 종목 (exit_date 최신순)"""
+    conn = _get_conn()
+    rows = conn.execute("""
+        SELECT name, status, return_pct, exit_date, entry_price, target_price
+        FROM alert_history
+        WHERE status IN ('hit_target', 'hit_stop', 'expired') AND exit_date IS NOT NULL
+        ORDER BY exit_date DESC
+        LIMIT ?
+    """, (limit,)).fetchall()
+    conn.close()
+    return [{"name": r[0], "status": r[1], "return_pct": r[2],
+             "exit_date": r[3], "entry_price": r[4], "target_price": r[5]} for r in rows]
+
 # ── 백그라운드 자동 스캔 스케줄러 ────────────────────────────────
 def _run_scan_job():
     """장 마감 후 자동 스캔 실행 (별도 스레드)"""
