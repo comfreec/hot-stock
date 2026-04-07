@@ -131,6 +131,8 @@ footer p{color:var(--muted);font-size:13px;line-height:1.8}
 .fade-up{opacity:0;transform:translateY(30px);transition:opacity .6s ease,transform .6s ease}
 .fade-up.visible{opacity:1;transform:translateY(0)}
 @media(max-width:900px){.steps,.pg,.tg2{grid-template-columns:1fr}.pw{grid-template-columns:1fr}.stats-grid{grid-template-columns:repeat(2,1fr)}.sg{grid-template-columns:repeat(2,1fr)}}
+.pricing-grid{grid-template-columns:1fr 1fr!important}
+@media(max-width:600px){.pricing-grid{grid-template-columns:1fr!important}}
 @media(max-width:480px){.stats-grid{grid-template-columns:1fr}.stat-item::after{display:none!important}.btns{flex-direction:column;align-items:center}.btn-p,.btn-s{width:100%;max-width:300px;text-align:center}}
 </style>
 
@@ -241,6 +243,32 @@ footer p{color:var(--muted);font-size:13px;line-height:1.8}
   </div>
 </section>
 
+
+<section style="background:var(--bg3);padding:80px 5%;">
+  <div class="si" style="text-align:center;">
+    <div class="tag">REAL SCREEN</div>
+    <h2>실제 탐지 화면</h2>
+    <p class="sdesc" style="margin:0 auto 48px;">매일 장마감 후 자동으로 탐지된 종목들의 실제 화면입니다.</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;">
+      <div class="fade-up" style="border-radius:16px;overflow:hidden;border:1px solid rgba(79,142,247,0.2);box-shadow:0 8px 32px rgba(0,0,0,0.4);transition:.3s;cursor:pointer;" onclick="openImgModal(this.querySelector('img').src)" onmouseover="this.style.transform='translateY(-4px)';this.style.boxShadow='0 16px 48px rgba(79,142,247,0.2)'" onmouseout="this.style.transform='';this.style.boxShadow='0 8px 32px rgba(0,0,0,0.4)'">
+        <img src="20260407_191344.png" style="width:100%;display:block;" loading="lazy">
+      </div>
+      <div class="fade-up" style="border-radius:16px;overflow:hidden;border:1px solid rgba(79,142,247,0.2);box-shadow:0 8px 32px rgba(0,0,0,0.4);transition:.3s;cursor:pointer;" onclick="openImgModal(this.querySelector('img').src)" onmouseover="this.style.transform='translateY(-4px)';this.style.boxShadow='0 16px 48px rgba(79,142,247,0.2)'" onmouseout="this.style.transform='';this.style.boxShadow='0 8px 32px rgba(0,0,0,0.4)'">
+        <img src="20260407_191500.png" style="width:100%;display:block;" loading="lazy">
+      </div>
+      <div class="fade-up" style="border-radius:16px;overflow:hidden;border:1px solid rgba(79,142,247,0.2);box-shadow:0 8px 32px rgba(0,0,0,0.4);transition:.3s;cursor:pointer;" onclick="openImgModal(this.querySelector('img').src)" onmouseover="this.style.transform='translateY(-4px)';this.style.boxShadow='0 16px 48px rgba(79,142,247,0.2)'" onmouseout="this.style.transform='';this.style.boxShadow='0 8px 32px rgba(0,0,0,0.4)'">
+        <img src="20260407_191555.png" style="width:100%;display:block;" loading="lazy">
+      </div>
+      <div class="fade-up" style="border-radius:16px;overflow:hidden;border:1px solid rgba(79,142,247,0.2);box-shadow:0 8px 32px rgba(0,0,0,0.4);transition:.3s;cursor:pointer;" onclick="openImgModal(this.querySelector('img').src)" onmouseover="this.style.transform='translateY(-4px)';this.style.boxShadow='0 16px 48px rgba(79,142,247,0.2)'" onmouseout="this.style.transform='';this.style.boxShadow='0 8px 32px rgba(0,0,0,0.4)'">
+        <img src="20260407_191626.png" style="width:100%;display:block;" loading="lazy">
+      </div>
+      <div class="fade-up" style="border-radius:16px;overflow:hidden;border:1px solid rgba(79,142,247,0.2);box-shadow:0 8px 32px rgba(0,0,0,0.4);transition:.3s;cursor:pointer;" onclick="openImgModal(this.querySelector('img').src)" onmouseover="this.style.transform='translateY(-4px)';this.style.boxShadow='0 16px 48px rgba(79,142,247,0.2)'" onmouseout="this.style.transform='';this.style.boxShadow='0 8px 32px rgba(0,0,0,0.4)'">
+        <img src="20260407_191700.png" style="width:100%;display:block;" loading="lazy">
+      </div>
+    </div>
+  </div>
+</section>
+
 <section style="background:var(--bg)">
   <div class="si">
     <div class="tag">SIGNALS</div>
@@ -274,7 +302,7 @@ footer p{color:var(--muted);font-size:13px;line-height:1.8}
     <div class="tag">PRICING</div>
     <h2>합리적인 가격으로<br>시작하세요</h2>
     <p class="sdesc" style="margin:0 auto">한 번의 성공적인 스윙 매매로 구독료를 충분히 회수할 수 있습니다.</p>
-    <div class="pg" style="grid-template-columns:1fr 1fr;max-width:800px;margin:60px auto 0;">
+    <div class="pg pricing-grid" style="max-width:800px;margin:60px auto 0;">
       <div class="pc feat fade-up">
         <div class="pn">Pro</div>
         <div class="pp">₩30,000<span>/월</span></div>
@@ -392,8 +420,32 @@ function closeModal() {
   document.getElementById('alertModal').classList.remove('active');
   document.body.style.overflow = '';
 }
-document.addEventListener('keydown', e => { if(e.key === 'Escape') closeModal(); });
+function openImgModal(src) {
+  document.getElementById('imgModalSrc').src = src;
+  document.getElementById('imgModal').classList.add('active');
+  document.body.style.overflow = 'hidden';
+}
+function closeImgModal() {
+  document.getElementById('imgModal').classList.remove('active');
+  document.body.style.overflow = '';
+}
+document.addEventListener('keydown', e => {
+  if(e.key === 'Escape') { closeModal(); closeImgModal(); }
+});
 </script>
+
+<!-- 이미지 모달 -->
+<div id="imgModal" style="display:none;position:fixed;inset:0;z-index:9999;align-items:center;justify-content:center;padding:20px;">
+  <div onclick="closeImgModal()" style="position:absolute;inset:0;background:rgba(0,0,0,.85);backdrop-filter:blur(8px);"></div>
+  <div style="position:relative;z-index:1;max-width:95vw;max-height:90vh;animation:modalIn .3s ease;">
+    <button onclick="closeImgModal()" style="position:absolute;top:-40px;right:0;background:rgba(255,255,255,.15);border:none;color:#fff;width:32px;height:32px;border-radius:50%;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;">✕</button>
+    <img id="imgModalSrc" src="" style="max-width:95vw;max-height:85vh;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.6);display:block;">
+  </div>
+</div>
+<style>
+#imgModal { display:flex!important; opacity:0; pointer-events:none; transition:opacity .25s; }
+#imgModal.active { opacity:1; pointer-events:all; }
+</style>
 
 <!-- 알림 예시 모달 -->
 <div id="alertModal" style="display:none;position:fixed;inset:0;z-index:9999;align-items:center;justify-content:center;padding:20px;">
