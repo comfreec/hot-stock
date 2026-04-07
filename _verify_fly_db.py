@@ -3,7 +3,7 @@ from datetime import date
 
 conn = sqlite3.connect('/data/scan_cache.db')
 
-# 태림포장, 애경산업 active 복구
+# 태림포장, 애경산업 active 복구 (active는 만료 대상 아님)
 for name in ['태림포장', '애경산업']:
     r = conn.execute(
         "UPDATE alert_history SET status='active', exit_date=NULL WHERE name=? AND status='expired'",

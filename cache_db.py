@@ -206,22 +206,23 @@ def update_alert_status():
         for row in rows:
             rid, sym, entry, target, stop, alert_date, status = row
 
-            # 거래일 기준 5일 경과 시 만료 (entry 없어도 적용)
-            try:
-                from datetime import datetime as dt, timedelta
-                alert_dt = dt.fromisoformat(alert_date).date()
-                trading_days = 0
-                cur_day = alert_dt
-                while cur_day < date.today():
-                    cur_day += timedelta(days=1)
-                    if cur_day.weekday() < 5:
-                        trading_days += 1
-                if trading_days >= 5:
-                    conn.execute("UPDATE alert_history SET status='expired', exit_date=? WHERE id=?",
-                                 (today, rid))
-                    continue
-            except:
-                pass
+            # pending 종목만 거래일 기준 5일 경과 시 만료
+            if status == 'pending':
+                try:
+                    from datetime import datetime as dt, timedelta
+                    alert_dt = dt.fromisoformat(alert_date).date()
+                    trading_days = 0
+                    cur_day = alert_dt
+                    while cur_day < date.today():
+                        cur_day += timedelta(days=1)
+                        if cur_day.weekday() < 5:
+                            trading_days += 1
+                    if trading_days >= 5:
+                        conn.execute("UPDATE alert_history SET status='expired', exit_date=? WHERE id=?",
+                                     (today, rid))
+                        continue
+                except:
+                    pass
 
             if not entry or not target or not stop:
                 continue
