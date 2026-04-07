@@ -4,26 +4,23 @@ from datetime import date, timedelta
 conn = sqlite3.connect('/data/scan_cache.db')
 today = date.today().isoformat()
 
-# pending 종목 확인 및 만료 처리
-rows = conn.execute(
-    "SELECT id, alert_date, name, status, entry_price FROM alert_history WHERE status='pending' ORDER BY alert_date"
-).fetchall()
-print(f"pending 종목 {len(rows)}개:")
-for r in rows:
-    rid, alert_date, name, status, entry = r
-    alert_dt = date.fromisoformat(alert_date)
-    # 거래일 계산
-    trading_days = 0
-    cur = alert_dt
-    while cur < date.today():
-        cur += timedelta(days=1)
-        if cur.weekday() < 5:
-            trading_days += 1
-    expired = trading_days > 5
-    print(f"  id={rid} {alert_date} {name} entry={entry} {trading_days}거래일경과 {'→만료처리' if expired else ''}")
-    if expired:
-        conn.execute("UPDATE alert_history SET status='expired', exit_date=? WHERE id=?", (today, rid))
+# 태림포장, 애경산업 expired → active 복구
+targets = ['태림포장', '애경산업']
+for name in targets:
+    r = conn.execute(
+        "UPDATE alert_history SET status='active', exit_date=NULL WHERE name=? AND status='expired'",
+        (name,)
+    )
+    print(f"  {name} 복구: {r.rowcount}건")
 
 conn.commit()
-print("완료")
+
+# 전체 현황 확인
+rows = conn.execute(
+    "SELECT id, alert_date, name, status, entry_price FROM alert_history ORDER BY alert_date DESC LIMIT 20"
+).fetchall()
+print("전체 현황:")
+for r in rows:
+    print(f"  id={r[0]} {r[1]} {r[2]} status={r[3]} entry={r[4]}")
+
 conn.close()

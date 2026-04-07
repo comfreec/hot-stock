@@ -234,8 +234,15 @@ def update_alert_status():
                 day_high = float(df["High"].iloc[-1])
 
                 if status == 'pending':
-                    # 당일 저가가 매수가 이하로 내려왔으면 진입 확인
-                    if day_low <= entry:
+                    # 알림 다음 거래일부터 자동 active 전환 (진입한 것으로 간주)
+                    alert_dt = date.fromisoformat(alert_date)
+                    next_trading = alert_dt + __import__('datetime').timedelta(days=1)
+                    while next_trading.weekday() >= 5:
+                        next_trading += __import__('datetime').timedelta(days=1)
+                    if date.today() >= next_trading:
+                        conn.execute("UPDATE alert_history SET status='active' WHERE id=?", (rid,))
+                        status = 'active'
+                    elif day_low <= entry:
                         conn.execute("UPDATE alert_history SET status='active' WHERE id=?", (rid,))
                         status = 'active'
 
