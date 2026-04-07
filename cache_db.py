@@ -229,34 +229,28 @@ def update_alert_status():
                 df = yf.Ticker(sym).history(period="5d").dropna(subset=["Close","Low","High"])
                 if len(df) == 0:
                     continue
+
                 cur      = float(df["Close"].iloc[-1])
                 day_low  = float(df["Low"].iloc[-1])
                 day_high = float(df["High"].iloc[-1])
 
                 if status == 'pending':
-                    # 알림 다음 거래일부터 자동 active 전환 (진입한 것으로 간주)
-                    alert_dt = date.fromisoformat(alert_date)
-                    next_trading = alert_dt + __import__('datetime').timedelta(days=1)
-                    while next_trading.weekday() >= 5:
-                        next_trading += __import__('datetime').timedelta(days=1)
-                    if date.today() >= next_trading:
-                        conn.execute("UPDATE alert_history SET status='active' WHERE id=?", (rid,))
-                        status = 'active'
-                    elif day_low <= entry:
+                    # 전날 저가가 매수가 이하면 진입 확인
+                    prev_low = float(df["Low"].iloc[-1])
+                    if prev_low <= entry:
                         conn.execute("UPDATE alert_history SET status='active' WHERE id=?", (rid,))
                         status = 'active'
 
                 if status == 'active':
                     ret = (cur - entry) / entry * 100
-                    # 당일 고가로 목표가 체크, 당일 저가로 손절가 체크 (더 정확한 체결 시뮬레이션)
                     if day_high >= target:
-                        exit_price = target  # 목표가에서 체결된 것으로 처리
+                        exit_price = target
                         ret = (exit_price - entry) / entry * 100
                         conn.execute("""UPDATE alert_history
                             SET status='hit_target', exit_price=?, exit_date=?, return_pct=?
                             WHERE id=?""", (exit_price, today, ret, rid))
                     elif day_low <= stop:
-                        exit_price = stop  # 손절가에서 체결된 것으로 처리
+                        exit_price = stop
                         ret = (exit_price - entry) / entry * 100
                         conn.execute("""UPDATE alert_history
                             SET status='hit_stop', exit_price=?, exit_date=?, return_pct=?
