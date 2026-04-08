@@ -477,7 +477,7 @@ def send_scan_alert(results: list, send_charts: bool = True):
     today = date.today().strftime("%Y-%m-%d")
 
     # 요약 메시지 먼저 전송
-    summary_lines = [f"🚀 <b>급등 예고 종목</b> ({today} 장마감) — {len(results[:10])}개\n{'━'*20}"]
+    summary_lines = [f"📡 <b>스윙 레이더</b> ({today} 장마감) — {len(results[:10])}개\n{'━'*20}"]
 
     for i, r in enumerate(results[:10], 1):
         # yfinance 재호출 없이 스캔 결과에서 직접 계산
