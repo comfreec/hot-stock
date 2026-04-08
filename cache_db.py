@@ -217,7 +217,7 @@ def update_alert_status():
                         cur_day += timedelta(days=1)
                         if cur_day.weekday() < 5:
                             trading_days += 1
-                    if trading_days >= 5:
+                    if trading_days >= 7:
                         conn.execute("UPDATE alert_history SET status='expired', exit_date=? WHERE id=?",
                                      (today, rid))
                         continue
