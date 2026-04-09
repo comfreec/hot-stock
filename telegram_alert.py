@@ -552,6 +552,22 @@ def send_scan_alert(results: list, send_charts: bool = True):
     if send_charts:
         for r in results[:5]:
             lv = _calc_levels_from_result(r)
+            # 이미 추적 중인 종목은 DB 기존 가격 사용
+            try:
+                from cache_db import _get_conn as _db_conn
+                _conn = _db_conn()
+                _row = _conn.execute(
+                    "SELECT entry_price, target_price, stop_price, rr_ratio FROM alert_history "
+                    "WHERE symbol=? AND status IN ('pending','active') ORDER BY id DESC LIMIT 1",
+                    (r["symbol"],)
+                ).fetchone()
+                _conn.close()
+                if _row and _row[0]:
+                    lv = {"entry": _row[0], "target": _row[1], "stop": _row[2], "rr": _row[3],
+                          "upside": (_row[1]/_row[0]-1)*100 if _row[0] else 0,
+                          "downside": (_row[2]/_row[0]-1)*100 if _row[0] else 0}
+            except Exception:
+                pass
             price_levels_map[r["symbol"]] = lv
             close_s = r.get("close_series")
             img = None
