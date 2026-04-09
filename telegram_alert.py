@@ -482,6 +482,26 @@ def send_scan_alert(results: list, send_charts: bool = True):
     for i, r in enumerate(results[:10], 1):
         # yfinance 재호출 없이 스캔 결과에서 직접 계산
         lv = _calc_levels_from_result(r)
+
+        # 이미 pending/active 추적 중인 종목이면 DB 기존 가격 사용
+        already_tracking = False
+        try:
+            from cache_db import _get_conn as _db_conn
+            _conn = _db_conn()
+            _row = _conn.execute(
+                "SELECT entry_price, target_price, stop_price, rr_ratio FROM alert_history "
+                "WHERE symbol=? AND status IN ('pending','active') ORDER BY id DESC LIMIT 1",
+                (r["symbol"],)
+            ).fetchone()
+            _conn.close()
+            if _row and _row[0]:
+                lv = {"entry": _row[0], "target": _row[1], "stop": _row[2], "rr": _row[3],
+                      "upside": (_row[1]/_row[0]-1)*100 if _row[0] else 0,
+                      "downside": (_row[2]/_row[0]-1)*100 if _row[0] else 0}
+                already_tracking = True
+        except Exception:
+            pass
+
         fin = get_financial_data(r["symbol"])
         s   = r.get("signals", {})
         sig_str = format_signals(s)
@@ -495,8 +515,9 @@ def send_scan_alert(results: list, send_charts: bool = True):
         pbr_str = f"PBR {fin['pbr']}" if fin.get("pbr") else ""
         fin_str = "  ".join(filter(None, [per_str, pbr_str]))
 
+        tracking_str = "  <i>(추적 중 · 기존 가격 유지)</i>" if already_tracking else ""
         block = (
-            f"\n<b>{i}. {r['name']} ({r['symbol']})</b> ⭐ {r['total_score']}점\n"
+            f"\n<b>{i}. {r['name']} ({r['symbol']})</b> ⭐ {r['total_score']}점{tracking_str}\n"
             f"📍 매수가:  {entry_str}\n"
             f"🎯 목표가:  {target_str}\n"
             f"🛑 손절가:  {stop_str}\n"
