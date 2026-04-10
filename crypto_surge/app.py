@@ -39,15 +39,40 @@ if not st.session_state["authenticated"]:
     st.markdown("""
     <style>
     @keyframes fadein { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
+    @keyframes coin_spin {
+        0%   { transform: rotateY(0deg) translateY(0px); }
+        25%  { transform: rotateY(90deg) translateY(-20px); }
+        50%  { transform: rotateY(180deg) translateY(0px); }
+        75%  { transform: rotateY(270deg) translateY(-20px); }
+        100% { transform: rotateY(360deg) translateY(0px); }
+    }
     .login-box { animation: fadein 0.6s ease; }
+    .coin-wrap {
+        display: inline-block;
+        animation: coin_spin 2s linear infinite;
+        perspective: 200px;
+        margin-bottom: 8px;
+    }
+    .coin-face {
+        width: 72px; height: 72px;
+        border-radius: 50%;
+        background: radial-gradient(circle at 35% 35%, #ffe066, #f7a44f 60%, #c47a00);
+        border: 4px solid #ffd700;
+        box-shadow: 0 0 24px rgba(247,164,79,0.7), inset 0 2px 6px rgba(255,255,255,0.4);
+        display: flex; align-items: center; justify-content: center;
+        font-size: 32px; font-weight: 900;
+        color: #7a4800;
+        text-shadow: 1px 1px 2px rgba(255,255,255,0.4);
+        font-family: Arial, sans-serif;
+    }
     </style>
     <div class='login-box' style='max-width:420px;margin:80px auto;'>
       <div style='background:linear-gradient(135deg,#1a1f35,#0e1117);
            padding:48px 40px;border-radius:20px;border:1px solid #2d3555;
            box-shadow:0 20px 60px rgba(0,0,0,0.5);text-align:center;'>
-        <div style='font-size:52px;'>🪙</div>
-        <h2 style='color:#fff;margin:16px 0 6px;font-size:26px;font-weight:800;'>코인 급등 예측</h2>
-        <p style='color:#f7a44f;font-size:13px;margin:0 0 32px;letter-spacing:2px;'>CRYPTO SURGE PREDICTOR</p>
+        <div class='coin-wrap'><div class='coin-face'>₿</div></div>
+        <h2 style='color:#fff;margin:16px 0 6px;font-size:26px;font-weight:800;letter-spacing:-0.5px;'>코인 급등 예측</h2>
+        <p style='color:#f7a44f;font-size:13px;margin:0 0 32px;font-weight:500;letter-spacing:2px;'>CRYPTO SURGE PREDICTOR</p>
         <div style='width:40px;height:2px;background:linear-gradient(90deg,#f7a44f,#ffd700);margin:0 auto 32px;border-radius:2px;'></div>
         <p style='color:#8b92a5;font-size:13px;margin:0 0 24px;'>허가된 사용자만 접근 가능합니다</p>
       </div>
@@ -311,9 +336,34 @@ market = get_market_overview()
 fear_score, fear_label, fear_color = get_fear_greed()
 now_str = datetime.now(timezone.utc).strftime("%Y.%m.%d %H:%M UTC")
 
-st.markdown("""<div class="top-header">
+st.markdown("""
+<style>
+@keyframes header_coin_spin {
+    0%   { transform: rotateY(0deg) translateY(0px); }
+    25%  { transform: rotateY(90deg) translateY(-8px); }
+    50%  { transform: rotateY(180deg) translateY(0px); }
+    75%  { transform: rotateY(270deg) translateY(-8px); }
+    100% { transform: rotateY(360deg) translateY(0px); }
+}
+.header-coin-wrap {
+    display: inline-block;
+    animation: header_coin_spin 2.5s linear infinite;
+    vertical-align: middle;
+}
+.header-coin {
+    width: 52px; height: 52px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #ffe066, #f7a44f 60%, #c47a00);
+    border: 3px solid #ffd700;
+    box-shadow: 0 0 20px rgba(247,164,79,0.7), inset 0 2px 5px rgba(255,255,255,0.4);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 24px; font-weight: 900; color: #7a4800;
+    font-family: Arial, sans-serif;
+}
+</style>
+<div class="top-header">
   <div style="display:flex;align-items:center;gap:12px;">
-    <span style="font-size:36px;">🪙</span>
+    <div class='header-coin-wrap'><div class='header-coin'>₿</div></div>
     <div>
       <h1 style="color:#f0f4ff;margin:0;font-size:clamp(18px,4vw,28px);font-weight:800;">코인 급등 예측 시스템</h1>
       <p style="color:#f7a44f;margin:4px 0 0;font-size:12px;font-weight:600;letter-spacing:2px;text-transform:uppercase;">Crypto Surge Predictor v2.0</p>
@@ -373,7 +423,32 @@ st.markdown("---")
 
 # ── 사이드바 ──────────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown("<h3 style='color:#f0f4ff;'>🪙 코인 급등 예측</h3>", unsafe_allow_html=True)
+    st.markdown("""
+    <style>
+    @keyframes sidebar_coin_spin {
+        0%   { transform: rotateY(0deg); }
+        100% { transform: rotateY(360deg); }
+    }
+    .sidebar-coin-wrap {
+        display: inline-block;
+        animation: sidebar_coin_spin 3s linear infinite;
+    }
+    .sidebar-coin {
+        width: 44px; height: 44px;
+        border-radius: 50%;
+        background: radial-gradient(circle at 35% 35%, #ffe066, #f7a44f 60%, #c47a00);
+        border: 3px solid #ffd700;
+        box-shadow: 0 0 14px rgba(247,164,79,0.6), inset 0 2px 4px rgba(255,255,255,0.4);
+        display: flex; align-items: center; justify-content: center;
+        font-size: 20px; font-weight: 900; color: #7a4800;
+        font-family: Arial, sans-serif;
+    }
+    </style>
+    <div style='text-align:center;padding:8px 0 4px;'>
+      <div class='sidebar-coin-wrap'><div class='sidebar-coin'>₿</div></div>
+    </div>
+    """, unsafe_allow_html=True)
+    st.markdown("<h3 style='color:#f0f4ff;text-align:center;margin:6px 0 2px;'>코인 급등 예측</h3>", unsafe_allow_html=True)
     st.markdown("---")
     st.markdown("<h3 style='color:#f0f4ff;'>⚙️ 핵심 조건 설정</h3>", unsafe_allow_html=True)
 
