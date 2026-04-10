@@ -477,13 +477,12 @@ def send_scan_alert(results: list, send_charts: bool = True):
     today = date.today().strftime("%Y-%m-%d")
 
     # 요약 메시지 먼저 전송
-    summary_lines = [f"📡 <b>스윙 레이더</b> ({today} 장마감) — {len(results[:10])}개\n{'━'*20}"]
+    # 신규 / 추적 중 분류
+    new_items = []
+    tracking_items = []
 
-    for i, r in enumerate(results[:10], 1):
-        # yfinance 재호출 없이 스캔 결과에서 직접 계산
+    for r in results[:10]:
         lv = _calc_levels_from_result(r)
-
-        # 이미 pending/active 추적 중인 종목이면 DB 기존 가격 사용
         already_tracking = False
         try:
             from cache_db import _get_conn as _db_conn
@@ -501,23 +500,24 @@ def send_scan_alert(results: list, send_charts: bool = True):
                 already_tracking = True
         except Exception:
             pass
+        if already_tracking:
+            tracking_items.append((r, lv))
+        else:
+            new_items.append((r, lv))
 
+    def _make_block(r, lv, idx):
         fin = get_financial_data(r["symbol"])
         s   = r.get("signals", {})
         sig_str = format_signals(s)
-
         entry_str  = f"₩{lv['entry']:,.0f}" if lv else f"₩{r['current_price']:,.0f}"
         target_str = f"₩{lv['target']:,.0f} (+{lv['upside']:.1f}%)" if lv else "-"
         stop_str   = f"₩{lv['stop']:,.0f} ({lv['downside']:.1f}%)" if lv else "-"
         rr_str     = f"{lv['rr']:.1f} : 1" if lv else "-"
-
         per_str = f"PER {fin['per']}" if fin.get("per") else ""
         pbr_str = f"PBR {fin['pbr']}" if fin.get("pbr") else ""
         fin_str = "  ".join(filter(None, [per_str, pbr_str]))
-
-        tracking_str = "\n<i>🔄 추적 중 · 기존 가격 유지</i>" if already_tracking else ""
         block = (
-            f"\n<b>{i}. {r['name']} ({r['symbol']})</b> ⭐ {r['total_score']}점{tracking_str}\n"
+            f"\n<b>{idx}. {r['name']} ({r['symbol']})</b> ⭐ {r['total_score']}점\n"
             f"📍 매수가:  {entry_str}\n"
             f"🎯 목표가:  {target_str}\n"
             f"🛑 손절가:  {stop_str}\n"
@@ -528,7 +528,22 @@ def send_scan_alert(results: list, send_charts: bool = True):
         if sig_str:
             block += f"{sig_str}\n"
         block += "━" * 20
-        summary_lines.append(block)
+        return block
+
+    summary_lines = [f"📡 <b>스윙 레이더</b> ({today} 장마감) — {len(results[:10])}개\n{'━'*20}"]
+
+    idx = 1
+    if new_items:
+        summary_lines.append(f"\n🆕 <b>신규 탐지</b>\n{'━'*20}")
+        for r, lv in new_items:
+            summary_lines.append(_make_block(r, lv, idx))
+            idx += 1
+
+    if tracking_items:
+        summary_lines.append(f"\n🔄 <b>재탐지 (추적 중)</b>\n{'━'*20}")
+        for r, lv in tracking_items:
+            summary_lines.append(_make_block(r, lv, idx))
+            idx += 1
 
     summary_lines.append("\n⚠️ 투자 참고용 정보이며 투자 권유가 아닙니다.")
     message = "\n".join(summary_lines)
