@@ -219,7 +219,7 @@ def make_candle(data, title, show_levels=True):
         low=data["Low"], close=data["Close"], name="가격",
         increasing_line_color="#26a69a", decreasing_line_color="#ef5350"
     ))
-    for w, c, nm in [(20, "#a78bfa", "MA20"), (50, "#4f8ef7", "MA50"), (240, "#ff9800", "MA240")]:
+    for w, c, nm in [(20, "#a78bfa", "MA20"), (50, "#4f8ef7", "MA50"), (240, "#ff9800", "MA200")]:
         ma = data["Close"].rolling(w).mean()
         fig.add_trace(go.Scatter(x=data.index, y=ma, name=nm,
             line=dict(color=c, width=2.5 if w == 240 else 1.2)))
@@ -234,13 +234,13 @@ def make_candle(data, title, show_levels=True):
         tr = pd.concat([high - low, (high - close.shift(1)).abs(), (low - close.shift(1)).abs()], axis=1).max(axis=1)
         atr = float(tr.rolling(14).mean().dropna().iloc[-1])
 
-        ma240_v = float(close.rolling(240).mean().dropna().iloc[-1]) if len(close) >= 240 else None
+        ma200_v = float(close.rolling(240).mean().dropna().iloc[-1]) if len(close) >= 240 else None
         ma20_v  = float(close.rolling(20).mean().dropna().iloc[-1])
         swing_low = float(low.tail(20).min())
 
         entry_cands = []
-        if ma240_v and ma240_v * 1.005 < current:
-            entry_cands.append(("MA240", ma240_v * 1.005))
+        if ma200_v and ma200_v * 1.005 < current:
+            entry_cands.append(("MA200", ma200_v * 1.005))
         if ma20_v < current:
             entry_cands.append(("MA20", ma20_v))
         if swing_low < current:
@@ -370,7 +370,7 @@ st.markdown("""
     </div>
   </div>
   <p style="color:#6b7280;margin:12px 0 0;font-size:13px;line-height:1.6;">
-    240일선 아래 충분한 조정 → 최근 돌파 → 현재 근처 → 급등 신호 복합 확인 | 24/7 자동 스캔
+    200일선 아래 충분한 조정 → 최근 돌파 → 현재 근처 → 급등 신호 복합 확인 | 24/7 자동 스캔
   </p>
 </div>""", unsafe_allow_html=True)
 
@@ -464,12 +464,12 @@ with st.sidebar:
         st.session_state["min_score"] = 15
         st.rerun()
 
-    max_gap   = st.slider("📍 240선 근처 범위 (%)", 1, 20, key="max_gap",
-        help="현재가가 240일선 위 몇 % 이내인지")
+    max_gap   = st.slider("📍 200선 근처 범위 (%)", 1, 20, key="max_gap",
+        help="현재가가 200일선 위 몇 % 이내인지")
     min_below = st.slider("📉 최소 조정 기간 (일)", 60, 300, key="min_below",
-        help="240일선 아래 최소 체류 일수 (120=6개월)")
+        help="200일선 아래 최소 체류 일수 (120=6개월)")
     max_cross = st.slider("📈 돌파 후 최대 경과 (일)", 10, 180, key="max_cross",
-        help="240일선 돌파 후 최대 경과 일수")
+        help="200일선 돌파 후 최대 경과 일수")
     min_score = st.slider("🎯 최소 종합점수", 0, 40, key="min_score",
         help="이 점수 이상인 코인만 표시")
 
@@ -502,9 +502,9 @@ if mode == "🔍 급등 예고 코인 탐지":
 
     st.markdown(f"""<div class="cond-box">
       <b style="color:#e0e6f0;">현재 탐지 조건</b><br>
-      📉 240일선 아래 <b style="color:#ffd700;">{min_below}일({min_below//30}개월) 이상</b> 조정 →
-      📈 최근 <b style="color:#00d4aa;">{max_cross}일 이내</b> 240일선 상향 돌파 →
-      📍 현재가 240일선 위 <b style="color:#f7a44f;">0~{max_gap}%</b> 이내
+      📉 200일선 아래 <b style="color:#ffd700;">{min_below}일({min_below//30}개월) 이상</b> 조정 →
+      📈 최근 <b style="color:#00d4aa;">{max_cross}일 이내</b> 200일선 상향 돌파 →
+      📍 현재가 200일선 위 <b style="color:#f7a44f;">0~{max_gap}%</b> 이내
     </div>""", unsafe_allow_html=True)
 
     if st.button("🚀 스캔 시작", type="primary", use_container_width=True):
@@ -565,7 +565,7 @@ if mode == "🔍 급등 예고 코인 탐지":
         c1, c2, c3, c4 = st.columns(4)
         metric_card(c1, "발견 코인", f"{len(results)}개")
         metric_card(c2, "평균 조정 기간", f"{int(sum(r['below_days'] for r in results)/len(results))}일")
-        metric_card(c3, "평균 240선 이격", f"+{sum(r['gap_pct'] for r in results)/len(results):.1f}%")
+        metric_card(c3, "평균 200선 이격", f"+{sum(r['gap_pct'] for r in results)/len(results):.1f}%")
         metric_card(c4, "최고 점수", f"{max(r['total_score'] for r in results)}점")
 
         st.markdown("<div class='sec-title'>🏆 급등 예고 코인 전체</div>", unsafe_allow_html=True)
@@ -577,8 +577,8 @@ if mode == "🔍 급등 예고 코인 탐지":
                 "코인명":    r["name"],
                 "심볼":      r["symbol"],
                 "현재가":    f"${r['current_price']:,.4f}",
-                "240일선":   f"${r['ma200']:,.4f}",
-                "240선이격": f"+{r['gap_pct']:.1f}%",
+                "200일선":   f"${r['ma200']:,.4f}",
+                "200선이격": f"+{r['gap_pct']:.1f}%",
                 "조정기간":  f"{r['below_days']}일",
                 "돌파후":    f"{r['days_since_cross']}일",
                 "RSI":       r["rsi"],
@@ -645,7 +645,7 @@ if mode == "🔍 급등 예고 코인 탐지":
                 </div>
               </div>
               <div style="margin-top:6px;color:#8b92a5;font-size:12px;">
-                240일선 ${r["ma200"]:,.4f} | 이격 +{r["gap_pct"]:.1f}% |
+                200일선 ${r["ma200"]:,.4f} | 이격 +{r["gap_pct"]:.1f}% |
                 조정 {r["below_days"]}일 | 돌파 {r["days_since_cross"]}일 전 |
                 RSI {r["rsi"]:.1f} | <span style="color:{fr_color};">펀딩비 {fr:+.4f}%</span>
               </div>
@@ -726,16 +726,16 @@ elif mode == "🎯 최적 급등 타이밍":
             ma5  = close.rolling(5).mean()
             ma20 = close.rolling(20).mean()
             ma50 = close.rolling(50).mean()
-            ma240 = close.rolling(240).mean() if n >= 240 else None
+            ma200 = close.rolling(240).mean() if n >= 240 else None
             score = 0
             signals = {}
-            if ma240 is None or pd.isna(ma240.iloc[-1]): return None
-            ma240_v   = float(ma240.iloc[-1])
-            ma240_gap = (current - ma240_v) / ma240_v * 100
-            if not (0 <= ma240_gap <= 10): return None
-            days_above = sum(1 for i in range(-3, 0) if float(close.iloc[i]) > float(ma240.iloc[i]))
+            if ma200 is None or pd.isna(ma200.iloc[-1]): return None
+            ma200_v   = float(ma200.iloc[-1])
+            ma200_gap = (current - ma200_v) / ma200_v * 100
+            if not (0 <= ma200_gap <= 10): return None
+            days_above = sum(1 for i in range(-3, 0) if float(close.iloc[i]) > float(ma200.iloc[i]))
             if days_above < 3: return None
-            signals["ma240_gap"] = round(ma240_gap, 1)
+            signals["ma200_gap"] = round(ma200_gap, 1)
             if pd.isna(ma50.iloc[-1]): return None
             if not (float(ma5.iloc[-1]) > float(ma20.iloc[-1]) > float(ma50.iloc[-1])): return None
             signals["ma_align"] = True
@@ -847,7 +847,7 @@ elif mode == "🎯 최적 급등 타이밍":
               </div>
               <div style="margin-top:8px;color:#8b92a5;font-size:12px;">
                 RSI {s.get('rsi',0):.1f} | 거래량 {s.get('vol_ratio',0):.1f}배 |
-                반등위치 {s.get('recovery_pct',0):.0f}% | 240선 +{s.get('ma240_gap',0):.1f}%
+                반등위치 {s.get('recovery_pct',0):.0f}% | 200선 +{s.get('ma200_gap',0):.1f}%
               </div>
               <div style="margin-top:8px;">
                 <div style="color:#8b92a5;font-size:11px;margin-bottom:3px;">종합점수 {r["total_score"]}점 / 14점</div>
@@ -947,7 +947,7 @@ elif mode == "📈 개별 코인 분석":
             </div>""", unsafe_allow_html=True)
             c1, c2, c3, c4 = st.columns(4)
             metric_card(c1, "RSI(14)", f"{result['rsi']:.1f}")
-            metric_card(c2, "240선 이격", f"+{result['gap_pct']:.1f}%")
+            metric_card(c2, "200선 이격", f"+{result['gap_pct']:.1f}%")
             metric_card(c3, "조정 기간", f"{result['below_days']}일")
             metric_card(c4, "돌파 후", f"{result['days_since_cross']}일")
             st.markdown("<div class='sec-title'>📊 신호 분석</div>", unsafe_allow_html=True)
@@ -990,17 +990,17 @@ elif mode == "📈 개별 코인 분석":
             </div>""", unsafe_allow_html=True)
             close_clean = data["Close"].dropna()
             if len(close_clean) >= 240:
-                ma240_now = float(close_clean.rolling(240).mean().dropna().iloc[-1])
-                gap = (current - ma240_now) / ma240_now * 100
+                ma200_now = float(close_clean.rolling(240).mean().dropna().iloc[-1])
+                gap = (current - ma200_now) / ma200_now * 100
                 c1, c2 = st.columns(2)
-                metric_card(c1, "현재 240선 이격", f"{gap:+.1f}%")
-                metric_card(c2, "240일선", f"${ma240_now:,.4f}")
+                metric_card(c1, "현재 200선 이격", f"{gap:+.1f}%")
+                metric_card(c2, "200일선", f"${ma200_now:,.4f}")
                 if gap < 0:
-                    st.warning(f"📉 현재가가 240일선 아래 ({gap:.1f}%) — 아직 조정 중")
+                    st.warning(f"📉 현재가가 200일선 아래 ({gap:.1f}%) — 아직 조정 중")
                 elif gap > max_gap:
-                    st.warning(f"📈 240일선 위 {gap:.1f}% — 근처 범위({max_gap}%) 초과")
+                    st.warning(f"📈 200일선 위 {gap:.1f}% — 근처 범위({max_gap}%) 초과")
                 else:
-                    st.warning("📊 240일선 돌파 이력 또는 조정 기간 조건 미충족")
+                    st.warning("📊 200일선 돌파 이력 또는 조정 기간 조건 미충족")
 
         _c = make_candle(data, f"{name} ({symbol})")
         st.plotly_chart(_c, config={"scrollZoom": False, "displayModeBar": False, "staticPlot": True},
@@ -1076,7 +1076,7 @@ elif mode == "📊 히스토리":
                     "코인명":    r.get("name", ""),
                     "심볼":      r.get("symbol", ""),
                     "현재가":    f"${r.get('current_price', 0):,.4f}",
-                    "240선이격": f"+{r.get('gap_pct', 0):.1f}%",
+                    "200선이격": f"+{r.get('gap_pct', 0):.1f}%",
                     "조정기간":  f"{r.get('below_days', 0)}일",
                     "돌파후":    f"{r.get('days_since_cross', 0)}일",
                     "RSI":       r.get("rsi", 0),
