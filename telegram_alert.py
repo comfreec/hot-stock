@@ -515,7 +515,7 @@ def send_scan_alert(results: list, send_charts: bool = True):
         pbr_str = f"PBR {fin['pbr']}" if fin.get("pbr") else ""
         fin_str = "  ".join(filter(None, [per_str, pbr_str]))
 
-        tracking_str = "  <i>(추적 중 · 기존 가격 유지)</i>" if already_tracking else ""
+        tracking_str = "\n<i>🔄 추적 중 · 기존 가격 유지</i>" if already_tracking else ""
         block = (
             f"\n<b>{i}. {r['name']} ({r['symbol']})</b> ⭐ {r['total_score']}점{tracking_str}\n"
             f"📍 매수가:  {entry_str}\n"
@@ -782,8 +782,7 @@ def send_weekly_summary(force: bool = False):
                 except:
                     pass
                 lines.append(
-                    f"📌 <b>{h['name']}</b>\n"
-                    f"   매수 {entry_str}  →  목표 {target_str}  /  손절 {stop_str}"
+                    f"📌 <b>{h['name']}</b>  📍{entry_str} 🎯{target_str} 🛑{stop_str}"
                     + cur_line
                 )
 
