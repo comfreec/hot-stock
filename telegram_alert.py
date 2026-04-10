@@ -538,6 +538,8 @@ def send_scan_alert(results: list, send_charts: bool = True):
         for r, lv in new_items:
             summary_lines.append(_make_block(r, lv, idx))
             idx += 1
+    else:
+        summary_lines.append(f"\n🆕 <b>신규 탐지</b>  없음\n{'━'*20}")
 
     if tracking_items:
         summary_lines.append(f"\n🔄 <b>재탐지 (추적 중)</b>\n{'━'*20}")
@@ -797,7 +799,8 @@ def send_weekly_summary(force: bool = False):
                 except:
                     pass
                 lines.append(
-                    f"📌 <b>{h['name']}</b>  📍{entry_str} 🎯{target_str} 🛑{stop_str}"
+                    f"📌 <b>{h['name']}</b>\n"
+                    f"   📍{entry_str} 🎯{target_str} 🛑{stop_str}"
                     + cur_line
                 )
 
@@ -827,7 +830,7 @@ def send_weekly_summary(force: bool = False):
                 lines.append(f"\n📋 <b>최근 청산 내역</b>")
                 lines.append("─" * 16)
                 for r in recent:
-                    icon = "✅" if r["status"] == "hit_target" else ("🛑" if r["status"] == "hit_stop" else "⌛")
+                    icon = "💰" if r["status"] == "hit_target" else ("🛑" if r["status"] == "hit_stop" else "⌛")
                     ret_str = f"  <b>{r['return_pct']:+.1f}%</b>" if r["return_pct"] is not None else ""
                     date_str = r["exit_date"][5:] if r["exit_date"] else ""  # MM-DD
                     lines.append(f"  {icon} {r['name']}{ret_str}  <i>({date_str})</i>")
