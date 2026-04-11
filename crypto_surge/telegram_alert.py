@@ -53,7 +53,48 @@ def send_photo(image_bytes: bytes, caption: str = "") -> bool:
         return False
 
 
-def calc_price_levels(symbol: str, current: float) -> dict:
+def _get_usd_krw() -> float:
+    """USD/KRW 환율 조회 - 여러 소스 순차 시도"""
+    import urllib.request, json
+
+    # 1순위: exchangerate-api
+    try:
+        with urllib.request.urlopen("https://open.er-api.com/v6/latest/USD", timeout=5) as r:
+            return float(json.loads(r.read())["rates"]["KRW"])
+    except:
+        pass
+
+    # 2순위: frankfurter.app
+    try:
+        with urllib.request.urlopen("https://api.frankfurter.app/latest?from=USD&to=KRW", timeout=5) as r:
+            return float(json.loads(r.read())["rates"]["KRW"])
+    except:
+        pass
+
+    # 3순위: ccxt 업비트 BTC 원화 / 바이낸스 BTC USDT 비율
+    try:
+        import ccxt
+        upbit   = ccxt.upbit({"enableRateLimit": True})
+        binance = ccxt.binance({"enableRateLimit": True})
+        krw = float(upbit.fetch_ticker("BTC/KRW")["last"])
+        usd = float(binance.fetch_ticker("BTC/USDT")["last"])
+        return krw / usd
+    except:
+        pass
+
+    # 최후 폴백: 최근 환율 하드코딩
+    return 1450.0
+
+
+def _fmt_krw(usd: float, rate: float) -> str:
+    """USD → KRW 변환 후 포맷"""
+    krw = usd * rate
+    if krw >= 1_000_000:
+        return f"₩{krw:,.0f}"
+    elif krw >= 1000:
+        return f"₩{krw:,.0f}"
+    else:
+        return f"₩{krw:,.1f}"
     """목표가/손절가/손익비 계산 (ATR 기반)"""
     try:
         from crypto_surge_detector import fetch_ohlcv
@@ -117,8 +158,10 @@ def format_signals(signals: dict) -> str:
     return "  ".join(active[:6]) if active else ""
 
 
-def make_chart_image(symbol: str, name: str, price_levels: dict = None) -> bytes | None:
-    """캔들차트 + 200일선 이미지 생성"""
+def make_chart_image(symbol: str, name: str, price_levels: dict = None, rate: float = None) -> bytes | None:
+    """캔들차트 + 200일선 이미지 생성 (가격 원화 표시)"""
+    if rate is None:
+        rate = _get_usd_krw()
     try:
         from crypto_surge_detector import fetch_ohlcv
         import matplotlib
@@ -176,18 +219,18 @@ def make_chart_image(symbol: str, name: str, price_levels: dict = None) -> bytes
 
             if target:
                 ax1.axhline(y=target, color="#00ff88", linewidth=1.5, linestyle="--", alpha=0.9)
-                ax1.text(len(df)-1, target, f" Target ${target:,.4f} (+{upside:.1f}%)",
+                ax1.text(len(df)-1, target, f" Target {_fmt_krw(target, rate)} (+{upside:.1f}%)",
                          color="#00ff88", fontsize=7, va="bottom", ha="right")
                 ax1.axhspan(entry, target, alpha=0.05, color="#00ff88")
             ax1.axhline(y=entry, color="#ffd700", linewidth=1.5, linestyle="-.", alpha=0.9)
-            ax1.text(len(df)-1, entry, f" Buy ${entry:,.4f}",
+            ax1.text(len(df)-1, entry, f" Buy {_fmt_krw(entry, rate)}",
                      color="#ffd700", fontsize=7, va="bottom", ha="right")
             ax1.axhline(y=current, color="#ffffff", linewidth=1.0, linestyle="--", alpha=0.6)
-            ax1.text(len(df)-1, current, f" Close ${current:,.4f}",
+            ax1.text(len(df)-1, current, f" Close {_fmt_krw(current, rate)}",
                      color="#ffffff", fontsize=7, va="bottom", ha="right")
             if stop:
                 ax1.axhline(y=stop, color="#ff3355", linewidth=1.5, linestyle="--", alpha=0.9)
-                ax1.text(len(df)-1, stop, f" Stop ${stop:,.4f} ({downside:.1f}%)",
+                ax1.text(len(df)-1, stop, f" Stop {_fmt_krw(stop, rate)} ({downside:.1f}%)",
                          color="#ff3355", fontsize=7, va="top", ha="right")
                 ax1.axhspan(stop, entry, alpha=0.05, color="#ff3355")
         else:
@@ -230,7 +273,7 @@ def make_chart_image(symbol: str, name: str, price_levels: dict = None) -> bytes
 
 
 def _make_block(r: dict, lv: dict, idx: int, already_tracking: bool = False) -> str:
-    """주식 버전과 동일한 종목 블록 포맷"""
+    """주식 버전과 동일한 종목 블록 포맷 (가격 원화 표시)"""
     sig_str    = format_signals(r.get("signals", {}))
     price      = r["current_price"]
     rsi        = r.get("rsi", 0)
@@ -238,9 +281,11 @@ def _make_block(r: dict, lv: dict, idx: int, already_tracking: bool = False) -> 
     days       = r.get("days_since_cross", 0)
     gap        = r.get("gap_pct", 0)
 
-    entry_str  = f"${lv['entry']:,.4f}"  if lv else f"${price:,.4f}"
-    target_str = f"${lv['target']:,.4f} (+{lv['upside']:.1f}%)" if lv else "-"
-    stop_str   = f"${lv['stop']:,.4f} ({lv['downside']:.1f}%)"  if lv else "-"
+    rate = _get_usd_krw()
+
+    entry_str  = _fmt_krw(lv['entry'], rate)  if lv else _fmt_krw(price, rate)
+    target_str = f"{_fmt_krw(lv['target'], rate)} (+{lv['upside']:.1f}%)" if lv else "-"
+    stop_str   = f"{_fmt_krw(lv['stop'], rate)} ({lv['downside']:.1f}%)"  if lv else "-"
     rr_str     = f"{lv['rr']:.1f} : 1" if lv else "-"
 
     block = (
@@ -334,15 +379,16 @@ def send_scan_alert(results: list, send_charts: bool = True):
 
     # 차트 전송 (상위 5개)
     if send_charts:
+        rate = _get_usd_krw()
         for r in results[:5]:
             lv = price_levels_map.get(r["symbol"], {})
-            img = make_chart_image(r["symbol"], r["name"], lv)
+            img = make_chart_image(r["symbol"], r["name"], lv, rate=rate)
             if img:
                 caption = (
                     f"<b>{r['name']}</b> ⭐{r['total_score']}점\n"
-                    f"📍 매수가: ${lv['entry']:,.4f}\n"
-                    f"🎯 목표가: ${lv['target']:,.4f} (+{lv['upside']:.1f}%)\n"
-                    f"🛑 손절가: ${lv['stop']:,.4f} ({lv['downside']:.1f}%)\n"
+                    f"📍 매수가: {_fmt_krw(lv['entry'], rate)}\n"
+                    f"🎯 목표가: {_fmt_krw(lv['target'], rate)} (+{lv['upside']:.1f}%)\n"
+                    f"🛑 손절가: {_fmt_krw(lv['stop'], rate)} ({lv['downside']:.1f}%)\n"
                     f"⚖️ 손익비: {lv['rr']:.1f}:1"
                 ) if lv else f"<b>{r['name']}</b>"
                 send_photo(img, caption)
@@ -376,17 +422,18 @@ def send_performance_update():
             return
 
         lines = [f"📊 <b>코인 포트폴리오 현황</b>  {today_fmt}", "─" * 16]
+        rate = _get_usd_krw()
 
         if hit_target_today or hit_stop_today:
             lines.append("\n🔔 <b>오늘 청산</b>")
             lines.append("─" * 16)
             for h in hit_target_today:
                 ret    = h["return_pct"] or 0
-                exit_p = f"${h['exit_price']:,.4f}" if h.get("exit_price") else "?"
+                exit_p = _fmt_krw(h['exit_price'], rate) if h.get("exit_price") else "?"
                 lines.append(f"✅ <b>{h['name']}</b>\n   체결가 {exit_p}  |  수익 <b>+{ret:.1f}%</b> 🎉")
             for h in hit_stop_today:
                 ret    = h["return_pct"] or 0
-                exit_p = f"${h['exit_price']:,.4f}" if h.get("exit_price") else "?"
+                exit_p = _fmt_krw(h['exit_price'], rate) if h.get("exit_price") else "?"
                 lines.append(f"🛑 <b>{h['name']}</b>\n   체결가 {exit_p}  |  손실 {ret:.1f}%")
 
         if active_list:
@@ -395,9 +442,9 @@ def send_performance_update():
             exchange = ccxt.binance({"enableRateLimit": True})
             for h in active_list:
                 days       = (date.today() - date.fromisoformat(h["alert_date"])).days
-                entry_str  = f"${h['entry_price']:,.4f}"  if h.get("entry_price")  else "미정"
-                target_str = f"${h['target_price']:,.4f}" if h.get("target_price") else "?"
-                stop_str   = f"${h['stop_price']:,.4f}"   if h.get("stop_price")   else "?"
+                entry_str  = _fmt_krw(h['entry_price'], rate)  if h.get("entry_price")  else "미정"
+                target_str = _fmt_krw(h['target_price'], rate) if h.get("target_price") else "?"
+                stop_str   = _fmt_krw(h['stop_price'], rate)   if h.get("stop_price")   else "?"
                 cur_line = ""
                 try:
                     if h.get("entry_price"):
@@ -406,7 +453,7 @@ def send_performance_update():
                         ret = (cur - h["entry_price"]) / h["entry_price"] * 100
                         filled = min(int(abs(ret) / 2), 8)
                         bar = ("🟩" if ret >= 0 else "🟥") * filled + "⬜" * (8 - filled)
-                        cur_line = f"\n   {bar}  <b>${cur:,.4f}  ({ret:+.1f}%)</b>"
+                        cur_line = f"\n   {bar}  <b>{_fmt_krw(cur, rate)}  ({ret:+.1f}%)</b>"
                 except:
                     pass
                 lines.append(
@@ -453,15 +500,16 @@ def send_weekly_summary(force: bool = False):
         perf         = get_performance_summary()
 
         lines = [f"₿ <b>코인 주간 리포트</b>  {period}", "─" * 16]
+        rate = _get_usd_krw()
 
         if active_list:
             lines.append(f"\n🟢 <b>보유 중</b>  ({len(active_list)}종목)")
             lines.append("─" * 16)
             exchange = ccxt.binance({"enableRateLimit": True})
             for h in active_list:
-                entry_str  = f"${h['entry_price']:,.4f}"  if h.get("entry_price")  else "미정"
-                target_str = f"${h['target_price']:,.4f}" if h.get("target_price") else "?"
-                stop_str   = f"${h['stop_price']:,.4f}"   if h.get("stop_price")   else "?"
+                entry_str  = _fmt_krw(h['entry_price'], rate)  if h.get("entry_price")  else "미정"
+                target_str = _fmt_krw(h['target_price'], rate) if h.get("target_price") else "?"
+                stop_str   = _fmt_krw(h['stop_price'], rate)   if h.get("stop_price")   else "?"
                 cur_line = ""
                 try:
                     if h.get("entry_price"):
@@ -470,7 +518,7 @@ def send_weekly_summary(force: bool = False):
                         ret = (cur - h["entry_price"]) / h["entry_price"] * 100
                         filled = min(int(abs(ret) / 2), 8)
                         bar = ("🟩" if ret >= 0 else "🟥") * filled + "⬜" * (8 - filled)
-                        cur_line = f"\n   {bar}  ${cur:,.4f}  <b>({ret:+.1f}%)</b>"
+                        cur_line = f"\n   {bar}  {_fmt_krw(cur, rate)}  <b>({ret:+.1f}%)</b>"
                 except:
                     pass
                 lines.append(
