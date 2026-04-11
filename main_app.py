@@ -18,17 +18,42 @@ st.set_page_config(
 
 # ── 서비스 선택 ───────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown("""
+    _is_crypto = "코인" in st.session_state.get("service_select", "")
+    _sidebar_icon = """
+    <style>
+    @keyframes coin_spin {
+        0%   { transform: rotateY(0deg) translateY(0px); }
+        25%  { transform: rotateY(90deg) translateY(-8px); }
+        50%  { transform: rotateY(180deg) translateY(0px); }
+        75%  { transform: rotateY(270deg) translateY(-8px); }
+        100% { transform: rotateY(360deg) translateY(0px); }
+    }
+    .sb-coin-wrap { display:inline-block; animation: coin_spin 2.5s linear infinite; }
+    .sb-coin {
+        width:44px; height:44px; border-radius:50%;
+        background: radial-gradient(circle at 35% 35%, #ffe066, #f7a44f 60%, #c47a00);
+        border: 3px solid #ffd700;
+        box-shadow: 0 0 14px rgba(247,164,79,0.6), inset 0 2px 4px rgba(255,255,255,0.4);
+        display:flex; align-items:center; justify-content:center;
+        font-size:20px; font-weight:900; color:#7a4800; font-family:Arial,sans-serif;
+    }
+    </style>
+    <div style='text-align:center;padding:16px 0 8px;'>
+      <div class='sb-coin-wrap'><div class='sb-coin'>₿</div></div>
+      <div style='color:#f0f4ff;font-size:16px;font-weight:800;margin-top:6px;'>급등 예측 시스템</div>
+    </div>
+    """ if _is_crypto else """
     <div style='text-align:center;padding:16px 0 8px;'>
       <div style='font-size:32px;'>🚀</div>
       <div style='color:#f0f4ff;font-size:16px;font-weight:800;margin-top:6px;'>급등 예측 시스템</div>
     </div>
-    """, unsafe_allow_html=True)
+    """
+    st.markdown(_sidebar_icon, unsafe_allow_html=True)
     st.markdown("---")
 
     service = st.radio(
         "서비스 선택",
-        ["📈 주식 급등 예측", "🪙 코인 급등 예측"],
+        ["📈 주식 급등 예측", "₿ 코인 급등 예측"],
         key="service_select",
         label_visibility="collapsed"
     )
