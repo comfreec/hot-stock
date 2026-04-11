@@ -166,6 +166,29 @@ def metric_card(col, label, value):
         <div class="lbl">{label}</div><div class="val">{value}</div>
     </div>""", unsafe_allow_html=True)
 
+@st.cache_data(ttl=300)
+def get_usd_krw() -> float:
+    """USD/KRW 환율 조회 - 여러 소스 순차 시도"""
+    import urllib.request, json
+    try:
+        with urllib.request.urlopen("https://open.er-api.com/v6/latest/USD", timeout=5) as r:
+            return float(json.loads(r.read())["rates"]["KRW"])
+    except:
+        pass
+    try:
+        with urllib.request.urlopen("https://api.frankfurter.app/latest?from=USD&to=KRW", timeout=5) as r:
+            return float(json.loads(r.read())["rates"]["KRW"])
+    except:
+        pass
+    try:
+        import ccxt
+        upbit   = ccxt.upbit({"enableRateLimit": True})
+        binance = ccxt.binance({"enableRateLimit": True})
+        return float(upbit.fetch_ticker("BTC/KRW")["last"]) / float(binance.fetch_ticker("BTC/USDT")["last"])
+    except:
+        pass
+    return 1450.0
+
 def calc_rsi(close, period=14):
     d = close.diff()
     gain = d.where(d > 0, 0.0)
@@ -310,17 +333,17 @@ def show_price_levels(fig):
     <div style='display:flex;gap:8px;margin:-8px 0 4px;'>
       <div style='flex:1.2;background:rgba(0,255,136,0.08);border:1px solid #00ff88;border-radius:10px;padding:12px;text-align:center;'>
         <div style='color:#8b92a5;font-size:10px;letter-spacing:1px;'>🎯 목표가</div>
-        <div style='color:#00ff88;font-size:18px;font-weight:700;margin:4px 0;'>${lv["target"]:,.4f}</div>
+        <div style='color:#00ff88;font-size:18px;font-weight:700;margin:4px 0;'>{int(lv["target"] * get_usd_krw()):,}원</div>
         <div style='color:#00ff88;font-size:12px;'>+{lv["upside"]:.1f}%</div>
       </div>
       <div style='flex:1;background:rgba(255,215,0,0.08);border:1px solid #ffd700;border-radius:10px;padding:12px;text-align:center;'>
         <div style='color:#8b92a5;font-size:10px;letter-spacing:1px;'>📍 매수가</div>
-        <div style='color:#ffd700;font-size:18px;font-weight:700;margin:4px 0;'>${lv["entry"]:,.4f}</div>
+        <div style='color:#ffd700;font-size:18px;font-weight:700;margin:4px 0;'>{int(lv["entry"] * get_usd_krw()):,}원</div>
         <div style='color:#ffd700;font-size:12px;'>{lv.get("entry_label","근거가")} 기준</div>
       </div>
       <div style='flex:1;background:rgba(255,51,85,0.08);border:1px solid #ff3355;border-radius:10px;padding:12px;text-align:center;'>
         <div style='color:#8b92a5;font-size:10px;letter-spacing:1px;'>🛑 손절가</div>
-        <div style='color:#ff3355;font-size:18px;font-weight:700;margin:4px 0;'>${lv["stop"]:,.4f}</div>
+        <div style='color:#ff3355;font-size:18px;font-weight:700;margin:4px 0;'>{int(lv["stop"] * get_usd_krw()):,}원</div>
         <div style='color:#ff3355;font-size:12px;'>{lv["downside"]:.1f}%</div>
       </div>
       <div style='flex:0.8;background:rgba(255,215,0,0.08);border:1px solid {rr_color};border-radius:10px;padding:12px;text-align:center;'>
