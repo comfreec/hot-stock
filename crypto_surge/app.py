@@ -189,6 +189,14 @@ def get_usd_krw() -> float:
         pass
     return 1450.0
 
+def _krw(usd_val, rate=None):
+    """USD 값을 원화 문자열로 변환"""
+    if usd_val is None:
+        return "-"
+    if rate is None:
+        rate = get_usd_krw()
+    return f"₩{int(usd_val * rate):,}"
+
 def calc_rsi(close, period=14):
     d = close.diff()
     gain = d.where(d > 0, 0.0)
@@ -599,8 +607,8 @@ if mode == "🔍 급등 예고 코인 탐지":
             rows.append({
                 "코인명":    r["name"],
                 "심볼":      r["symbol"],
-                "현재가":    f"${r['current_price']:,.4f}",
-                "200일선":   f"${r['ma200']:,.4f}",
+                "현재가":    _krw(r['current_price']),
+                "200일선":   _krw(r['ma200']),
                 "200선이격": f"+{r['gap_pct']:.1f}%",
                 "조정기간":  f"{r['below_days']}일",
                 "돌파후":    f"{r['days_since_cross']}일",
@@ -663,12 +671,12 @@ if mode == "🔍 급등 예고 코인 탐지":
                   <span style="color:#8b92a5;font-size:13px;margin-left:8px;">{r["symbol"]}</span>
                 </div>
                 <div style="text-align:right;">
-                  <span style="color:#fff;font-size:clamp(14px,3vw,20px);font-weight:700;">${r["current_price"]:,.4f}</span>
+                  <span style="color:#fff;font-size:clamp(14px,3vw,20px);font-weight:700;">{_krw(r["current_price"])}</span>
                   <span style="color:#f7a44f;font-size:16px;margin-left:8px;">{r["total_score"]}점</span>
                 </div>
               </div>
               <div style="margin-top:6px;color:#8b92a5;font-size:12px;">
-                200일선 ${r["ma200"]:,.4f} | 이격 +{r["gap_pct"]:.1f}% |
+                200일선 {_krw(r["ma200"])} | 이격 +{r["gap_pct"]:.1f}% |
                 조정 {r["below_days"]}일 | 돌파 {r["days_since_cross"]}일 전 |
                 RSI {r["rsi"]:.1f} | <span style="color:{fr_color};">펀딩비 {fr:+.4f}%</span>
               </div>
@@ -864,7 +872,7 @@ elif mode == "🎯 최적 급등 타이밍":
                   <span style="color:#8b92a5;font-size:13px;margin-left:8px;">{r["symbol"]}</span>
                 </div>
                 <div style="text-align:right;">
-                  <span style="color:#fff;font-size:20px;font-weight:700;">${r["current_price"]:,.4f}</span>
+                  <span style="color:#fff;font-size:20px;font-weight:700;">{_krw(r["current_price"])}</span>
                   <span style="color:{color};font-size:14px;margin-left:8px;">{arrow} {abs(r["price_change_1d"]):.2f}%</span>
                 </div>
               </div>
@@ -959,7 +967,7 @@ elif mode == "📈 개별 코인 분석":
                   <span style="color:#26a69a;font-size:13px;margin-left:10px;">핵심 조건 충족</span>
                 </div>
                 <div style="text-align:right;">
-                  <span style="color:#fff;font-size:24px;font-weight:700;">${current:,.4f}</span>
+                  <span style="color:#fff;font-size:24px;font-weight:700;">{_krw(current)}</span>
                   <span style="color:{color};font-size:15px;margin-left:8px;">{arrow} {abs(chg):.2f}%</span>
                 </div>
               </div>
@@ -1006,7 +1014,7 @@ elif mode == "📈 개별 코인 분석":
                   <span style="color:#ef5350;font-size:13px;margin-left:10px;">핵심 조건 미충족</span>
                 </div>
                 <div style="text-align:right;">
-                  <span style="color:#fff;font-size:24px;font-weight:700;">${current:,.4f}</span>
+                  <span style="color:#fff;font-size:24px;font-weight:700;">{_krw(current)}</span>
                   <span style="color:{color};font-size:15px;margin-left:8px;">{arrow} {abs(chg):.2f}%</span>
                 </div>
               </div>
@@ -1017,7 +1025,7 @@ elif mode == "📈 개별 코인 분석":
                 gap = (current - ma200_now) / ma200_now * 100
                 c1, c2 = st.columns(2)
                 metric_card(c1, "현재 200선 이격", f"{gap:+.1f}%")
-                metric_card(c2, "200일선", f"${ma200_now:,.4f}")
+                metric_card(c2, "200일선", f"{_krw(ma200_now)}")
                 if gap < 0:
                     st.warning(f"📉 현재가가 200일선 아래 ({gap:.1f}%) — 아직 조정 중")
                 elif gap > max_gap:
@@ -1060,7 +1068,7 @@ elif mode == "⭐ 즐겨찾기":
                     st.markdown(f"""<div style='background:#1a1f35;border-radius:10px;padding:14px 16px;border:1px solid #2d3555;'>
                       <span style='color:#fff;font-weight:700;font-size:16px;'>{nm}</span>
                       <span style='color:#8b92a5;font-size:12px;margin-left:8px;'>{sym}</span><br>
-                      <span style='color:#fff;font-size:18px;font-weight:700;'>${cur_f:,.4f}</span>
+                      <span style='color:#fff;font-size:18px;font-weight:700;'>{_krw(cur_f)}</span>
                       <span style='color:{color_f};font-size:13px;margin-left:8px;'>{"▲" if chg_f>0 else "▼"} {abs(chg_f):.2f}%</span>
                     </div>""", unsafe_allow_html=True)
                 else:
@@ -1098,7 +1106,7 @@ elif mode == "📊 히스토리":
                 hist_df = pd.DataFrame([{
                     "코인명":    r.get("name", ""),
                     "심볼":      r.get("symbol", ""),
-                    "현재가":    f"${r.get('current_price', 0):,.4f}",
+                    "현재가":    _krw(r.get('current_price', 0)),
                     "200선이격": f"+{r.get('gap_pct', 0):.1f}%",
                     "조정기간":  f"{r.get('below_days', 0)}일",
                     "돌파후":    f"{r.get('days_since_cross', 0)}일",
@@ -1170,12 +1178,12 @@ elif mode == "📈 성과 추적":
             status_map = {"active": "🟡 보유중", "hit_target": "✅ 목표달성", "hit_stop": "❌ 손절", "expired": "⏰ 만료"}
             df_hist = pd.DataFrame([{
                 "날짜": r[0], "코인": r[2], "심볼": r[1], "점수": r[3],
-                "매수가": f"${r[4]:,.4f}" if r[4] else "-",
-                "목표가": f"${r[5]:,.4f}" if r[5] else "-",
-                "손절가": f"${r[6]:,.4f}" if r[6] else "-",
+                "매수가": _krw(r[4]) if r[4] else "-",
+                "목표가": _krw(r[5]) if r[5] else "-",
+                "손절가": _krw(r[6]) if r[6] else "-",
                 "손익비": f"{r[7]:.1f}:1" if r[7] else "-",
                 "상태": status_map.get(r[8], r[8]),
-                "청산가": f"${r[9]:,.4f}" if r[9] else "-",
+                "청산가": _krw(r[9]) if r[9] else "-",
                 "수익률": f"{r[10]:+.2f}%" if r[10] is not None else "-",
             } for r in rows])
             st.dataframe(df_hist, use_container_width=True, hide_index=True)
