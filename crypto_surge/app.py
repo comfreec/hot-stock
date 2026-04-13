@@ -209,12 +209,19 @@ def calc_rsi(close, period=14):
 # ── 시장 현황 ─────────────────────────────────────────────────────
 @st.cache_data(ttl=300)
 def get_market_overview():
+    """업비트 원화 기준 시장 현황"""
     try:
         import ccxt
-        ex = ccxt.binance({"enableRateLimit": True})
-        tickers = ex.fetch_tickers(["BTC/USDT", "ETH/USDT", "BNB/USDT", "SOL/USDT"])
-        return {sym: {"price": float(t.get("last", 0)), "change": float(t.get("percentage", 0))}
-                for sym, t in tickers.items()}
+        upbit = ccxt.upbit({"enableRateLimit": True})
+        symbols = ["BTC/KRW", "ETH/KRW", "BNB/KRW", "SOL/KRW"]
+        result = {}
+        for sym in symbols:
+            try:
+                t = upbit.fetch_ticker(sym)
+                result[sym] = {"price": float(t.get("last", 0)), "change": float(t.get("percentage", 0))}
+            except:
+                pass
+        return result
     except:
         return {}
 
@@ -406,7 +413,7 @@ st.markdown("""
 </div>""", unsafe_allow_html=True)
 
 cols_m = st.columns([1, 1, 1, 1, 2])
-market_items = [("BTC/USDT", "비트코인"), ("ETH/USDT", "이더리움"), ("BNB/USDT", "바이낸스"), ("SOL/USDT", "솔라나")]
+market_items = [("BTC/KRW", "비트코인"), ("ETH/KRW", "이더리움"), ("BNB/KRW", "바이낸스"), ("SOL/KRW", "솔라나")]
 for col, (sym, name) in zip(cols_m[:4], market_items):
     d = market.get(sym, {})
     price = d.get("price", 0)
@@ -415,7 +422,7 @@ for col, (sym, name) in zip(cols_m[:4], market_items):
     arrow = "▲" if chg >= 0 else "▼"
     col.markdown(f"""<div class='market-card'>
       <div style='color:#6b7280;font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;'>{name}</div>
-      <div style='color:#f0f4ff;font-size:18px;font-weight:800;margin:4px 0;'>${price:,.2f}</div>
+      <div style='color:#f0f4ff;font-size:18px;font-weight:800;margin:4px 0;'>₩{int(price):,}</div>
       <div style='color:{color};font-size:13px;font-weight:600;'>{arrow} {abs(chg):.2f}%</div>
     </div>""", unsafe_allow_html=True)
 
