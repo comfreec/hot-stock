@@ -58,27 +58,54 @@ def get_top_symbols(limit: int = 300) -> list:
     try:
         import ccxt
         ex = ccxt.binance({"enableRateLimit": True})
-        tickers = ex.fetch_tickers()
 
-        # USDT 마켓만 필터링 + 거래량 기준 정렬
+        # 1순위: fetch_tickers로 거래량 기준 정렬
+        try:
+            tickers = ex.fetch_tickers()
+            usdt = []
+            for sym, t in tickers.items():
+                if not sym.endswith("/USDT"):
+                    continue
+                base = sym.replace("/USDT", "")
+                if any(x in base for x in ["UP", "DOWN", "BULL", "BEAR", "3L", "3S", "2L", "2S"]):
+                    continue
+                if base in ["USDC", "BUSD", "TUSD", "USDP", "FDUSD", "DAI", "USDD",
+                            "USD1", "USDE", "PYUSD", "SUSD", "GUSD", "FRAX", "LUSD"]:
+                    continue
+                quote_vol = float(t.get("quoteVolume") or 0)
+                usdt.append((sym, quote_vol))
+
+            if len(usdt) >= 200:
+                usdt.sort(key=lambda x: x[1], reverse=True)
+                symbols = [s for s, _ in usdt[:limit]]
+                print(f"[심볼 로드] 바이낸스 거래량 상위 {len(symbols)}개")
+                return symbols
+        except:
+            pass
+
+        # 2순위: load_markets로 심볼 목록만 가져오기 (거래량 정렬 불가, 알파벳순)
+        markets = ex.load_markets()
         usdt = []
-        for sym, t in tickers.items():
+        for sym, m in markets.items():
             if not sym.endswith("/USDT"):
                 continue
-            # 레버리지 토큰 / 스테이블코인 제외
+            if m.get("type") != "spot":
+                continue
             base = sym.replace("/USDT", "")
             if any(x in base for x in ["UP", "DOWN", "BULL", "BEAR", "3L", "3S", "2L", "2S"]):
                 continue
             if base in ["USDC", "BUSD", "TUSD", "USDP", "FDUSD", "DAI", "USDD",
                         "USD1", "USDE", "PYUSD", "SUSD", "GUSD", "FRAX", "LUSD"]:
                 continue
-            quote_vol = float(t.get("quoteVolume") or 0)
-            usdt.append((sym, quote_vol))
+            usdt.append(sym)
 
-        usdt.sort(key=lambda x: x[1], reverse=True)
-        symbols = [s for s, _ in usdt[:limit]]
-        print(f"[심볼 로드] 바이낸스 거래량 상위 {len(symbols)}개")
+        # COIN_NAMES에 있는 주요 코인 우선 배치
+        priority = [s for s in usdt if s in COIN_NAMES]
+        rest = [s for s in usdt if s not in COIN_NAMES]
+        symbols = (priority + rest)[:limit]
+        print(f"[심볼 로드] 바이낸스 마켓 {len(symbols)}개 (거래량 정렬 불가)")
         return symbols
+
     except Exception as e:
         print(f"[심볼 로드 실패] {e} → 기본 목록 사용")
         return CRYPTO_SYMBOLS_FALLBACK
