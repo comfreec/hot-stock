@@ -91,11 +91,30 @@ def run_performance():
         log(f"주간 리포트 오류: {e}")
     # 코인 주간 리포트도 함께 전송
     try:
+        import sys
+        # 주식 cache_db 캐시 제거 후 코인 cache_db로 교체
+        sys.modules.pop("cache_db", None)
+        sys.modules.pop("telegram_alert", None)
+        import importlib, importlib.util, os
+        _crypto_dir = os.path.join(os.path.dirname(__file__), "crypto_surge")
+        for _mod in ["cache_db", "telegram_alert"]:
+            _spec = importlib.util.spec_from_file_location(
+                _mod, os.path.join(_crypto_dir, f"{_mod}.py")
+            )
+            _m = importlib.util.module_from_spec(_spec)
+            sys.modules[_mod] = _m
+            _spec.loader.exec_module(_m)
         from crypto_surge.telegram_alert import send_weekly_summary as crypto_weekly
         crypto_weekly(force=True)
         log("[코인] 주간 리포트 전송 완료")
     except Exception as e:
         log(f"[코인] 주간 리포트 오류: {e}")
+        import traceback; traceback.print_exc()
+    finally:
+        # 주식 cache_db/telegram_alert 복원
+        import sys
+        sys.modules.pop("cache_db", None)
+        sys.modules.pop("telegram_alert", None)
 
 
 def run_crypto_scan():
