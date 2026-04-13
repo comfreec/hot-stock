@@ -9,4 +9,4 @@ COPY . .
 
 EXPOSE 7860
 
-CMD ["streamlit", "run", "app.py", "--server.port=7860", "--server.address=0.0.0.0", "--server.headless=true", "--server.enableCORS=false"]
+CMD ["streamlit", "run", "main_app.py", "--server.port=7860", "--server.address=0.0.0.0", "--server.headless=true", "--server.enableCORS=false"]
