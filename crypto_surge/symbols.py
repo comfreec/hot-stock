@@ -154,10 +154,7 @@ def get_top_symbols(limit: int = 500) -> list:
     return list(COIN_NAMES.keys())
 
 
-# 폴백용 기본 목록 (API 실패 시) - COIN_NAMES 전체 사용
-CRYPTO_SYMBOLS_FALLBACK = list(COIN_NAMES.keys())
-
-# 모듈 로드 시 자동으로 상위 300개 가져오기
+# 모듈 로드 시 자동으로 상위 500개 가져오기
 try:
     CRYPTO_SYMBOLS = get_top_symbols(500)
     # 이름 매핑에 없는 심볼은 베이스 이름으로 추가
@@ -165,4 +162,4 @@ try:
         if sym not in COIN_NAMES:
             COIN_NAMES[sym] = sym.replace("/USDT", "")
 except Exception:
-    CRYPTO_SYMBOLS = CRYPTO_SYMBOLS_FALLBACK
+    CRYPTO_SYMBOLS = list(COIN_NAMES.keys())
