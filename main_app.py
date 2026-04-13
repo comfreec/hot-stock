@@ -102,15 +102,17 @@ def _run_app(filepath: str, extra_syspath: str = None):
 
 if service == "📈 주식 급등 예측":
     crypto_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "crypto_surge")
-    if crypto_dir in sys.path:
+    # crypto_surge 경로 완전 제거
+    while crypto_dir in sys.path:
         sys.path.remove(crypto_dir)
-    # 코인 전용 모듈 캐시 제거 (주식의 cache_db, telegram_alert가 로드되도록)
-    for mod_name in ["cache_db", "telegram_alert"]:
-        sys.modules.pop(mod_name, None)
+    # 코인 모듈 캐시 제거
+    for mod_name in list(sys.modules.keys()):
+        if "crypto_surge" in mod_name or mod_name in ("cache_db", "telegram_alert", "crypto_surge_detector"):
+            sys.modules.pop(mod_name, None)
     _run_app("app.py")
 else:
     crypto_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "crypto_surge")
-    # 주식 전용 모듈 캐시 제거 (코인의 cache_db, telegram_alert가 로드되도록)
+    # 주식 cache_db/telegram_alert 캐시만 제거 (symbols, crypto_surge_detector는 유지)
     for mod_name in ["cache_db", "telegram_alert"]:
         sys.modules.pop(mod_name, None)
     _run_app(os.path.join(crypto_dir, "app.py"), extra_syspath=crypto_dir)
