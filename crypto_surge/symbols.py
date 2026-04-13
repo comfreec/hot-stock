@@ -53,7 +53,7 @@ COIN_NAMES = {
 }
 
 
-def get_top_symbols(limit: int = 300) -> list:
+def get_top_symbols(limit: int = 500) -> list:
     """바이낸스 USDT 마켓 거래량 상위 코인 자동 로드"""
     try:
         import ccxt
@@ -116,7 +116,7 @@ CRYPTO_SYMBOLS_FALLBACK = list(COIN_NAMES.keys())
 
 # 모듈 로드 시 자동으로 상위 300개 가져오기
 try:
-    CRYPTO_SYMBOLS = get_top_symbols(300)
+    CRYPTO_SYMBOLS = get_top_symbols(500)
     # 이름 매핑에 없는 심볼은 베이스 이름으로 추가
     for sym in CRYPTO_SYMBOLS:
         if sym not in COIN_NAMES:
