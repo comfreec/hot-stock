@@ -123,7 +123,7 @@ def update_alert_status():
     """active 종목 현재가 확인 → 상태 업데이트"""
     try:
         import ccxt
-        exchange = ccxt.binance({"enableRateLimit": True})
+        exchange = ccxt.upbit({"enableRateLimit": True})
         conn = _get_conn()
         rows = conn.execute(
             "SELECT id, symbol, entry_price, target_price, stop_price, alert_date FROM alert_history WHERE status='active'"

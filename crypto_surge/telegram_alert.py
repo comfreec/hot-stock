@@ -54,53 +54,15 @@ def send_photo(image_bytes: bytes, caption: str = "") -> bool:
 
 
 def _get_usd_krw() -> float:
-    """USD/KRW 환율 조회 - 여러 소스 순차 시도"""
-    import urllib.request, json
-
-    # 1순위: exchangerate-api
-    try:
-        with urllib.request.urlopen("https://open.er-api.com/v6/latest/USD", timeout=5) as r:
-            return float(json.loads(r.read())["rates"]["KRW"])
-    except:
-        pass
-
-    # 2순위: frankfurter.app
-    try:
-        with urllib.request.urlopen("https://api.frankfurter.app/latest?from=USD&to=KRW", timeout=5) as r:
-            return float(json.loads(r.read())["rates"]["KRW"])
-    except:
-        pass
-
-    # 3순위: ccxt 업비트 BTC 원화 / 바이낸스 BTC USDT 비율
-    try:
-        import ccxt
-        upbit   = ccxt.upbit({"enableRateLimit": True})
-        binance = ccxt.binance({"enableRateLimit": True})
-        krw = float(upbit.fetch_ticker("BTC/KRW")["last"])
-        usd = float(binance.fetch_ticker("BTC/USDT")["last"])
-        return krw / usd
-    except:
-        pass
-
-    # 최후 폴백: 최근 환율 하드코딩
-    return 1450.0
+    """업비트 기반이므로 환율 변환 불필요 - 1 반환"""
+    return 1.0
 
 
-def _fmt_krw(usd: float, rate: float) -> str:
-    """USD → KRW 변환 후 포맷"""
-    krw = usd * rate
-    if krw >= 1_000_000:
-        return f"₩{krw:,.0f}"
-    elif krw >= 1000:
-        return f"₩{krw:,.0f}"
-    else:
-        return f"₩{krw:,.1f}"
-    """목표가/손절가/손익비 계산 (ATR 기반)"""
-    try:
-        from crypto_surge_detector import fetch_ohlcv
-        df = fetch_ohlcv(symbol, limit=100)
-        if df is None or len(df) < 20:
-            return {}
+def _fmt_krw(krw_val, rate=None) -> str:
+    """원화 포맷 (업비트 기준이므로 변환 없음)"""
+    if krw_val is None:
+        return "-"
+    return f"₩{int(krw_val):,}"
 
         close = df["Close"]
         high  = df["High"]
@@ -439,7 +401,7 @@ def send_performance_update():
         if active_list:
             lines.append(f"\n🟢 <b>보유 중</b>  ({len(active_list)}종목)")
             lines.append("─" * 16)
-            exchange = ccxt.binance({"enableRateLimit": True})
+            exchange = ccxt.upbit({"enableRateLimit": True})
             for h in active_list:
                 days       = (date.today() - date.fromisoformat(h["alert_date"])).days
                 entry_str  = _fmt_krw(h['entry_price'], rate)  if h.get("entry_price")  else "미정"
@@ -505,7 +467,7 @@ def send_weekly_summary(force: bool = False):
         if active_list:
             lines.append(f"\n🟢 <b>보유 중</b>  ({len(active_list)}종목)")
             lines.append("─" * 16)
-            exchange = ccxt.binance({"enableRateLimit": True})
+            exchange = ccxt.upbit({"enableRateLimit": True})
             for h in active_list:
                 entry_str  = _fmt_krw(h['entry_price'], rate)  if h.get("entry_price")  else "미정"
                 target_str = _fmt_krw(h['target_price'], rate) if h.get("target_price") else "?"

@@ -20,12 +20,12 @@ except ImportError:
 
 from symbols import CRYPTO_SYMBOLS, COIN_NAMES
 
-# 바이낸스 거래소 (공개 API, 인증 불필요)
-_exchange = ccxt.binance({"enableRateLimit": True})
+# 업비트 거래소 (공개 API, 인증 불필요)
+_exchange = ccxt.upbit({"enableRateLimit": True})
 
 
 def fetch_ohlcv(symbol: str, timeframe: str = "1d", limit: int = 300) -> pd.DataFrame | None:
-    """바이낸스에서 OHLCV 데이터 가져오기"""
+    """업비트에서 OHLCV 데이터 가져오기"""
     try:
         raw = _exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
         if not raw or len(raw) < 60:
@@ -85,14 +85,8 @@ class CryptoSurgeDetector:
         return pd.Series(obv, index=data.index)
 
     def _funding_rate_signal(self, symbol: str) -> float:
-        """펀딩비 조회 (선물 시장) - 음수면 숏 과열 → 반등 신호"""
-        try:
-            base = symbol.replace("/USDT", "")
-            perp = f"{base}/USDT:USDT"
-            fr_data = _exchange.fetch_funding_rate(perp)
-            return float(fr_data.get("fundingRate", 0)) * 100  # % 변환
-        except:
-            return 0.0
+        """펀딩비 조회 - 업비트는 현물만 지원하므로 0 반환"""
+        return 0.0
 
     # ── 핵심 분석 ────────────────────────────────────────────────
 
