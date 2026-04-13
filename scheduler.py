@@ -49,15 +49,6 @@ def run_scan():
         if results:
             send_scan_alert(results, send_charts=True)
             log(f"완료: {len(results)}개 종목 → 텔레그램 전송")
-
-            # 자동매매 (KIS_APP_KEY 환경변수 있을 때만 활성화)
-            if os.environ.get("KIS_APP_KEY"):
-                try:
-                    from auto_trader import place_orders
-                    place_orders(results)
-                    log("[자동매매] 매수 주문 완료")
-                except Exception as e:
-                    log(f"[자동매매] 오류: {e}")
         else:
             import yfinance as yf
             from datetime import date
@@ -185,18 +176,32 @@ def main():
         today   = now_kst.date().isoformat()
         is_weekday = now_kst.weekday() < 5
 
-        # 09:05 KST 자동매매 재주문 (미체결 pending 종목)
+        # 09:05 KST 자동매매 주문 (전날 스캔 결과 기반 신규 매수 + 미체결 재주문)
         if is_weekday and now_kst.hour == 9 and now_kst.minute >= 5 and last_reorder_date != today:
             if os.environ.get("KIS_APP_KEY"):
                 last_reorder_date = today
                 _save_state({"last_scan_date": last_scan_date, "last_perf_date": last_perf_date,
                              "last_crypto_hour": last_crypto_hour, "last_reorder_date": last_reorder_date})
                 try:
-                    from auto_trader import morning_reorder
+                    from auto_trader import morning_reorder, place_orders
+                    from cache_db import load_scan
+                    import pandas as _pd
+                    from datetime import timedelta as _td
+
+                    # 미체결 재주문
                     morning_reorder()
                     log("[자동매매] 재주문 완료")
+
+                    # 전날 스캔 결과로 신규 주문
+                    yesterday = (now_kst.date() - _td(days=1)).isoformat()
+                    prev_results = load_scan(yesterday)
+                    if prev_results:
+                        place_orders(prev_results)
+                        log(f"[자동매매] 전날 스캔 {len(prev_results)}개 → 신규 매수 주문")
+                    else:
+                        log("[자동매매] 전날 스캔 결과 없음")
                 except Exception as e:
-                    log(f"[자동매매] 재주문 오류: {e}")
+                    log(f"[자동매매] 오류: {e}")
 
         # 09:10 KST 주간 리포트
         if is_weekday and now_kst.hour == 9 and now_kst.minute >= 10 and last_perf_date != today:
