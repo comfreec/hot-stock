@@ -49,6 +49,15 @@ def run_scan():
         if results:
             send_scan_alert(results, send_charts=True)
             log(f"완료: {len(results)}개 종목 → 텔레그램 전송")
+
+            # 자동매매 (KIS_APP_KEY 환경변수 있을 때만 활성화)
+            if os.environ.get("KIS_APP_KEY"):
+                try:
+                    from auto_trader import place_orders
+                    place_orders(results)
+                    log("[자동매매] 매수 주문 완료")
+                except Exception as e:
+                    log(f"[자동매매] 오류: {e}")
         else:
             import yfinance as yf
             from datetime import date
@@ -168,6 +177,7 @@ def main():
     last_scan_date   = state.get("last_scan_date")
     last_perf_date   = state.get("last_perf_date")
     last_crypto_hour = state.get("last_crypto_hour", -1)
+    last_reorder_date = state.get("last_reorder_date")
 
     while True:
         now_kst = datetime.now(KST)
@@ -175,23 +185,50 @@ def main():
         today   = now_kst.date().isoformat()
         is_weekday = now_kst.weekday() < 5
 
+        # 09:05 KST 자동매매 재주문 (미체결 pending 종목)
+        if is_weekday and now_kst.hour == 9 and now_kst.minute >= 5 and last_reorder_date != today:
+            if os.environ.get("KIS_APP_KEY"):
+                last_reorder_date = today
+                _save_state({"last_scan_date": last_scan_date, "last_perf_date": last_perf_date,
+                             "last_crypto_hour": last_crypto_hour, "last_reorder_date": last_reorder_date})
+                try:
+                    from auto_trader import morning_reorder
+                    morning_reorder()
+                    log("[자동매매] 재주문 완료")
+                except Exception as e:
+                    log(f"[자동매매] 재주문 오류: {e}")
+
         # 09:10 KST 주간 리포트
         if is_weekday and now_kst.hour == 9 and now_kst.minute >= 10 and last_perf_date != today:
             last_perf_date = today
-            _save_state({"last_scan_date": last_scan_date, "last_perf_date": last_perf_date, "last_crypto_hour": last_crypto_hour})
+            _save_state({"last_scan_date": last_scan_date, "last_perf_date": last_perf_date,
+                         "last_crypto_hour": last_crypto_hour, "last_reorder_date": last_reorder_date})
             run_performance()
+
+        # 장중 모니터링 09:05~15:30 KST (자동매매 활성화 시)
+        if is_weekday and os.environ.get("KIS_APP_KEY"):
+            h, m = now_kst.hour, now_kst.minute
+            in_market = (h == 9 and m >= 5) or (10 <= h <= 14) or (h == 15 and m <= 30)
+            if in_market:
+                try:
+                    from auto_trader import monitor_positions
+                    monitor_positions()
+                except Exception as e:
+                    log(f"[자동매매] 모니터링 오류: {e}")
 
         # 15:40 KST 주식 스캔
         if is_weekday and now_kst.hour == 15 and now_kst.minute >= 40 and last_scan_date != today:
             last_scan_date = today
-            _save_state({"last_scan_date": last_scan_date, "last_perf_date": last_perf_date, "last_crypto_hour": last_crypto_hour})
+            _save_state({"last_scan_date": last_scan_date, "last_perf_date": last_perf_date,
+                         "last_crypto_hour": last_crypto_hour, "last_reorder_date": last_reorder_date})
             run_scan()
 
         # 4시간 간격 코인 스캔 (UTC 0,4,8,12,16,20시)
         utc_hour = now_utc.hour
         if utc_hour in CRYPTO_SCAN_HOURS_UTC and utc_hour != last_crypto_hour:
             last_crypto_hour = utc_hour
-            _save_state({"last_scan_date": last_scan_date, "last_perf_date": last_perf_date, "last_crypto_hour": last_crypto_hour})
+            _save_state({"last_scan_date": last_scan_date, "last_perf_date": last_perf_date,
+                         "last_crypto_hour": last_crypto_hour, "last_reorder_date": last_reorder_date})
             run_crypto_scan()
 
         time.sleep(30)
