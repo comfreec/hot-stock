@@ -29,6 +29,22 @@ def is_enabled() -> bool:
     return bool(os.environ.get("KIS_APP_KEY"))
 
 
+def _send_admin(message: str):
+    """관리자(본인)에게만 텔레그램 DM 전송"""
+    try:
+        token   = os.environ.get("TELEGRAM_TOKEN", "")
+        chat_id = os.environ.get("KIS_ADMIN_CHAT_ID", "1663019049")
+        if not token:
+            return
+        requests.post(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            json={"chat_id": chat_id, "text": message, "parse_mode": "HTML"},
+            timeout=10
+        )
+    except:
+        pass
+
+
 # ── KIS API 클라이언트 ────────────────────────────────────────────
 class KISClient:
     REAL_BASE = "https://openapi.koreainvestment.com:9443"
@@ -369,7 +385,7 @@ def place_orders(results: list):
             try:
                 from telegram_alert import send_telegram
                 mock_tag = "[모의] " if cfg["mock"] else ""
-                send_telegram(
+                _send_admin(
                     f"🤖 {mock_tag}<b>자동매수 주문</b>\n"
                     f"<b>{name}</b> ({symbol})\n"
                     f"📍 매수가: ₩{entry:,}  ×  {qty}주\n"
@@ -421,7 +437,7 @@ def morning_reorder():
             print(f"[자동매매] {order['name']} {cfg['max_days']}일 경과 → 만료")
             try:
                 from telegram_alert import send_telegram
-                send_telegram(f"⏰ <b>자동매매 만료</b>\n<b>{order['name']}</b> - {cfg['max_days']}일 미체결로 주문 취소")
+                _send_admin(f"⏰ <b>자동매매 만료</b>\n<b>{order['name']}</b> - {cfg['max_days']}일 미체결로 주문 취소")
             except:
                 pass
             continue
@@ -475,7 +491,7 @@ def monitor_positions():
                 print(f"[자동매매] {order['name']} 체결 확인 → active")
                 try:
                     from telegram_alert import send_telegram
-                    send_telegram(
+                    _send_admin(
                         f"✅ <b>매수 체결</b>\n"
                         f"<b>{order['name']}</b> ₩{order['entry_price']:,} × {order['qty']}주"
                     )
@@ -502,7 +518,7 @@ def monitor_positions():
                 print(f"[자동매매] {order['name']} 목표가 도달 → 매도 +{ret:.1f}%")
                 try:
                     from telegram_alert import send_telegram
-                    send_telegram(
+                    _send_admin(
                         f"🎯 <b>목표가 달성!</b>\n"
                         f"<b>{order['name']}</b>\n"
                         f"매수 ₩{entry:,} → 매도 ₩{target:,}\n"
@@ -523,7 +539,7 @@ def monitor_positions():
                 print(f"[자동매매] {order['name']} 손절가 도달 → 시장가 매도 {ret:.1f}%")
                 try:
                     from telegram_alert import send_telegram
-                    send_telegram(
+                    _send_admin(
                         f"🛑 <b>손절 실행</b>\n"
                         f"<b>{order['name']}</b>\n"
                         f"매수 ₩{entry:,} → 손절 ₩{cur:,.0f}\n"

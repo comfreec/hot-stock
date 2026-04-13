@@ -202,6 +202,11 @@ def main():
                         log("[자동매매] 전날 스캔 결과 없음")
                 except Exception as e:
                     log(f"[자동매매] 오류: {e}")
+                    try:
+                        from auto_trader import _send_admin
+                        _send_admin(f"⚠️ <b>자동매매 오류</b>\n{e}")
+                    except:
+                        pass
 
         # 09:10 KST 주간 리포트
         if is_weekday and now_kst.hour == 9 and now_kst.minute >= 10 and last_perf_date != today:
