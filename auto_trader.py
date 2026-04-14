@@ -320,15 +320,23 @@ def _get_trade_conn():
 
 def _get_pending_orders() -> list:
     conn = _get_trade_conn()
+    # trigger2/trigger3 컬럼 없으면 추가
+    existing_cols = [r[1] for r in conn.execute("PRAGMA table_info(trade_orders)").fetchall()]
+    for col in ["trigger2", "trigger3"]:
+        if col not in existing_cols:
+            conn.execute(f"ALTER TABLE trade_orders ADD COLUMN {col} INTEGER DEFAULT 0")
+    conn.commit()
     rows = conn.execute("""
         SELECT id, alert_date, symbol, name, entry_price, target_price, stop_price,
-               qty, order_no, status, split_step, split_qty, avg_price, base_price
+               qty, order_no, status, split_step, split_qty, avg_price, base_price,
+               trigger2, trigger3
         FROM trade_orders WHERE status IN ('pending', 'active')
         ORDER BY alert_date ASC
     """).fetchall()
     conn.close()
     keys = ["id","alert_date","symbol","name","entry_price","target_price","stop_price",
-            "qty","order_no","status","split_step","split_qty","avg_price","base_price"]
+            "qty","order_no","status","split_step","split_qty","avg_price","base_price",
+            "trigger2","trigger3"]
     return [dict(zip(keys, r)) for r in rows]
 
 
@@ -341,7 +349,36 @@ def _update_order(order_id: int, **kwargs):
     conn.close()
 
 
-def _save_order(alert_date, symbol, name, entry_price, target_price, stop_price, qty, order_no, split_step=1, base_price=0):
+def _get_ma240(symbol: str) -> float | None:
+    """yfinance로 240일선 현재값 조회"""
+    try:
+        import yfinance as yf
+        df = yf.Ticker(symbol).history(period="2y").dropna(subset=["Close"])
+        if len(df) < 240:
+            return None
+        return float(df["Close"].rolling(240).mean().iloc[-1])
+    except:
+        return None
+
+
+def _calc_split_triggers(base_price: float, ma240: float) -> tuple:
+    """
+    1차 매수가 ~ 240선 구간을 3등분한 2/3차 트리거 계산
+    base_price: 1차 매수가
+    ma240: 240일선 가격
+    returns: (trigger2, trigger3)
+    """
+    if ma240 >= base_price:
+        # 240선이 매수가보다 높으면 기존 방식(-2%, -4%) 사용
+        return base_price * 0.98, base_price * 0.96
+    gap = base_price - ma240
+    trigger2 = base_price - gap / 3
+    trigger3 = base_price - gap * 2 / 3
+    return round_to_tick(trigger2), round_to_tick(trigger3)
+
+
+def _save_order(alert_date, symbol, name, entry_price, target_price, stop_price, qty, order_no,
+                split_step=1, base_price=0, trigger2=0, trigger3=0):
     conn = _get_trade_conn()
     existing = conn.execute(
         "SELECT id FROM trade_orders WHERE symbol=? AND status IN ('pending','active')", (symbol,)
@@ -349,14 +386,20 @@ def _save_order(alert_date, symbol, name, entry_price, target_price, stop_price,
     if existing:
         conn.close()
         return
+    # trigger2/trigger3 컬럼 마이그레이션
+    existing_cols = [r[1] for r in conn.execute("PRAGMA table_info(trade_orders)").fetchall()]
+    for col in ["trigger2", "trigger3"]:
+        if col not in existing_cols:
+            conn.execute(f"ALTER TABLE trade_orders ADD COLUMN {col} INTEGER DEFAULT 0")
+    conn.commit()
     conn.execute("""
         INSERT INTO trade_orders
         (alert_date, symbol, name, entry_price, target_price, stop_price, qty, order_no, status,
-         split_step, split_qty, avg_price, base_price, created_at)
-        VALUES (?,?,?,?,?,?,?,?,'pending',?,?,?,?,?)
+         split_step, split_qty, avg_price, base_price, trigger2, trigger3, created_at)
+        VALUES (?,?,?,?,?,?,?,?,'pending',?,?,?,?,?,?,?)
     """, (alert_date, symbol, name, entry_price, target_price, stop_price, qty, order_no,
           split_step, qty, float(entry_price), base_price or entry_price,
-          datetime.now().isoformat()))
+          int(trigger2), int(trigger3), datetime.now().isoformat()))
     conn.commit()
     conn.close()
 
@@ -459,9 +502,11 @@ def place_orders(results: list):
         result = client.buy_order(symbol, entry, qty, market=True)  # 1차는 시장가
         if result["success"]:
             order_no = result.get("order_no", "")
-            total_qty = max(1, int(budget / entry) // 3) * 3  # 전체 목표 수량
+            # 240선 조회해서 분할매수 트리거 계산
+            ma240 = _get_ma240(symbol)
+            t2, t3 = _calc_split_triggers(entry, ma240) if ma240 else (int(entry * 0.98), int(entry * 0.96))
             _save_order(today, symbol, name, entry, target, stop, qty, order_no,
-                       split_step=1, base_price=entry)
+                       split_step=1, base_price=entry, trigger2=t2, trigger3=t3)
             cash -= actual_cost
             ordered += 1
 
@@ -594,12 +639,14 @@ def monitor_positions():
         split_step = order.get("split_step", 1)
         base_price = order.get("base_price", entry) or entry
         avg_price  = order.get("avg_price", entry) or entry
+        trigger2   = order.get("trigger2") or int(base_price * 0.98)
+        trigger3   = order.get("trigger3") or int(base_price * 0.96)
 
         # ── 분할매수 2/3차 트리거 ──────────────────────────────────
         cfg = _cfg()
         split_budget = cfg["budget_per"] // 3
 
-        if split_step == 1 and cur <= base_price * 0.98:
+        if split_step == 1 and cur <= trigger2:
             add_qty = max(1, int(split_budget / cur))
             result  = client.buy_order(order["symbol"], int(cur), add_qty, market=True)
             if result["success"]:
@@ -612,7 +659,7 @@ def monitor_positions():
                 _send_admin(f"📥 <b>2차 분할매수</b>\n<b>{order['name']}</b> ₩{cur:,.0f} × {add_qty}주\n평균단가 ₩{new_avg:,.0f} | 손절 ₩{stop:,}")
             continue  # 분할매수 후 이번 루프는 매도 체크 스킵
 
-        elif split_step == 2 and cur <= base_price * 0.96:
+        elif split_step == 2 and cur <= trigger3:
             add_qty = max(1, int(split_budget / cur))
             result  = client.buy_order(order["symbol"], int(cur), add_qty, market=True)
             if result["success"]:

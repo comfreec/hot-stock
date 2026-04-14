@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
 <title>스윙 레이더 | 돌파 준비 종목 자동 탐지</title>
 <meta name="description" content="240일선 돌파 후 눌림목 구간 종목을 매일 자동으로 탐지. 분할 매수 타이밍과 목표가·손절가를 텔레그램으로 자동 발송.">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet">
@@ -132,7 +132,14 @@ footer p{color:var(--muted);font-size:13px;line-height:1.8}
 .fade-up.visible{opacity:1;transform:translateY(0)}
 @media(max-width:900px){.steps,.pg,.tg2{grid-template-columns:1fr}.pw{grid-template-columns:1fr}.stats-grid{grid-template-columns:repeat(2,1fr)}.sg{grid-template-columns:repeat(2,1fr)}}
 .pricing-grid{grid-template-columns:1fr 1fr!important}
-@media(max-width:600px){.pricing-grid{grid-template-columns:1fr!important}}
+@media(max-width:900px){.pricing-grid{grid-template-columns:1fr!important}}
+@media(max-width:900px){
+  .pricing-scroll-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:16px;}
+  .pricing-scroll-wrap::-webkit-scrollbar{height:4px;}
+  .pricing-scroll-wrap::-webkit-scrollbar-thumb{background:#2d3555;border-radius:2px;}
+  .pricing-grid-inner{display:flex!important;gap:16px;width:max-content;padding:0 16px;}
+  .pricing-grid-inner .pc{width:280px;flex-shrink:0;}
+}
 @media(max-width:480px){.stats-grid{grid-template-columns:1fr}.stat-item::after{display:none!important}.btns{flex-direction:column;align-items:center}.btn-p,.btn-s{width:100%;max-width:300px;text-align:center}}
 </style>
 
@@ -310,7 +317,10 @@ footer p{color:var(--muted);font-size:13px;line-height:1.8}
     <h2>지금 바로 시작하세요</h2>
     <p class="sdesc" style="margin:0 auto 8px;">창립 멤버 한정 — 정식 출시 전까지 <b style="color:#00d4aa;">무료</b>로 이용하실 수 있습니다.</p>
     <p class="sdesc" style="margin:0 auto;font-size:14px;color:#6b7280;">정식 출시 시 창립 멤버 특별 할인 혜택이 제공됩니다.</p>
-    <div class="pg pricing-grid" style="max-width:800px;margin:48px auto 0;">
+    <div class="pricing-scroll-wrap">
+    <div class="pg pricing-grid pricing-grid-inner" style="max-width:1100px;margin:48px auto 0;grid-template-columns:1fr 1fr 1fr!important;">
+
+      <!-- 창립 멤버 -->
       <div class="pc feat fade-up" style="position:relative;">
         <div style="position:absolute;top:-14px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#00d4aa,#4f8ef7);color:#fff;font-size:12px;font-weight:700;padding:4px 16px;border-radius:20px;white-space:nowrap;">🎉 창립 멤버 무료</div>
         <div class="pn">Founding Member</div>
@@ -327,22 +337,42 @@ footer p{color:var(--muted);font-size:13px;line-height:1.8}
         </ul>
         <button class="pb fi" onclick="window.location.href='https://docs.google.com/forms/d/e/1FAIpQLSfWVCnO4ENTKZC4parrZM6JcJ2by2LijfaapVv7jsKYW7-5MA/viewform'">창립 멤버 신청 →</button>
       </div>
+
+      <!-- 스탠다드 -->
       <div class="pc fade-up">
-        <div class="pn">정식 출시 예정</div>
-        <div class="pp">₩30,000<span>/월</span></div>
-        <div class="pper">창립 멤버는 특별 할인 적용</div>
+        <div class="pn">Standard</div>
+        <div class="pp">₩29,000<span>/월</span></div>
         <ul class="pf">
           <li>Founding Member 전체 포함</li>
+          <li>주식 · 코인 급등 탐지</li>
           <li>주간 성과 요약 리포트</li>
           <li>섹터 분석 리포트</li>
-          <li>우선 고객 지원</li>
-          <li>신규 기능 우선 제공</li>
           <li>백테스트 결과 열람</li>
           <li>개별 종목 심층 분석</li>
+          <li>우선 고객 지원</li>
         </ul>
         <button class="pb ol" style="opacity:.5;cursor:default;">출시 예정</button>
       </div>
-    </div>
+
+      <!-- 프로 (자동매매) -->
+      <div class="pc fade-up" style="position:relative;border-color:rgba(247,164,79,0.5);">
+        <div style="position:absolute;top:-14px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#f7a44f,#ffd700);color:#000;font-size:12px;font-weight:700;padding:4px 16px;border-radius:20px;white-space:nowrap;">🤖 자동매매 포함</div>
+        <div class="pn">Pro</div>
+        <div class="pp" style="color:#f7a44f;">₩59,000<span>/월</span></div>
+        <ul class="pf">
+          <li>Standard 전체 포함</li>
+          <li>🤖 KIS API 자동매매 연동</li>
+          <li>분할매수 자동 실행 (3차)</li>
+          <li>목표가 · 손절가 자동 매도</li>
+          <li>자동매매 전용 리포트</li>
+          <li>실시간 포트폴리오 현황</li>
+          <li>신규 기능 우선 제공</li>
+        </ul>
+        <button class="pb ol" style="opacity:.5;cursor:default;background:linear-gradient(135deg,rgba(247,164,79,0.2),rgba(255,215,0,0.1));border-color:rgba(247,164,79,0.4);">출시 예정</button>
+      </div>
+
+    </div><!-- pricing-grid -->
+    </div><!-- pricing-scroll-wrap -->
   </div>
 </section>
 
@@ -434,10 +464,14 @@ function openImgModal(src) {
   document.getElementById('imgModalSrc').src = src;
   document.getElementById('imgModal').classList.add('active');
   document.body.style.overflow = 'hidden';
+  document.querySelector('meta[name="viewport"]').setAttribute('content',
+    'width=device-width,initial-scale=1.0,maximum-scale=5.0,user-scalable=yes');
 }
 function closeImgModal() {
   document.getElementById('imgModal').classList.remove('active');
   document.body.style.overflow = '';
+  document.querySelector('meta[name="viewport"]').setAttribute('content',
+    'width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no');
 }
 document.addEventListener('keydown', e => {
   if(e.key === 'Escape') { closeModal(); closeImgModal(); }
