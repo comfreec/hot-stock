@@ -60,7 +60,7 @@ if not st.session_state["authenticated"]:
     }
     .radar-icon { font-size:44px;z-index:1;position:relative; }
     </style>
-    <div class='login-box' style='max-width:420px;margin:80px auto;'>
+    <div class='login-box' style='max-width:420px;margin:30px auto;'>
       <div style='background:linear-gradient(135deg,#1a1f35,#0e1117);
            padding:48px 40px;border-radius:20px;border:1px solid #2d3555;
            box-shadow:0 20px 60px rgba(0,0,0,0.5);text-align:center;'>

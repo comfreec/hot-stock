@@ -97,12 +97,30 @@ with st.sidebar:
         if st.button("📡", key="btn_stock", use_container_width=True,
                      type="primary" if is_stock else "secondary"):
             st.session_state["service_select"] = "📡 주식"
+            st.session_state["close_sidebar"] = True
             st.rerun()
     with col_c:
         if st.button("₿", key="btn_coin", use_container_width=True,
                      type="primary" if not is_stock else "secondary"):
             st.session_state["service_select"] = "₿ 코인"
+            st.session_state["close_sidebar"] = True
             st.rerun()
+
+    if st.session_state.pop("close_sidebar", False):
+        st.markdown("""<script>
+        setTimeout(function() {
+            var btns = window.parent.document.querySelectorAll('button');
+            for(var b of btns) {
+                if(b.getAttribute('data-testid') === 'stSidebarCollapseButton' ||
+                   b.closest('[data-testid="stSidebarCollapseButton"]')) {
+                    b.click(); break;
+                }
+            }
+            // fallback: aria-label로 찾기
+            var close = window.parent.document.querySelector('button[aria-label="Close sidebar"]');
+            if(close) close.click();
+        }, 100);
+        </script>""", unsafe_allow_html=True)
 
     st.markdown("---")
 
