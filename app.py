@@ -43,7 +43,7 @@ if not st.session_state["authenticated"]:
     }
     .login-box { animation: fadein 0.6s ease; }
     .radar-wrap {
-        width:72px;height:72px;border-radius:50%;
+        width:96px;height:96px;border-radius:50%;
         background:linear-gradient(135deg,#0d1528,#1a2540);
         border:2px solid #4f8ef7;
         display:flex;align-items:center;justify-content:center;
@@ -58,7 +58,7 @@ if not st.session_state["authenticated"]:
         animation:radar_spin 2s linear infinite;
         border-radius:100% 0 0 0;
     }
-    .radar-icon { font-size:28px;z-index:1;position:relative; }
+    .radar-icon { font-size:44px;z-index:1;position:relative; }
     </style>
     <div class='login-box' style='max-width:420px;margin:80px auto;'>
       <div style='background:linear-gradient(135deg,#1a1f35,#0e1117);
@@ -68,8 +68,28 @@ if not st.session_state["authenticated"]:
           <div class='radar-sweep'></div>
           <div class='radar-icon'>📡</div>
         </div>
-        <h2 style='color:#fff;margin:8px 0 4px;font-size:26px;font-weight:800;letter-spacing:-0.5px;'>스윙 레이더</h2>
-        <p style='color:#00d4aa;font-size:13px;margin:0 0 4px;font-weight:700;letter-spacing:4px;'>J.A.R.V.I.S.</p>
+        <div style='
+            display:inline-block;
+            padding:8px 20px;
+            border-radius:10px;
+            background:linear-gradient(135deg,rgba(79,142,247,0.12),rgba(0,212,170,0.12));
+            border:none;
+            box-shadow:0 0 24px rgba(0,212,170,0.25), 0 0 48px rgba(79,142,247,0.15);
+            margin:8px auto 2px;
+            text-align:center;
+        '>
+          <h2 style='
+              margin:0;
+              font-size:32px;
+              font-weight:900;
+              letter-spacing:8px;
+              background:linear-gradient(90deg,#4f8ef7 0%,#00d4aa 50%,#4f8ef7 100%);
+              -webkit-background-clip:text;
+              -webkit-text-fill-color:transparent;
+              background-clip:text;
+          '>J.A.R.V.I.S.</h2>
+        </div>
+        <p style='color:#6b7280;font-size:11px;margin:4px 0 4px;font-weight:500;letter-spacing:5px;text-transform:uppercase;'>SWING RADAR</p>
         <p style='color:#4f8ef7;font-size:11px;margin:0 0 28px;font-weight:500;letter-spacing:2px;'>SWING RADAR SYSTEM</p>
         <div style='width:40px;height:2px;background:linear-gradient(90deg,#4f8ef7,#00d4aa);margin:0 auto 28px;border-radius:2px;'></div>
         <p style='color:#8b92a5;font-size:13px;margin:0 0 24px;'>허가된 사용자만 접근 가능합니다</p>
