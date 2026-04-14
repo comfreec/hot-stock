@@ -705,8 +705,27 @@ def send_performance_update():
                     if h.get("entry_price"):
                         cur = float(yf.Ticker(h["symbol"]).history(period="1d")["Close"].iloc[-1])
                         ret = (cur - h["entry_price"]) / h["entry_price"] * 100
-                        bar_filled = min(int(abs(ret) / 2), 8)
-                        bar = ("🟩" if ret >= 0 else "🟥") * bar_filled + "⬜" * (8 - bar_filled)
+                        # 게이지: 손절가~목표가 범위에서 현재가 위치 비율
+                        entry  = h["entry_price"]
+                        target = h.get("target_price")
+                        stop   = h.get("stop_price")
+                        entry  = h["entry_price"]
+                        if target and stop:
+                            if ret >= 0 and target > entry:
+                                # 매수가→목표가 진행률
+                                ratio = min((cur - entry) / (target - entry), 1.0)
+                                bar_filled = round(ratio * 8)
+                                bar = "🟩" * bar_filled + "⬜" * (8 - bar_filled)
+                            elif ret < 0 and stop < entry:
+                                # 매수가→손절가 진행률 (반대 방향)
+                                ratio = min((entry - cur) / (entry - stop), 1.0)
+                                bar_filled = round(ratio * 8)
+                                bar = "🟥" * bar_filled + "⬜" * (8 - bar_filled)
+                            else:
+                                bar = "⬜" * 8
+                        else:
+                            bar_filled = min(int(abs(ret) / 2), 8)
+                            bar = ("🟩" if ret >= 0 else "🟥") * bar_filled + "⬜" * (8 - bar_filled)
                         cur_line = f"\n   {bar}  <b>₩{cur:,.0f}  ({ret:+.1f}%)</b>"
                 except:
                     pass
@@ -793,8 +812,23 @@ def send_weekly_summary(force: bool = False):
                             raise ValueError("no data")
                         cur = float(df_cur["Close"].iloc[-1])
                         ret = (cur - h["entry_price"]) / h["entry_price"] * 100
-                        filled = min(int(abs(ret) / 2), 8)
-                        bar = ("🟩" if ret >= 0 else "🟥") * filled + "⬜" * (8 - filled)
+                        target = h.get("target_price")
+                        stop   = h.get("stop_price")
+                        entry_p = h["entry_price"]
+                        if target and stop:
+                            if ret >= 0 and target > entry_p:
+                                ratio = min((cur - entry_p) / (target - entry_p), 1.0)
+                                filled = round(ratio * 8)
+                                bar = "🟩" * filled + "⬜" * (8 - filled)
+                            elif ret < 0 and stop < entry_p:
+                                ratio = min((entry_p - cur) / (entry_p - stop), 1.0)
+                                filled = round(ratio * 8)
+                                bar = "🟥" * filled + "⬜" * (8 - filled)
+                            else:
+                                bar = "⬜" * 8
+                        else:
+                            filled = min(int(abs(ret) / 2), 8)
+                            bar = ("🟩" if ret >= 0 else "🟥") * filled + "⬜" * (8 - filled)
                         cur_line = f"\n   {bar}  ₩{cur:,.0f}  <b>({ret:+.1f}%)</b>"
                 except:
                     pass

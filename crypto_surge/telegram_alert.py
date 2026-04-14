@@ -64,6 +64,35 @@ def _fmt_krw(krw_val, rate=None) -> str:
         return "-"
     return f"₩{int(krw_val):,}"
 
+
+def _import_fetch_ohlcv():
+    """crypto_surge_detector의 fetch_ohlcv를 경로 무관하게 import"""
+    try:
+        from crypto_surge.crypto_surge_detector import fetch_ohlcv
+        return fetch_ohlcv
+    except ImportError:
+        from crypto_surge_detector import fetch_ohlcv
+        return fetch_ohlcv
+
+
+def _import_cache_db():
+    """cache_db를 경로 무관하게 import"""
+    try:
+        import crypto_surge.cache_db as m
+        return m
+    except ImportError:
+        import cache_db as m
+        return m
+
+
+def calc_price_levels(symbol: str, current: float) -> dict:
+    """코인 목표가/손절가/손익비 계산"""
+    try:
+        fetch_ohlcv = _import_fetch_ohlcv()
+        df = fetch_ohlcv(symbol, limit=120)
+        if df is None or len(df) < 20:
+            return {}
+
         close = df["Close"]
         high  = df["High"]
         low   = df["Low"]
@@ -125,7 +154,7 @@ def make_chart_image(symbol: str, name: str, price_levels: dict = None, rate: fl
     if rate is None:
         rate = _get_usd_krw()
     try:
-        from crypto_surge_detector import fetch_ohlcv
+        fetch_ohlcv = _import_fetch_ohlcv()
         import matplotlib
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
@@ -281,8 +310,8 @@ def send_scan_alert(results: list, send_charts: bool = True):
         lv = calc_price_levels(r["symbol"], r["current_price"])
         already_tracking = False
         try:
-            from cache_db import _get_conn as _db_conn
-            _conn = _db_conn()
+            _db = _import_cache_db()
+            _conn = _db._get_conn()
             _row = _conn.execute(
                 "SELECT entry_price, target_price, stop_price, rr_ratio FROM alert_history "
                 "WHERE symbol=? AND status='active' ORDER BY id DESC LIMIT 1",
@@ -357,8 +386,8 @@ def send_scan_alert(results: list, send_charts: bool = True):
 
     # 성과 추적 DB 저장
     try:
-        from cache_db import save_alert_history
-        save_alert_history(results, price_levels_map)
+        _db = _import_cache_db()
+        _db.save_alert_history(results, price_levels_map)
         print(f"[코인 성과추적] {len(results)}개 저장 완료")
     except Exception as e:
         print(f"[코인 성과추적] 저장 오류: {e}")
@@ -368,13 +397,12 @@ def send_performance_update():
     """성과 업데이트 알림 - 주식 버전과 동일한 형식"""
     try:
         import ccxt
-        from cache_db import update_alert_status, get_alert_history, get_performance_summary
-
-        update_alert_status()
+        _db = _import_cache_db()
+        _db.update_alert_status()
 
         today     = date.today().isoformat()
         today_fmt = date.today().strftime("%Y.%m.%d")
-        history   = get_alert_history(200)
+        history   = _db.get_alert_history(200)
 
         hit_target_today = [h for h in history if h["status"] == "hit_target" and h.get("exit_date") == today]
         hit_stop_today   = [h for h in history if h["status"] == "hit_stop"   and h.get("exit_date") == today]
@@ -413,8 +441,23 @@ def send_performance_update():
                         ticker = exchange.fetch_ticker(h["symbol"])
                         cur = float(ticker["last"])
                         ret = (cur - h["entry_price"]) / h["entry_price"] * 100
-                        filled = min(int(abs(ret) / 2), 8)
-                        bar = ("🟩" if ret >= 0 else "🟥") * filled + "⬜" * (8 - filled)
+                        target = h.get("target_price")
+                        stop   = h.get("stop_price")
+                        entry_p = h["entry_price"]
+                        if target and stop:
+                            if ret >= 0 and target > entry_p:
+                                ratio = min((cur - entry_p) / (target - entry_p), 1.0)
+                                filled = round(ratio * 8)
+                                bar = "🟩" * filled + "⬜" * (8 - filled)
+                            elif ret < 0 and stop < entry_p:
+                                ratio = min((entry_p - cur) / (entry_p - stop), 1.0)
+                                filled = round(ratio * 8)
+                                bar = "🟥" * filled + "⬜" * (8 - filled)
+                            else:
+                                bar = "⬜" * 8
+                        else:
+                            filled = min(int(abs(ret) / 2), 8)
+                            bar = ("🟩" if ret >= 0 else "🟥") * filled + "⬜" * (8 - filled)
                         cur_line = f"\n   {bar}  <b>{_fmt_krw(cur, rate)}  ({ret:+.1f}%)</b>"
                 except:
                     pass
@@ -423,7 +466,7 @@ def send_performance_update():
                     f"   📍{entry_str} 🎯{target_str} 🛑{stop_str}" + cur_line
                 )
 
-        perf = get_performance_summary()
+        perf = _db.get_performance_summary()
         if perf["total"] > 0:
             lines.append("\n📊 <b>누적 성과</b>")
             lines.append("─" * 16)
@@ -446,20 +489,20 @@ def send_weekly_summary(force: bool = False):
     """주간 성과 요약 - 주식 버전과 동일한 형식"""
     try:
         import ccxt
-        from cache_db import get_performance_summary, get_alert_history, update_alert_status, get_recent_closed
+        _db = _import_cache_db()
 
         if not force and datetime.now().weekday() != 4:
             return
 
-        update_alert_status()
+        _db.update_alert_status()
 
         today      = date.today()
         week_start = today - timedelta(days=today.weekday())
         period     = f"{week_start.strftime('%m/%d')} ~ {today.strftime('%m/%d')}"
 
-        history      = get_alert_history(200)
+        history      = _db.get_alert_history(200)
         active_list  = [h for h in history if h["status"] == "active"]
-        perf         = get_performance_summary()
+        perf         = _db.get_performance_summary()
 
         lines = [f"₿ <b>코인 주간 리포트</b>  {period}", "─" * 16]
         rate = _get_usd_krw()
@@ -478,7 +521,23 @@ def send_weekly_summary(force: bool = False):
                         ticker = exchange.fetch_ticker(h["symbol"])
                         cur = float(ticker["last"])
                         ret = (cur - h["entry_price"]) / h["entry_price"] * 100
-                        filled = min(int(abs(ret) / 2), 8)
+                        target = h.get("target_price")
+                        stop   = h.get("stop_price")
+                        entry_p = h["entry_price"]
+                        if target and stop:
+                            if ret >= 0 and target > entry_p:
+                                ratio = min((cur - entry_p) / (target - entry_p), 1.0)
+                                filled = round(ratio * 8)
+                                bar = "🟩" * filled + "⬜" * (8 - filled)
+                            elif ret < 0 and stop < entry_p:
+                                ratio = min((entry_p - cur) / (entry_p - stop), 1.0)
+                                filled = round(ratio * 8)
+                                bar = "🟥" * filled + "⬜" * (8 - filled)
+                            else:
+                                bar = "⬜" * 8
+                        else:
+                            filled = min(int(abs(ret) / 2), 8)
+                            bar = ("🟩" if ret >= 0 else "🟥") * filled + "⬜" * (8 - filled)
                         bar = ("🟩" if ret >= 0 else "🟥") * filled + "⬜" * (8 - filled)
                         cur_line = f"\n   {bar}  {_fmt_krw(cur, rate)}  <b>({ret:+.1f}%)</b>"
                 except:
@@ -506,7 +565,7 @@ def send_weekly_summary(force: bool = False):
         else:
             lines.append("  아직 청산 데이터 없음")
 
-        recent = get_recent_closed(5)
+        recent = _db.get_recent_closed(5)
         if recent:
             lines.append(f"\n📋 <b>최근 청산 내역</b>")
             lines.append("─" * 16)

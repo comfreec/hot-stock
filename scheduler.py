@@ -200,7 +200,7 @@ def main():
         # 장중 모니터링 09:05~15:30 KST (자동매매 활성화 시)
         if is_weekday and os.environ.get("KIS_APP_KEY"):
             h, m = now_kst.hour, now_kst.minute
-            in_market = (h == 9 and m >= 5) or (10 <= h <= 14) or (h == 15 and m <= 30)
+            in_market = (h == 9 and m >= 5) or (10 <= h <= 14) or (h == 15 and m <= 20)
             if in_market:
                 try:
                     from auto_trader import monitor_positions

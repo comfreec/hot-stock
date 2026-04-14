@@ -77,11 +77,10 @@ with st.sidebar:
 
     st.markdown("""<style>
     div[data-testid="stRadio"] { display:none !important; }
-    section[data-testid="stSidebar"] div[data-testid="stButton"] button p {
-        font-size: 36px !important;
-        line-height: 1.2 !important;
+    section[data-testid="stSidebar"] div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] button p {
+        font-size: 36px !important; line-height:1.4 !important;
     }
-    section[data-testid="stSidebar"] div[data-testid="stButton"] button {
+    section[data-testid="stSidebar"] div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] button {
         padding: 12px 0 !important;
     }
     </style>""", unsafe_allow_html=True)

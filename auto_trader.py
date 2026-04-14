@@ -508,7 +508,7 @@ def monitor_positions():
 
         # 목표가 도달
         if cur >= target:
-            result = client.sell_order(symbol, target, qty)
+            result = client.sell_order(symbol, target, qty, market=True)  # 목표가도 시장가
             if result["success"]:
                 ret = (target - entry) / entry * 100
                 _update_order(order["id"],
