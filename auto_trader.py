@@ -47,14 +47,17 @@ def _send_admin(message: str):
         token   = os.environ.get("TELEGRAM_TOKEN", "")
         chat_id = os.environ.get("KIS_ADMIN_CHAT_ID", "1663019049")
         if not token:
+            print("[자동매매] TELEGRAM_TOKEN 없음 - 알림 스킵")
             return
-        requests.post(
+        resp = requests.post(
             f"https://api.telegram.org/bot{token}/sendMessage",
             json={"chat_id": chat_id, "text": message, "parse_mode": "HTML"},
             timeout=10
         )
-    except:
-        pass
+        if not resp.ok:
+            print(f"[자동매매] 텔레그램 전송 실패: {resp.status_code} {resp.text[:100]}")
+    except Exception as e:
+        print(f"[자동매매] 텔레그램 오류: {e}")
 
 
 # ── KIS API 클라이언트 ────────────────────────────────────────────
@@ -415,15 +418,16 @@ def place_orders(results: list):
             print(f"[자동매매] {name} 이미 대기 주문 있음 - 스킵")
             continue
 
-        # 가격 레벨
+        # 가격 레벨 - alert_history에서 조회 (전날 스캔 기준)
         from cache_db import _get_conn as _db_conn
         lv = {}
         try:
             _conn = _db_conn()
+            # 오늘 또는 어제 날짜로 조회 (스캔 날짜 기준)
             _row = _conn.execute(
                 "SELECT entry_price, target_price, stop_price FROM alert_history "
-                "WHERE symbol=? AND alert_date=? ORDER BY id DESC LIMIT 1",
-                (symbol, today)
+                "WHERE symbol=? ORDER BY id DESC LIMIT 1",
+                (symbol,)
             ).fetchone()
             _conn.close()
             if _row:
@@ -545,13 +549,13 @@ def morning_reorder():
             # 미체결이면 취소 후 재주문
             client.cancel_order(order["order_no"], order["symbol"], order["qty"])
 
-        result = client.buy_order(order["symbol"], order["entry_price"], order["qty"])
+        result = client.buy_order(order["symbol"], order["entry_price"], order["qty"], market=True)
         if result["success"]:
             _update_order(order["id"],
                 alert_date=today,
                 order_no=result.get("order_no", ""),
             )
-            print(f"[자동매매] {order['name']} 재주문 완료 @{order['entry_price']:,}원")
+            print(f"[자동매매] {order['name']} 재주문 완료 (시장가)")
         else:
             print(f"[자동매매] {order['name']} 재주문 실패")
 
@@ -578,17 +582,8 @@ def monitor_positions():
         if cur is None:
             continue
 
-        # pending → active 전환 (1차 매수 시장가라 바로 active로)
-        if order["status"] == "pending":
-            if cur <= order["entry_price"] * 1.02:  # 시장가라 약간 여유
-                _update_order(order["id"], status="active")
-                order["status"] = "active"
-                print(f"[자동매매] {order['name']} 체결 확인 → active")
-                _send_admin(
-                    f"✅ <b>1차 매수 체결</b>\n"
-                    f"<b>{order['name']}</b> ₩{order['entry_price']:,} × {order['qty']}주"
-                )
-
+        # pending 종목은 morning_reorder()에서 체결 확인 처리
+        # monitor_positions()에서는 active 종목만 처리
         if order["status"] != "active":
             continue
 
