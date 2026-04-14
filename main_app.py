@@ -5,7 +5,7 @@
 import streamlit as st
 
 # 서비스 선택값을 먼저 읽어서 아이콘 결정
-_service_init = st.session_state.get("service_select", "📈 주식 급등 예측")
+_service_init = st.session_state.get("service_select", "📡 주식")
 _icon = "🚀"
 _title = "코인 급등 예측" if "코인" in _service_init else "주식 급등 예측"
 
@@ -30,33 +30,80 @@ with st.sidebar:
     }
     .sb-coin-wrap { display:inline-block; animation: coin_spin 2.5s linear infinite; }
     .sb-coin {
-        width:44px; height:44px; border-radius:50%;
+        width:96px; height:96px; border-radius:50%;
         background: radial-gradient(circle at 35% 35%, #ffe066, #f7a44f 60%, #c47a00);
         border: 3px solid #ffd700;
-        box-shadow: 0 0 14px rgba(247,164,79,0.6), inset 0 2px 4px rgba(255,255,255,0.4);
+        box-shadow: 0 0 18px rgba(247,164,79,0.7);
         display:flex; align-items:center; justify-content:center;
-        font-size:20px; font-weight:900; color:#7a4800; font-family:Arial,sans-serif;
+        font-size:44px; font-weight:900; color:#7a4800; font-family:Arial,sans-serif;
     }
     </style>
     <div style='text-align:center;padding:16px 0 8px;'>
       <div class='sb-coin-wrap'><div class='sb-coin'>₿</div></div>
-      <div style='color:#f0f4ff;font-size:16px;font-weight:800;margin-top:6px;'>급등 예측 시스템</div>
     </div>
     """ if _is_crypto else """
+    <style>
+    @keyframes radar_spin2 { 0%{transform:rotate(0deg)} 100%{transform:rotate(360deg)} }
+    @keyframes radar_pulse2 {
+        0%,100%{box-shadow:0 0 0 0 rgba(0,212,170,0.4),0 0 16px rgba(79,142,247,0.3);}
+        50%{box-shadow:0 0 0 10px rgba(0,212,170,0),0 0 32px rgba(79,142,247,0.6);}
+    }
+    .sb-radar-wrap {
+        width:96px;height:96px;border-radius:50%;
+        background:linear-gradient(135deg,#0d1528,#1a2540);
+        border:2px solid #4f8ef7;
+        display:flex;align-items:center;justify-content:center;
+        margin:0 auto;position:relative;overflow:hidden;
+        animation:radar_pulse2 2s ease-in-out infinite;
+    }
+    .sb-radar-sweep {
+        position:absolute;width:50%;height:50%;top:0;left:50%;
+        transform-origin:bottom left;
+        background:linear-gradient(135deg,rgba(0,212,170,0.6),transparent);
+        animation:radar_spin2 2s linear infinite;
+        border-radius:100% 0 0 0;
+    }
+    .sb-radar-icon{font-size:44px;z-index:1;position:relative;}
+    </style>
     <div style='text-align:center;padding:16px 0 8px;'>
-      <div style='font-size:32px;'>🚀</div>
-      <div style='color:#f0f4ff;font-size:16px;font-weight:800;margin-top:6px;'>급등 예측 시스템</div>
+      <div class='sb-radar-wrap'>
+        <div class='sb-radar-sweep'></div>
+        <div class='sb-radar-icon'>📡</div>
+      </div>
     </div>
     """
     st.markdown(_sidebar_icon, unsafe_allow_html=True)
     st.markdown("---")
 
-    service = st.radio(
-        "서비스 선택",
-        ["📈 주식 급등 예측", "₿ 코인 급등 예측"],
-        key="service_select",
-        label_visibility="collapsed"
-    )
+    st.markdown("""<style>
+    div[data-testid="stRadio"] { display:none !important; }
+    section[data-testid="stSidebar"] div[data-testid="stButton"] button p {
+        font-size: 36px !important;
+        line-height: 1.2 !important;
+    }
+    section[data-testid="stSidebar"] div[data-testid="stButton"] button {
+        padding: 12px 0 !important;
+    }
+    </style>""", unsafe_allow_html=True)
+
+    if "service_select" not in st.session_state:
+        st.session_state["service_select"] = "📡 주식"
+
+    service = st.session_state["service_select"]
+    is_stock = service == "📡 주식"
+
+    col_s, col_c = st.columns(2)
+    with col_s:
+        if st.button("📡", key="btn_stock", use_container_width=True,
+                     type="primary" if is_stock else "secondary"):
+            st.session_state["service_select"] = "📡 주식"
+            st.rerun()
+    with col_c:
+        if st.button("₿", key="btn_coin", use_container_width=True,
+                     type="primary" if not is_stock else "secondary"):
+            st.session_state["service_select"] = "₿ 코인"
+            st.rerun()
+
     st.markdown("---")
 
 # ── 선택된 앱 실행 ────────────────────────────────────────────────
@@ -100,7 +147,7 @@ def _run_app(filepath: str, extra_syspath: str = None):
             sys.path.remove(extra_syspath)
 
 
-if service == "📈 주식 급등 예측":
+if service == "📡 주식":
     crypto_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "crypto_surge")
     # crypto_surge 경로 완전 제거
     while crypto_dir in sys.path:

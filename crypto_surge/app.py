@@ -46,41 +46,62 @@ if not st.session_state["authenticated"]:
         75%  { transform: rotateY(270deg) translateY(-20px); }
         100% { transform: rotateY(360deg) translateY(0px); }
     }
+    @keyframes coin_pulse {
+        0%,100% { box-shadow: 0 0 0 0 rgba(247,164,79,0.5), 0 0 20px rgba(255,215,0,0.3); }
+        50%      { box-shadow: 0 0 0 14px rgba(247,164,79,0), 0 0 40px rgba(255,215,0,0.6); }
+    }
     .login-box { animation: fadein 0.6s ease; }
     .coin-wrap {
         display: inline-block;
-        animation: coin_spin 2s linear infinite;
+        animation: coin_spin 2.5s linear infinite;
         perspective: 200px;
-        margin-bottom: 8px;
+        margin-bottom: 12px;
     }
     .coin-face {
-        width: 72px; height: 72px;
+        width: 96px; height: 96px;
         border-radius: 50%;
         background: radial-gradient(circle at 35% 35%, #ffe066, #f7a44f 60%, #c47a00);
-        border: 4px solid #ffd700;
-        box-shadow: 0 0 24px rgba(247,164,79,0.7), inset 0 2px 6px rgba(255,255,255,0.4);
+        border: 3px solid #ffd700;
         display: flex; align-items: center; justify-content: center;
-        font-size: 32px; font-weight: 900;
+        font-size: 44px; font-weight: 900;
         color: #7a4800;
-        text-shadow: 1px 1px 2px rgba(255,255,255,0.4);
         font-family: Arial, sans-serif;
+        animation: coin_pulse 2s ease-in-out infinite;
     }
     </style>
     <div class='login-box' style='max-width:420px;margin:80px auto;'>
-      <div style='background:linear-gradient(135deg,#1a1f35,#0e1117);
+      <div style='background:linear-gradient(135deg,#1a1208,#0e1117);
            padding:48px 40px;border-radius:20px;border:1px solid #2d3555;
            box-shadow:0 20px 60px rgba(0,0,0,0.5);text-align:center;'>
         <div class='coin-wrap'><div class='coin-face'>₿</div></div>
-        <h2 style='color:#fff;margin:16px 0 6px;font-size:26px;font-weight:800;letter-spacing:-0.5px;'>코인 급등 예측</h2>
-        <p style='color:#f7a44f;font-size:13px;margin:0 0 32px;font-weight:500;letter-spacing:2px;'>CRYPTO SURGE PREDICTOR</p>
-        <div style='width:40px;height:2px;background:linear-gradient(90deg,#f7a44f,#ffd700);margin:0 auto 32px;border-radius:2px;'></div>
+        <div style='
+            display:inline-block;
+            padding:8px 20px;
+            border-radius:10px;
+            background:linear-gradient(135deg,rgba(247,164,79,0.12),rgba(255,215,0,0.12));
+            border:none;
+            box-shadow:0 0 24px rgba(247,164,79,0.25), 0 0 48px rgba(255,215,0,0.15);
+            margin:4px auto 4px;
+            text-align:center;
+        '>
+          <h2 style='
+              margin:0;
+              font-size:32px;
+              font-weight:900;
+              letter-spacing:8px;
+              color:#ffffff;
+              text-shadow: 0 0 12px rgba(255,215,0,0.8), 0 0 24px rgba(247,164,79,0.5);
+          '>J.A.R.V.I.S.</h2>
+        </div>
+        <p style='color:#6b7280;font-size:11px;margin:4px 0 4px;font-weight:500;letter-spacing:5px;text-transform:uppercase;'>CRYPTO RADAR</p>
+        <div style='width:40px;height:2px;background:linear-gradient(90deg,#f7a44f,#ffd700);margin:12px auto 20px;border-radius:2px;'></div>
         <p style='color:#8b92a5;font-size:13px;margin:0 0 24px;'>허가된 사용자만 접근 가능합니다</p>
       </div>
     </div>
     """, unsafe_allow_html=True)
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        pw = st.text_input("비밀번호", type="password", placeholder="비밀번호 입력", label_visibility="collapsed")
+        pw = st.text_input("비밀번호", type="password", placeholder="🔑  비밀번호 입력", label_visibility="collapsed")
         if st.button("로그인", type="primary", use_container_width=True):
             if pw in PASSWORDS:
                 st.session_state["authenticated"] = True
