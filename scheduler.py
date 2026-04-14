@@ -196,6 +196,14 @@ def main():
             _save_state({"last_scan_date": last_scan_date, "last_perf_date": last_perf_date,
                          "last_crypto_hour": last_crypto_hour, "last_reorder_date": last_reorder_date})
             run_performance()
+            # 자동매매 전용 리포트
+            if os.environ.get("KIS_APP_KEY"):
+                try:
+                    from auto_trader import send_trade_report
+                    send_trade_report()
+                    log("[자동매매] 리포트 전송 완료")
+                except Exception as e:
+                    log(f"[자동매매] 리포트 오류: {e}")
 
         # 장중 모니터링 09:05~15:30 KST (자동매매 활성화 시)
         if is_weekday and os.environ.get("KIS_APP_KEY"):

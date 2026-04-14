@@ -29,6 +29,18 @@ def is_enabled() -> bool:
     return bool(os.environ.get("KIS_APP_KEY"))
 
 
+def round_to_tick(price: float) -> int:
+    """한국 주식 호가 단위로 반올림"""
+    if price < 2000:      tick = 1
+    elif price < 5000:    tick = 5
+    elif price < 20000:   tick = 10
+    elif price < 50000:   tick = 50
+    elif price < 200000:  tick = 100
+    elif price < 500000:  tick = 500
+    else:                 tick = 1000
+    return int(round(price / tick) * tick)
+
+
 def _send_admin(message: str):
     """관리자(본인)에게만 텔레그램 DM 전송"""
     try:
@@ -141,27 +153,30 @@ class KISClient:
             print(f"[KIS] 잔고 조회 오류: {e}")
             return {"holdings": {}, "cash": 0}
 
-    def buy_order(self, symbol: str, price: int, qty: int) -> dict:
-        """지정가 매수 주문"""
+    def buy_order(self, symbol: str, price: int, qty: int, market: bool = False) -> dict:
+        """매수 주문 (지정가 or 시장가)"""
         code  = symbol.replace(".KS", "").replace(".KQ", "")
         acct_no = self.account.split("-")[0]
         acct_cd = self.account.split("-")[1] if "-" in self.account else "01"
         tr_id = "VTTC0802U" if self.mock else "TTTC0802U"
+        ord_dvsn  = "01" if market else "00"
+        ord_price = "0"  if market else str(price)
         try:
             resp = requests.post(
                 f"{self.base}/uapi/domestic-stock/v1/trading/order-cash",
                 headers=self._headers(tr_id),
                 json={
                     "CANO": acct_no, "ACNT_PRDT_CD": acct_cd,
-                    "PDNO": code, "ORD_DVSN": "00",  # 00=지정가
-                    "ORD_QTY": str(qty), "ORD_UNPR": str(price),
+                    "PDNO": code, "ORD_DVSN": ord_dvsn,
+                    "ORD_QTY": str(qty), "ORD_UNPR": ord_price,
                 },
                 timeout=10
             )
             resp.raise_for_status()
             result = resp.json()
             order_no = result.get("output", {}).get("ODNO", "")
-            print(f"[KIS] 매수 주문 {code} {qty}주 @{price:,}원 → 주문번호 {order_no}")
+            kind = "시장가" if market else f"@{price:,}원"
+            print(f"[KIS] 매수 주문 {code} {qty}주 {kind} → 주문번호 {order_no}")
             return {"success": True, "order_no": order_no}
         except Exception as e:
             print(f"[KIS] 매수 주문 오류 {code}: {e}")
@@ -196,8 +211,46 @@ class KISClient:
             print(f"[KIS] 매도 주문 오류 {code}: {e}")
             return {"success": False, "error": str(e)}
 
+    def get_order_status(self, order_no: str, symbol: str) -> str:
+        """주문 체결 상태 조회 - filled / partial / pending / cancelled"""
+        try:
+            code    = symbol.replace(".KS", "").replace(".KQ", "")
+            acct_no = self.account.split("-")[0]
+            acct_cd = self.account.split("-")[1] if "-" in self.account else "01"
+            tr_id   = "VTTC8001R" if self.mock else "TTTC8001R"
+            resp = requests.get(
+                f"{self.base}/uapi/domestic-stock/v1/trading/inquire-daily-ccld",
+                headers=self._headers(tr_id),
+                params={
+                    "CANO": acct_no, "ACNT_PRDT_CD": acct_cd,
+                    "INQR_STRT_DT": date.today().strftime("%Y%m%d"),
+                    "INQR_END_DT":  date.today().strftime("%Y%m%d"),
+                    "SLL_BUY_DVSN_CD": "02",  # 매수
+                    "INQR_DVSN": "00", "PDNO": code,
+                    "CCLD_DVSN": "00", "ORD_GNO_BRNO": "", "ODNO": order_no,
+                    "INQR_DVSN_3": "00", "INQR_DVSN_1": "",
+                    "CTX_AREA_FK100": "", "CTX_AREA_NK100": ""
+                },
+                timeout=10
+            )
+            resp.raise_for_status()
+            rows = resp.json().get("output1", [])
+            if not rows:
+                return "pending"
+            row = rows[0]
+            tot_qty  = int(row.get("ord_qty", 0))
+            fill_qty = int(row.get("tot_ccld_qty", 0))
+            if fill_qty >= tot_qty:
+                return "filled"
+            elif fill_qty > 0:
+                return "partial"
+            else:
+                return "pending"
+        except Exception as e:
+            print(f"[KIS] 체결 조회 오류: {e}")
+            return "unknown"
+
     def cancel_order(self, order_no: str, symbol: str, qty: int) -> bool:
-        """미체결 주문 취소"""
         code  = symbol.replace(".KS", "").replace(".KQ", "")
         acct_no = self.account.split("-")[0]
         acct_cd = self.account.split("-")[1] if "-" in self.account else "01"
@@ -244,9 +297,20 @@ def _get_trade_conn():
             exit_price  INTEGER,
             exit_date   TEXT,
             return_pct  REAL,
-            created_at  TEXT NOT NULL
+            created_at  TEXT NOT NULL,
+            -- 분할매수 관련
+            split_step  INTEGER DEFAULT 1,   -- 현재 몇 차 매수 (1/2/3)
+            split_qty   INTEGER DEFAULT 0,   -- 총 체결 수량
+            avg_price   REAL DEFAULT 0,      -- 평균 매수가
+            base_price  INTEGER DEFAULT 0    -- 1차 매수가 (2/3차 트리거 기준)
         )
     """)
+    conn.commit()
+    # 기존 DB에 분할매수 컬럼 없으면 추가 (마이그레이션)
+    existing_cols = [r[1] for r in conn.execute("PRAGMA table_info(trade_orders)").fetchall()]
+    for col, default in [("split_step","1"),("split_qty","0"),("avg_price","0"),("base_price","0")]:
+        if col not in existing_cols:
+            conn.execute(f"ALTER TABLE trade_orders ADD COLUMN {col} INTEGER DEFAULT {default}")
     conn.commit()
     return conn
 
@@ -254,12 +318,14 @@ def _get_trade_conn():
 def _get_pending_orders() -> list:
     conn = _get_trade_conn()
     rows = conn.execute("""
-        SELECT id, alert_date, symbol, name, entry_price, target_price, stop_price, qty, order_no, status
+        SELECT id, alert_date, symbol, name, entry_price, target_price, stop_price,
+               qty, order_no, status, split_step, split_qty, avg_price, base_price
         FROM trade_orders WHERE status IN ('pending', 'active')
         ORDER BY alert_date ASC
     """).fetchall()
     conn.close()
-    keys = ["id","alert_date","symbol","name","entry_price","target_price","stop_price","qty","order_no","status"]
+    keys = ["id","alert_date","symbol","name","entry_price","target_price","stop_price",
+            "qty","order_no","status","split_step","split_qty","avg_price","base_price"]
     return [dict(zip(keys, r)) for r in rows]
 
 
@@ -272,9 +338,8 @@ def _update_order(order_id: int, **kwargs):
     conn.close()
 
 
-def _save_order(alert_date, symbol, name, entry_price, target_price, stop_price, qty, order_no):
+def _save_order(alert_date, symbol, name, entry_price, target_price, stop_price, qty, order_no, split_step=1, base_price=0):
     conn = _get_trade_conn()
-    # 이미 pending/active 상태인 종목 중복 방지
     existing = conn.execute(
         "SELECT id FROM trade_orders WHERE symbol=? AND status IN ('pending','active')", (symbol,)
     ).fetchone()
@@ -283,9 +348,11 @@ def _save_order(alert_date, symbol, name, entry_price, target_price, stop_price,
         return
     conn.execute("""
         INSERT INTO trade_orders
-        (alert_date, symbol, name, entry_price, target_price, stop_price, qty, order_no, status, created_at)
-        VALUES (?,?,?,?,?,?,?,?,'pending',?)
+        (alert_date, symbol, name, entry_price, target_price, stop_price, qty, order_no, status,
+         split_step, split_qty, avg_price, base_price, created_at)
+        VALUES (?,?,?,?,?,?,?,?,'pending',?,?,?,?,?)
     """, (alert_date, symbol, name, entry_price, target_price, stop_price, qty, order_no,
+          split_step, qty, float(entry_price), base_price or entry_price,
           datetime.now().isoformat()))
     conn.commit()
     conn.close()
@@ -317,8 +384,17 @@ def place_orders(results: list):
     cash    = balance.get("cash", 0)
     holdings = balance.get("holdings", {})
 
+    # 총 투자금 한도 체크 (예수금 기준)
+    total_budget = cfg["max_stocks"] * cfg["budget_per"]
+    if cash < cfg["budget_per"]:
+        print(f"[자동매매] 예수금 부족 (₩{cash:,.0f}) - 주문 중단")
+        return
+
     slots = cfg["max_stocks"] - active_count
     budget = cfg["budget_per"]
+    # 실제 사용 가능 예산 = min(종목당 예산, 예수금/남은슬롯)
+    if slots > 0:
+        budget = min(budget, int(cash / slots))
 
     ordered = 0
     for r in results:
@@ -363,21 +439,25 @@ def place_orders(results: list):
         target = int(lv["target"])
         stop   = int(lv["stop"])
 
-        if cash < budget * 0.5:
+        if cash < budget * 0.8:
             print(f"[자동매매] 예수금 부족 ({cash:,.0f}원) - 주문 중단")
             break
 
-        qty = max(1, int(budget / entry))
+        qty = max(1, int(budget / entry) // 3)  # 1/3 수량으로 1차 매수
+        if qty == 0:
+            qty = 1
         actual_cost = entry * qty
 
         if actual_cost > cash:
-            qty = max(1, int(cash / entry))
-            actual_cost = entry * qty
+            print(f"[자동매매] {name} 예수금 부족 - 스킵")
+            continue
 
-        result = client.buy_order(symbol, entry, qty)
+        result = client.buy_order(symbol, entry, qty, market=True)  # 1차는 시장가
         if result["success"]:
             order_no = result.get("order_no", "")
-            _save_order(today, symbol, name, entry, target, stop, qty, order_no)
+            total_qty = max(1, int(budget / entry) // 3) * 3  # 전체 목표 수량
+            _save_order(today, symbol, name, entry, target, stop, qty, order_no,
+                       split_step=1, base_price=entry)
             cash -= actual_cost
             ordered += 1
 
@@ -443,11 +523,26 @@ def morning_reorder():
             continue
 
         if days_elapsed == 0:
-            # 오늘 처음 주문한 것 - 재주문 불필요
+            # 오늘 처음 주문한 것 - 체결 여부 확인
+            if order.get("order_no"):
+                status = client.get_order_status(order["order_no"], order["symbol"])
+                if status == "filled":
+                    _update_order(order["id"], status="active")
+                    print(f"[자동매매] {order['name']} 체결 확인 → active")
+                    _send_admin(f"✅ <b>매수 체결 확인</b>\n<b>{order['name']}</b> ₩{order['entry_price']:,} × {order['qty']}주")
+                elif status == "partial":
+                    print(f"[자동매매] {order['name']} 부분 체결 - 대기 유지")
             continue
 
-        # 전날 주문 취소 후 재주문
+        # 전날 주문 체결 여부 먼저 확인
         if order.get("order_no"):
+            status = client.get_order_status(order["order_no"], order["symbol"])
+            if status == "filled":
+                _update_order(order["id"], status="active")
+                print(f"[자동매매] {order['name']} 전날 체결 확인 → active")
+                _send_admin(f"✅ <b>매수 체결 확인</b>\n<b>{order['name']}</b> ₩{order['entry_price']:,} × {order['qty']}주")
+                continue
+            # 미체결이면 취소 후 재주문
             client.cancel_order(order["order_no"], order["symbol"], order["qty"])
 
         result = client.buy_order(order["symbol"], order["entry_price"], order["qty"])
@@ -483,67 +578,315 @@ def monitor_positions():
         if cur is None:
             continue
 
-        # pending → active 전환 (현재가가 매수가 이하로 내려오면 체결로 간주)
+        # pending → active 전환 (1차 매수 시장가라 바로 active로)
         if order["status"] == "pending":
-            if cur <= order["entry_price"]:
+            if cur <= order["entry_price"] * 1.02:  # 시장가라 약간 여유
                 _update_order(order["id"], status="active")
                 order["status"] = "active"
                 print(f"[자동매매] {order['name']} 체결 확인 → active")
-                try:
-                    from telegram_alert import send_telegram
-                    _send_admin(
-                        f"✅ <b>매수 체결</b>\n"
-                        f"<b>{order['name']}</b> ₩{order['entry_price']:,} × {order['qty']}주"
-                    )
-                except:
-                    pass
+                _send_admin(
+                    f"✅ <b>1차 매수 체결</b>\n"
+                    f"<b>{order['name']}</b> ₩{order['entry_price']:,} × {order['qty']}주"
+                )
 
         if order["status"] != "active":
             continue
 
-        entry  = order["entry_price"]
-        target = order["target_price"]
-        stop   = order["stop_price"]
-        qty    = order["qty"]
+        entry      = order["entry_price"]
+        target     = order["target_price"]
+        stop       = order["stop_price"]
+        qty        = order["qty"]
+        split_step = order.get("split_step", 1)
+        base_price = order.get("base_price", entry) or entry
+        avg_price  = order.get("avg_price", entry) or entry
+
+        # ── 분할매수 2/3차 트리거 ──────────────────────────────────
+        cfg = _cfg()
+        split_budget = cfg["budget_per"] // 3
+
+        if split_step == 1 and cur <= base_price * 0.98:
+            add_qty = max(1, int(split_budget / cur))
+            result  = client.buy_order(order["symbol"], int(cur), add_qty, market=True)
+            if result["success"]:
+                new_avg = (avg_price * qty + cur * add_qty) / (qty + add_qty)
+                _update_order(order["id"],
+                    split_step=2, split_qty=qty + add_qty,
+                    avg_price=round(new_avg, 2), qty=qty + add_qty,
+                )
+                print(f"[자동매매] {order['name']} 2차 매수 {add_qty}주 @{cur:,.0f}")
+                _send_admin(f"📥 <b>2차 분할매수</b>\n<b>{order['name']}</b> ₩{cur:,.0f} × {add_qty}주\n평균단가 ₩{new_avg:,.0f} | 손절 ₩{stop:,}")
+            continue  # 분할매수 후 이번 루프는 매도 체크 스킵
+
+        elif split_step == 2 and cur <= base_price * 0.96:
+            add_qty = max(1, int(split_budget / cur))
+            result  = client.buy_order(order["symbol"], int(cur), add_qty, market=True)
+            if result["success"]:
+                new_avg = (avg_price * qty + cur * add_qty) / (qty + add_qty)
+                _update_order(order["id"],
+                    split_step=3, split_qty=qty + add_qty,
+                    avg_price=round(new_avg, 2), qty=qty + add_qty,
+                )
+                print(f"[자동매매] {order['name']} 3차 매수 {add_qty}주 @{cur:,.0f}")
+                _send_admin(f"📥 <b>3차 분할매수 완료</b>\n<b>{order['name']}</b> ₩{cur:,.0f} × {add_qty}주\n평균단가 ₩{new_avg:,.0f} | 손절 ₩{stop:,}")
+            continue  # 분할매수 후 이번 루프는 매도 체크 스킵
 
         # 목표가 도달
         if cur >= target:
-            result = client.sell_order(symbol, target, qty, market=True)  # 목표가도 시장가
+            result = client.sell_order(symbol, target, qty, market=True)
             if result["success"]:
-                ret = (target - entry) / entry * 100
+                ret = (cur - avg_price) / avg_price * 100  # 평균단가 기준 수익률
                 _update_order(order["id"],
-                    status="hit_target", exit_price=target,
+                    status="hit_target", exit_price=int(cur),
                     exit_date=today, return_pct=round(ret, 2)
                 )
                 print(f"[자동매매] {order['name']} 목표가 도달 → 매도 +{ret:.1f}%")
-                try:
-                    from telegram_alert import send_telegram
-                    _send_admin(
-                        f"🎯 <b>목표가 달성!</b>\n"
-                        f"<b>{order['name']}</b>\n"
-                        f"매수 ₩{entry:,} → 매도 ₩{target:,}\n"
-                        f"수익률 <b>+{ret:.1f}%</b> 🎉"
-                    )
-                except:
-                    pass
+                _send_admin(
+                    f"🎯 <b>목표가 달성!</b>\n"
+                    f"<b>{order['name']}</b>\n"
+                    f"평균단가 ₩{avg_price:,.0f} → 매도 ₩{cur:,.0f}\n"
+                    f"수익률 <b>+{ret:.1f}%</b> 🎉"
+                )
 
         # 손절가 도달
         elif cur <= stop:
-            result = client.sell_order(symbol, stop, qty, market=True)  # 손절은 시장가
+            result = client.sell_order(symbol, stop, qty, market=True)
             if result["success"]:
-                ret = (stop - entry) / entry * 100
+                ret = (cur - avg_price) / avg_price * 100  # 평균단가 기준 손실률
                 _update_order(order["id"],
-                    status="hit_stop", exit_price=stop,
+                    status="hit_stop", exit_price=int(cur),
                     exit_date=today, return_pct=round(ret, 2)
                 )
                 print(f"[자동매매] {order['name']} 손절가 도달 → 시장가 매도 {ret:.1f}%")
-                try:
-                    from telegram_alert import send_telegram
-                    _send_admin(
-                        f"🛑 <b>손절 실행</b>\n"
-                        f"<b>{order['name']}</b>\n"
-                        f"매수 ₩{entry:,} → 손절 ₩{cur:,.0f}\n"
-                        f"손실 <b>{ret:.1f}%</b>"
+                _send_admin(
+                    f"🛑 <b>손절 실행</b>\n"
+                    f"<b>{order['name']}</b>\n"
+                    f"평균단가 ₩{avg_price:,.0f} → 손절 ₩{cur:,.0f}\n"
+                    f"손실 <b>{ret:.1f}%</b>"
+                )
+
+
+def send_trade_report():
+    """자동매매 전용 일일 리포트 - 가독성 최적화"""
+    if not is_enabled():
+        return
+    try:
+        client    = KISClient()
+        conn      = _get_trade_conn()
+        today     = date.today().isoformat()
+        today_fmt = date.today().strftime("%Y.%m.%d")
+        cfg       = _cfg()
+        mock_tag  = "[모의] " if cfg["mock"] else ""
+
+        # ── DB 조회 ───────────────────────────────────────────────
+        closed_today = conn.execute("""
+            SELECT name, symbol, avg_price, exit_price, return_pct, status, split_step, qty
+            FROM trade_orders WHERE exit_date=? AND status IN ('hit_target','hit_stop')
+        """, (today,)).fetchall()
+
+        active_rows = conn.execute("""
+            SELECT id, name, symbol, avg_price, target_price, stop_price,
+                   qty, split_step, entry_price, alert_date
+            FROM trade_orders WHERE status='active'
+        """).fetchall()
+
+        pending_rows = conn.execute("""
+            SELECT name, symbol, entry_price, target_price, alert_date
+            FROM trade_orders WHERE status='pending'
+        """).fetchall()
+
+        all_closed = conn.execute("""
+            SELECT name, symbol, return_pct, status, exit_date
+            FROM trade_orders
+            WHERE status IN ('hit_target','hit_stop') AND return_pct IS NOT NULL
+        """).fetchall()
+
+        # 이번 달 손익
+        month_start = date.today().strftime("%Y-%m-01")
+        month_closed = conn.execute("""
+            SELECT return_pct, avg_price, qty FROM trade_orders
+            WHERE status IN ('hit_target','hit_stop')
+              AND exit_date >= ? AND return_pct IS NOT NULL
+        """, (month_start,)).fetchall()
+        conn.close()
+
+        # ── 잔고 조회 ─────────────────────────────────────────────
+        balance      = client.get_balance()
+        cash         = balance.get("cash", 0)
+
+        # ── KOSPI 조회 ────────────────────────────────────────────
+        kospi_str = ""
+        try:
+            import yfinance as yf
+            k = yf.Ticker("^KS11").history(period="2d")["Close"]
+            if len(k) >= 2:
+                chg = (k.iloc[-1] - k.iloc[-2]) / k.iloc[-2] * 100
+                arrow = "▲" if chg >= 0 else "▼"
+                kospi_str = f"KOSPI {k.iloc[-1]:,.0f} {arrow}{abs(chg):.2f}%"
+        except:
+            pass
+
+        # ── 포트폴리오 계산 ───────────────────────────────────────
+        total_invest = 0
+        total_eval   = 0
+        active_data  = []
+        for row in active_rows:
+            rid, name, sym, avg_p, target, stop, qty, step, entry, alert_date = row
+            avg_p = float(avg_p or entry or 0)
+            cur   = client.get_price(sym)
+            days  = (date.today() - date.fromisoformat(alert_date)).days if alert_date else 0
+            invest = avg_p * qty if avg_p and qty else 0
+            eval_  = (cur * qty) if cur and qty else invest
+            total_invest += invest
+            total_eval   += eval_
+            active_data.append({
+                "name": name, "sym": sym, "avg_p": avg_p, "cur": cur,
+                "target": target, "stop": stop, "qty": qty,
+                "step": step or 1, "days": days, "invest": invest, "eval": eval_
+            })
+
+        total_pnl     = total_eval - total_invest
+        total_pnl_pct = (total_pnl / total_invest * 100) if total_invest > 0 else 0
+        total_asset   = total_eval + cash
+
+        # 이번 달 손익 금액
+        month_pnl = sum(
+            int(r[1] * r[2] * r[0] / 100) for r in month_closed
+            if r[1] and r[2] and r[0]
+        )
+
+        # ── 메시지 구성 ───────────────────────────────────────────
+        SEP  = "━" * 20
+        SEP2 = "─" * 16
+
+        lines = [
+            f"🤖 {mock_tag}<b>자동매매 리포트</b>",
+            f"<i>{today_fmt}  {kospi_str}</i>",
+            SEP,
+        ]
+
+        # 1. 포트폴리오 요약
+        pnl_icon = "📈" if total_pnl >= 0 else "📉"
+        pnl_sign = "+" if total_pnl >= 0 else ""
+        port_bar_filled = round(min(max((total_pnl_pct + 10) / 20, 0), 1) * 8)
+        port_bar = ("🟩" if total_pnl >= 0 else "🟥") * port_bar_filled + "⬜" * (8 - port_bar_filled)
+        lines += [
+            f"\n💼 <b>포트폴리오 현황</b>",
+            f"  총 자산    ₩{total_asset:,.0f}",
+            f"  투자금     ₩{total_invest:,.0f}  ({len(active_data)}종목)",
+            f"  평가손익   {pnl_icon} <b>{pnl_sign}₩{int(total_pnl):,}  ({pnl_sign}{total_pnl_pct:.1f}%)</b>",
+            f"  예수금     ₩{cash:,.0f}",
+            f"  {port_bar}",
+        ]
+        if month_pnl != 0:
+            m_sign = "+" if month_pnl >= 0 else ""
+            lines.append(f"  이번 달 손익  <b>{m_sign}₩{month_pnl:,}</b>")
+
+        # 2. 오늘 청산
+        if closed_today:
+            lines += [f"\n{SEP2}", "🔔 <b>오늘 청산</b>"]
+            for row in closed_today:
+                name, sym, avg_p, exit_p, ret, status, step, qty = row
+                icon     = "✅" if status == "hit_target" else "🛑"
+                step_str = f" ({step}차)" if step and step > 1 else ""
+                pnl      = int((exit_p - avg_p) * qty) if avg_p and exit_p and qty else 0
+                p_sign   = "+" if pnl >= 0 else ""
+                lines.append(
+                    f"\n{icon} <b>{name}</b>{step_str}\n"
+                    f"   ₩{avg_p:,.0f} → ₩{exit_p:,.0f}\n"
+                    f"   <b>{ret:+.1f}%  {p_sign}₩{pnl:,}</b>"
+                )
+
+        # 3. 보유 중
+        if active_data:
+            lines += [f"\n{SEP2}", f"🟢 <b>보유 중</b>  ({len(active_data)}종목)"]
+            for d in active_data:
+                step_str = f"{d['step']}차 완료"
+                split_remain = ""
+                if d["step"] == 1:   split_remain = "  <i>2·3차 대기</i>"
+                elif d["step"] == 2: split_remain = "  <i>3차 대기</i>"
+
+                cur_line = "  현재가 조회 불가"
+                if d["cur"] and d["avg_p"]:
+                    ret    = (d["cur"] - d["avg_p"]) / d["avg_p"] * 100
+                    pnl    = int((d["cur"] - d["avg_p"]) * d["qty"])
+                    p_sign = "+" if pnl >= 0 else ""
+                    # 목표가/손절가 게이지
+                    if d["target"] and d["stop"] and d["target"] > d["stop"]:
+                        if ret >= 0:
+                            ratio  = min((d["cur"] - d["avg_p"]) / (d["target"] - d["avg_p"]), 1.0)
+                            filled = round(ratio * 8)
+                            bar    = "🟩" * filled + "⬜" * (8 - filled)
+                        else:
+                            ratio  = min((d["avg_p"] - d["cur"]) / (d["avg_p"] - d["stop"]), 1.0)
+                            filled = round(ratio * 8)
+                            bar    = "🟥" * filled + "⬜" * (8 - filled)
+                    else:
+                        bar = "⬜" * 8
+                    # 손절까지 남은 %
+                    to_stop = (d["cur"] - d["stop"]) / d["cur"] * 100 if d["stop"] else 0
+                    cur_line = (
+                        f"  {bar}\n"
+                        f"  ₩{d['cur']:,.0f}  <b>({ret:+.1f}%  {p_sign}₩{pnl:,})</b>\n"
+                        f"  손절까지 {to_stop:.1f}%  |  🎯₩{d['target']:,}  🛑₩{d['stop']:,}"
                     )
-                except:
-                    pass
+
+                lines.append(
+                    f"\n📌 <b>{d['name']}</b>  <i>{d['days']}일째 · {step_str}{split_remain}</i>\n"
+                    f"  평균단가 ₩{d['avg_p']:,.0f} × {d['qty']}주  (₩{int(d['invest']):,})\n"
+                    + cur_line
+                )
+
+        # 4. 대기 중
+        if pending_rows:
+            lines += [f"\n{SEP2}", f"⏳ <b>매수 대기</b>  ({len(pending_rows)}종목)"]
+            for row in pending_rows:
+                name, sym, entry, target, alert_date = row
+                days = (date.today() - date.fromisoformat(alert_date)).days if alert_date else 0
+                lines.append(f"🔵 <b>{name}</b>  <i>{days}일째</i>  ₩{entry:,} → 🎯₩{target:,}")
+
+        # 5. 누적 성과
+        if all_closed:
+            wins   = [(r[0], r[2]) for r in all_closed if r[3]=="hit_target" and r[2] is not None]
+            losses = [(r[0], r[2]) for r in all_closed if r[3]=="hit_stop"   and r[2] is not None]
+            all_ret = [r[2] for r in all_closed if r[2] is not None]
+            total  = len(all_closed)
+            wr     = round(len(wins) / total * 100, 1) if total else 0
+            avg    = round(sum(all_ret) / len(all_ret), 1) if all_ret else 0
+            wr_filled = round(wr / 10)
+            wr_bar    = "🟩" * wr_filled + "⬜" * (10 - wr_filled)
+            wr_label  = "우수" if wr >= 60 else "보통" if wr >= 40 else "부진"
+            lines += [
+                f"\n{SEP2}",
+                f"📊 <b>누적 성과</b>  ({total}건)",
+                f"  {wr_bar}  {wr}%  <i>{wr_label}</i>",
+                f"  ✅{len(wins)}건  🛑{len(losses)}건  평균 <b>{avg:+.1f}%</b>",
+            ]
+            if wins:
+                best = max(wins, key=lambda x: x[1])
+                lines.append(f"  🏆 최고  <b>{best[0]}</b>  +{best[1]:.1f}%")
+            if losses:
+                worst = min(losses, key=lambda x: x[1])
+                lines.append(f"  💔 최대손실  <b>{worst[0]}</b>  {worst[1]:.1f}%")
+
+        lines += [f"\n{SEP}", "⚠️ <i>자동매매 참고용 정보입니다</i>"]
+
+        # 4000자 초과 시 분할 전송
+        msg = "\n".join(lines)
+        if len(msg) > 4000:
+            chunks, cur_chunk = [], []
+            for line in lines:
+                if sum(len(l) for l in cur_chunk) + len(line) > 3800:
+                    _send_admin("\n".join(cur_chunk))
+                    cur_chunk = [line]
+                else:
+                    cur_chunk.append(line)
+            if cur_chunk:
+                _send_admin("\n".join(cur_chunk))
+        else:
+            _send_admin(msg)
+
+        print("[자동매매] 리포트 전송 완료")
+
+    except Exception as e:
+        print(f"[자동매매] 리포트 오류: {e}")
+        import traceback; traceback.print_exc()
