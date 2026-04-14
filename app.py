@@ -33,24 +33,45 @@ if not st.session_state["authenticated"]:
     st.markdown("""
     <style>
     @keyframes fadein { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
-    @keyframes rocket_up {
-        0%   { transform: translateY(0px) rotate(-45deg); opacity:1; }
-        70%  { transform: translateY(-120px) rotate(-45deg); opacity:1; }
-        71%  { transform: translateY(-120px) rotate(-45deg); opacity:0; }
-        72%  { transform: translateY(20px) rotate(-45deg); opacity:0; }
-        100% { transform: translateY(0px) rotate(-45deg); opacity:1; }
+    @keyframes radar_spin {
+        0%   { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+    @keyframes radar_pulse {
+        0%,100% { box-shadow: 0 0 0 0 rgba(0,212,170,0.4), 0 0 20px rgba(79,142,247,0.3); }
+        50%      { box-shadow: 0 0 0 16px rgba(0,212,170,0), 0 0 40px rgba(79,142,247,0.6); }
     }
     .login-box { animation: fadein 0.6s ease; }
-    .rocket-icon { display:inline-block; animation: rocket_up 2.5s ease-in-out infinite; font-size:52px; }
+    .radar-wrap {
+        width:72px;height:72px;border-radius:50%;
+        background:linear-gradient(135deg,#0d1528,#1a2540);
+        border:2px solid #4f8ef7;
+        display:flex;align-items:center;justify-content:center;
+        margin:0 auto 16px;
+        animation: radar_pulse 2s ease-in-out infinite;
+        position:relative;overflow:hidden;
+    }
+    .radar-sweep {
+        position:absolute;width:50%;height:50%;top:0;left:50%;
+        transform-origin:bottom left;
+        background:linear-gradient(135deg,rgba(0,212,170,0.6),transparent);
+        animation:radar_spin 2s linear infinite;
+        border-radius:100% 0 0 0;
+    }
+    .radar-icon { font-size:28px;z-index:1;position:relative; }
     </style>
     <div class='login-box' style='max-width:420px;margin:80px auto;'>
       <div style='background:linear-gradient(135deg,#1a1f35,#0e1117);
            padding:48px 40px;border-radius:20px;border:1px solid #2d3555;
            box-shadow:0 20px 60px rgba(0,0,0,0.5);text-align:center;'>
-        <div class='rocket-icon'>🚀</div>
-        <h2 style='color:#fff;margin:16px 0 6px;font-size:26px;font-weight:800;letter-spacing:-0.5px;'>주식 급등 예측</h2>
-        <p style='color:#4f8ef7;font-size:13px;margin:0 0 32px;font-weight:500;letter-spacing:2px;'>STOCK SURGE PREDICTOR</p>
-        <div style='width:40px;height:2px;background:linear-gradient(90deg,#4f8ef7,#00d4aa);margin:0 auto 32px;border-radius:2px;'></div>
+        <div class='radar-wrap'>
+          <div class='radar-sweep'></div>
+          <div class='radar-icon'>📡</div>
+        </div>
+        <h2 style='color:#fff;margin:8px 0 4px;font-size:26px;font-weight:800;letter-spacing:-0.5px;'>스윙 레이더</h2>
+        <p style='color:#00d4aa;font-size:13px;margin:0 0 4px;font-weight:700;letter-spacing:4px;'>J.A.R.V.I.S.</p>
+        <p style='color:#4f8ef7;font-size:11px;margin:0 0 28px;font-weight:500;letter-spacing:2px;'>SWING RADAR SYSTEM</p>
+        <div style='width:40px;height:2px;background:linear-gradient(90deg,#4f8ef7,#00d4aa);margin:0 auto 28px;border-radius:2px;'></div>
         <p style='color:#8b92a5;font-size:13px;margin:0 0 24px;'>허가된 사용자만 접근 가능합니다</p>
       </div>
     </div>
