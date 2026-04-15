@@ -809,7 +809,7 @@ def send_trade_report():
         # 1. 포트폴리오 요약
         pnl_icon = "📈" if total_pnl >= 0 else "📉"
         pnl_sign = "+" if total_pnl >= 0 else ""
-        port_bar_filled = round(min(max((total_pnl_pct + 10) / 20, 0), 1) * 8)
+        port_bar_filled = round(min(max(total_pnl_pct / 20, 0), 1) * 8)  # 0~+20% 범위, 0에서 시작
         port_bar = ("🟩" if total_pnl >= 0 else "🟥") * port_bar_filled + "⬜" * (8 - port_bar_filled)
         lines += [
             f"\n💼 <b>포트폴리오 현황</b>",
@@ -884,7 +884,10 @@ def send_trade_report():
             for row in pending_rows:
                 name, sym, entry, target, alert_date = row
                 days = (date.today() - date.fromisoformat(alert_date)).days if alert_date else 0
-                lines.append(f"🔵 <b>{name}</b>  <i>{days}일째</i>  ₩{entry:,} → 🎯₩{target:,}")
+                lines.append(
+                    f"🔵 <b>{name}</b>  <i>{days}일째</i>\n"
+                    f"   📍₩{entry:,}  🎯₩{target:,}"
+                )
 
         # 5. 누적 성과
         if all_closed:
