@@ -842,17 +842,20 @@ def send_trade_report():
         if active_data:
             lines += [f"\n{SEP2}", f"🟢 <b>보유 중</b>  ({len(active_data)}종목)"]
             for d in active_data:
-                step_str = f"{d['step']}차 완료"
+                step = d["step"] or 1
+                # 분할매수 진행 상황: 매수된 차수는 🔵, 대기는 ⚪
+                split_icons = ""
+                for i in range(1, 4):
+                    split_icons += "🔵" if i <= step else "⚪"
                 split_remain = ""
-                if d["step"] == 1:   split_remain = "  <i>2·3차 대기</i>"
-                elif d["step"] == 2: split_remain = "  <i>3차 대기</i>"
+                if step == 1:   split_remain = "  <i>2·3차 대기</i>"
+                elif step == 2: split_remain = "  <i>3차 대기</i>"
 
                 cur_line = "  현재가 조회 불가"
                 if d["cur"] and d["avg_p"]:
                     ret    = (d["cur"] - d["avg_p"]) / d["avg_p"] * 100
                     pnl    = int((d["cur"] - d["avg_p"]) * d["qty"])
                     p_sign = "+" if pnl >= 0 else ""
-                    # 목표가/손절가 게이지
                     if d["target"] and d["stop"] and d["target"] > d["stop"]:
                         if ret >= 0:
                             ratio  = min((d["cur"] - d["avg_p"]) / (d["target"] - d["avg_p"]), 1.0)
@@ -864,17 +867,17 @@ def send_trade_report():
                             bar    = "🟥" * filled + "⬜" * (8 - filled)
                     else:
                         bar = "⬜" * 8
-                    # 손절까지 남은 %
                     to_stop = (d["cur"] - d["stop"]) / d["cur"] * 100 if d["stop"] else 0
                     cur_line = (
-                        f"  {bar}\n"
-                        f"  ₩{d['cur']:,.0f}  <b>({ret:+.1f}%  {p_sign}₩{pnl:,})</b>\n"
-                        f"  손절까지 {to_stop:.1f}%  |  🎯₩{d['target']:,}  🛑₩{d['stop']:,}"
+                        f"\n  {bar}  <b>{ret:+.1f}%  {p_sign}₩{pnl:,}</b>"
+                        f"\n  현재가  ₩{d['cur']:,.0f}"
+                        f"\n  🎯 ₩{d['target']:,}  🛑 ₩{d['stop']:,}  (손절까지 {to_stop:.1f}%)"
                     )
 
                 lines.append(
-                    f"\n📌 <b>{d['name']}</b>  <i>{d['days']}일째 · {step_str}{split_remain}</i>\n"
-                    f"  평균단가 ₩{d['avg_p']:,.0f} × {d['qty']}주  (₩{int(d['invest']):,})\n"
+                    f"\n📌 <b>{d['name']}</b>  <i>{d['days']}일째</i>  {split_icons}{split_remain}"
+                    f"\n  평균단가  ₩{d['avg_p']:,.0f} × {d['qty']}주"
+                    f"\n  투자금    ₩{int(d['invest']):,}"
                     + cur_line
                 )
 
