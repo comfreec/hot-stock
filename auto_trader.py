@@ -514,13 +514,18 @@ def place_orders(results: list):
             try:
                 from telegram_alert import send_telegram
                 mock_tag = "[모의] " if cfg["mock"] else ""
+                t2_pct = (t2 / entry - 1) * 100 if entry else 0
+                t3_pct = (t3 / entry - 1) * 100 if entry else 0
                 _send_admin(
                     f"🤖 {mock_tag}<b>자동매수 주문</b>\n"
                     f"<b>{name}</b> ({symbol})\n"
-                    f"📍 매수가: ₩{entry:,}  ×  {qty}주\n"
+                    f"📍 1차 매수: ₩{entry:,}  ×  {qty}주\n"
                     f"🎯 목표가: ₩{target:,}\n"
                     f"🛑 손절가: ₩{stop:,}\n"
-                    f"💰 주문금액: ₩{actual_cost:,}"
+                    f"💰 주문금액: ₩{actual_cost:,}\n"
+                    f"\n📋 <b>분할매수 미리보기</b>\n"
+                    f"  2차: ₩{t2:,} ({t2_pct:.1f}%)\n"
+                    f"  3차: ₩{t3:,} ({t3_pct:.1f}%)"
                 )
             except:
                 pass
@@ -790,6 +795,22 @@ def send_trade_report():
         total_pnl_pct = (total_pnl / total_invest * 100) if total_invest > 0 else 0
         total_asset   = total_eval + cash
 
+        # 전날 대비 손익 변화
+        prev_eval_file = "/data/.prev_eval" if os.path.isdir("/data") else ".prev_eval"
+        prev_eval = 0
+        try:
+            with open(prev_eval_file) as f:
+                prev_eval = float(f.read().strip())
+        except:
+            pass
+        daily_chg = total_eval - prev_eval if prev_eval > 0 else None
+        # 오늘 평가금액 저장
+        try:
+            with open(prev_eval_file, "w") as f:
+                f.write(str(total_eval))
+        except:
+            pass
+
         # 이번 달 손익 금액
         month_pnl = sum(
             int(r[1] * r[2] * r[0] / 100) for r in month_closed
@@ -819,6 +840,10 @@ def send_trade_report():
             f"  예수금     ₩{cash:,.0f}",
             f"  {port_bar}",
         ]
+        if daily_chg is not None:
+            d_sign = "+" if daily_chg >= 0 else ""
+            d_icon = "📈" if daily_chg >= 0 else "📉"
+            lines.append(f"  전일 대비  {d_icon} <b>{d_sign}₩{int(daily_chg):,}</b>")
         if month_pnl != 0:
             m_sign = "+" if month_pnl >= 0 else ""
             lines.append(f"  이번 달 손익  <b>{m_sign}₩{month_pnl:,}</b>")
