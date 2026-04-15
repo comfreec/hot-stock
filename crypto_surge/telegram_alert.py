@@ -76,13 +76,23 @@ def _import_fetch_ohlcv():
 
 
 def _import_cache_db():
-    """cache_db를 경로 무관하게 import"""
+    """cache_db를 경로 무관하게 import - 항상 crypto_surge 버전 사용"""
+    import importlib
+    # 캐시 무시하고 직접 로드
     try:
         import crypto_surge.cache_db as m
-        return m
+        # DB_PATH가 crypto 버전인지 확인
+        if "crypto" in getattr(m, "DB_PATH", ""):
+            return m
     except ImportError:
-        import cache_db as m
-        return m
+        pass
+    # 직접 파일 로드
+    import importlib.util, os
+    _path = os.path.join(os.path.dirname(__file__), "cache_db.py")
+    spec = importlib.util.spec_from_file_location("crypto_cache_db", _path)
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    return m
 
 
 def calc_price_levels(symbol: str, current: float) -> dict:
