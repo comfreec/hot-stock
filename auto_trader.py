@@ -507,6 +507,11 @@ def place_orders(results: list):
             t2, t3 = _calc_split_triggers(entry, ma240) if ma240 else (int(entry * 0.98), int(entry * 0.96))
             _save_order(today, symbol, name, entry, target, stop, qty, order_no,
                        split_step=1, base_price=entry, trigger2=t2, trigger3=t3)
+            # 시장가 주문은 즉시 체결 → 바로 active로 전환
+            conn = _get_trade_conn()
+            conn.execute("UPDATE trade_orders SET status='active' WHERE symbol=? AND alert_date=?", (symbol, today))
+            conn.commit()
+            conn.close()
             cash -= actual_cost
             ordered += 1
 

@@ -17,3 +17,4 @@ _fix_*.py
 _build_*.py
 _check_*.py
 !_check_trades.py
+!_fix_trade_status.py
