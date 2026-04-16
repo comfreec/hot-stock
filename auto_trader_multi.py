@@ -80,18 +80,26 @@ def _migrate(conn):
         CREATE TABLE IF NOT EXISTS trader_users (
             user_id       INTEGER PRIMARY KEY AUTOINCREMENT,
             chat_id       TEXT NOT NULL UNIQUE,
+            name          TEXT DEFAULT '',
             app_key_enc   TEXT NOT NULL,
             app_secret_enc TEXT NOT NULL,
             account       TEXT NOT NULL,
             mock          INTEGER DEFAULT 1,
             budget_per    INTEGER DEFAULT 300000,
-            max_stocks    INTEGER DEFAULT 3,
-            max_days      INTEGER DEFAULT 5,
+            max_stocks    INTEGER DEFAULT 10,
+            max_days      INTEGER DEFAULT 7,
             is_active     INTEGER DEFAULT 1,
+            contact       TEXT DEFAULT '',
             created_at    TEXT NOT NULL,
             updated_at    TEXT
         )
     """)
+    # 기존 DB 마이그레이션
+    existing = [r[1] for r in conn.execute("PRAGMA table_info(trader_users)").fetchall()]
+    if "contact" not in existing:
+        conn.execute("ALTER TABLE trader_users ADD COLUMN contact TEXT DEFAULT ''")
+    if "name" not in existing:
+        conn.execute("ALTER TABLE trader_users ADD COLUMN name TEXT DEFAULT ''")
     # trade_orders_multi 테이블 (기존 trade_orders와 분리)
     conn.execute("""
         CREATE TABLE IF NOT EXISTS trade_orders_multi (
@@ -123,7 +131,8 @@ def _migrate(conn):
 
 
 # ── 유저 관리 ─────────────────────────────────────────────────────
-def register_user(chat_id: str, app_key: str, app_secret: str, account: str, mock: bool = True) -> str:
+def register_user(chat_id: str, app_key: str, app_secret: str, account: str,
+                  mock: bool = True, contact: str = "", name: str = "") -> str:
     """유저 등록 또는 업데이트"""
     conn = _get_conn()
     try:
@@ -137,17 +146,17 @@ def register_user(chat_id: str, app_key: str, app_secret: str, account: str, moc
             conn.execute("""
                 UPDATE trader_users
                 SET app_key_enc=?, app_secret_enc=?, account=?, mock=?,
-                    is_active=1, updated_at=?
+                    contact=?, name=?, is_active=1, updated_at=?
                 WHERE chat_id=?
-            """, (enc_key, enc_secret, account, int(mock), now, chat_id))
+            """, (enc_key, enc_secret, account, int(mock), contact, name, now, chat_id))
             conn.commit()
             return "updated"
         else:
             conn.execute("""
                 INSERT INTO trader_users
-                (chat_id, app_key_enc, app_secret_enc, account, mock, created_at)
-                VALUES (?,?,?,?,?,?)
-            """, (chat_id, enc_key, enc_secret, account, int(mock), now))
+                (chat_id, name, app_key_enc, app_secret_enc, account, mock, contact, created_at)
+                VALUES (?,?,?,?,?,?,?,?)
+            """, (chat_id, name, enc_key, enc_secret, account, int(mock), contact, now))
             conn.commit()
             return "created"
     finally:
@@ -184,7 +193,7 @@ def get_active_users() -> list[dict]:
 
 
 def update_user_settings(chat_id: str, **kwargs) -> bool:
-    allowed = {"budget_per", "max_stocks", "max_days", "mock", "is_active"}
+    allowed = {"budget_per", "max_stocks", "max_days", "mock", "is_active", "contact", "name"}
     updates = {k: v for k, v in kwargs.items() if k in allowed}
     if not updates:
         return False

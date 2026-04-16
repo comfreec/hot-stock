@@ -92,40 +92,57 @@ with tab1:
 # ── 유저 관리 ─────────────────────────────────────────────────────
 with tab2:
     st.subheader("유저 목록")
-    
+
     conn = _get_conn()
     rows = conn.execute("SELECT * FROM trader_users ORDER BY created_at DESC").fetchall()
     conn.close()
-    
+
     if not rows:
         st.info("등록된 유저가 없습니다.")
     else:
+        search = st.text_input("🔍 검색", placeholder="이름, Chat ID, 계좌번호, 연락처로 검색", key="user_search")
+        filtered = []
         for row in rows:
             u = dict(row)
+            kw = search.strip().lower()
+            if not kw or any(kw in str(u.get(f, "")).lower()
+                             for f in ("name", "chat_id", "account", "contact")):
+                filtered.append(u)
+
+        st.caption(f"총 {len(filtered)}명" + (" (검색 결과)" if search else ""))
+
+        for u in filtered:
             status = "🟢 활성" if u["is_active"] else "🔴 중지"
             mode = "모의" if u["mock"] else "실전"
-            
-            with st.expander(f"{status} {u['chat_id']} - {u['account']} [{mode}]"):
+            label_name = u.get("name") or u["chat_id"]
+
+            with st.expander(f"{status} {label_name} - {u['account']} [{mode}]"):
                 col1, col2 = st.columns([3, 1])
-                
+
                 with col1:
                     st.write(f"**User ID:** {u['user_id']}")
+                    st.write(f"**이름:** {u.get('name') or '-'}")
                     st.write(f"**Chat ID:** {u['chat_id']}")
                     st.write(f"**계좌번호:** {u['account']}")
+                    st.write(f"**연락처:** {u.get('contact') or '-'}")
                     st.write(f"**등록일:** {u['created_at'][:10]}")
                     
                     # 설정 수정 폼
                     with st.form(f"edit_{u['user_id']}"):
                         st.write("**설정 수정**")
+                        new_name = st.text_input("이름", value=u.get("name") or "", key=f"name_{u['user_id']}")
+                        new_contact = st.text_input("연락처", value=u.get("contact") or "", key=f"contact_{u['user_id']}")
                         new_budget = st.number_input("종목당 예산", value=u["budget_per"], step=10000, key=f"budget_{u['user_id']}")
-                        new_stocks = st.number_input("최대 종목", value=u["max_stocks"], min_value=1, max_value=10, key=f"stocks_{u['user_id']}")
-                        new_days = st.number_input("만료일", value=u["max_days"], min_value=1, max_value=20, key=f"days_{u['user_id']}")
+                        new_stocks = st.number_input("최대 종목", value=u["max_stocks"], min_value=1, max_value=30, key=f"stocks_{u['user_id']}")
+                        new_days = st.number_input("만료일 (거래일)", value=u["max_days"], min_value=1, max_value=20, key=f"days_{u['user_id']}")
                         new_mock = st.selectbox("모드", ["모의투자", "실전투자"], index=0 if u["mock"] else 1, key=f"mock_{u['user_id']}")
                         new_active = st.checkbox("활성화", value=bool(u["is_active"]), key=f"active_{u['user_id']}")
-                        
+
                         if st.form_submit_button("💾 저장"):
                             update_user_settings(
                                 u["chat_id"],
+                                name=new_name,
+                                contact=new_contact,
                                 budget_per=new_budget,
                                 max_stocks=new_stocks,
                                 max_days=new_days,
@@ -180,20 +197,23 @@ with tab3:
     form_ver = st.session_state.get("reg_form_ver", 0)
     with st.form(f"register_user_{form_ver}"):
         chat_id = st.text_input("텔레그램 Chat ID", help="숫자만 입력 (예: 1663019049) - 봇에서 /start 후 확인", key=f"reg_chat_id_{form_ver}")
+        name = st.text_input("이름", placeholder="홍길동", help="유저 식별용 이름", key=f"reg_name_{form_ver}")
         app_key = st.text_input("KIS APP KEY", type="password", help="한국투자증권 Open API 앱키 (영숫자 36자)", key=f"reg_app_key_{form_ver}")
         app_secret = st.text_input("KIS APP SECRET", type="password", help="한국투자증권 Open API 시크릿 (영숫자+특수문자)", key=f"reg_app_secret_{form_ver}")
-        account = st.text_input("계좌번호", placeholder="50123456-01", help="8자리-2자리 형식 (예: 50123456-01)", key=f"reg_account_{form_ver}")        
+        account = st.text_input("계좌번호", placeholder="50123456-01", help="8자리-2자리 형식 (예: 50123456-01)", key=f"reg_account_{form_ver}")
+        contact = st.text_input("연락처", placeholder="010-1234-5678", help="관리자 연락용 (선택)", key=f"reg_contact_{form_ver}")
+
         col1, col2 = st.columns(2)
         with col1:
             mock = st.selectbox("투자 모드", ["모의투자", "실전투자"])
         with col2:
             budget = st.number_input("종목당 예산 (원)", value=300000, step=10000)
-        
+
         col3, col4 = st.columns(2)
         with col3:
-            max_stocks = st.number_input("최대 보유 종목", value=3, min_value=1, max_value=10)
+            max_stocks = st.number_input("최대 보유 종목", value=10, min_value=1, max_value=30)
         with col4:
-            max_days = st.number_input("미체결 만료일", value=5, min_value=1, max_value=20)
+            max_days = st.number_input("미체결 만료일 (거래일)", value=7, min_value=1, max_value=20)
         
         if st.form_submit_button("✅ 등록", type="primary"):
             import re
@@ -233,7 +253,8 @@ with tab3:
             else:
                 try:
                     result = register_user(chat_id.strip(), app_key.strip(), app_secret.strip(),
-                                           account.strip(), mock == "모의투자")
+                                           account.strip(), mock == "모의투자",
+                                           contact.strip(), name.strip())
                     update_user_settings(chat_id.strip(), budget_per=budget,
                                          max_stocks=max_stocks, max_days=max_days)
                     action = "업데이트" if result == "updated" else "등록"
