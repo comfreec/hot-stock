@@ -529,9 +529,9 @@ def place_orders(results: list):
                     f"🎯 목표가: ₩{target:,}\n"
                     f"🛑 손절가: ₩{stop:,}\n"
                     f"💰 주문금액: ₩{actual_cost:,}\n"
-                    f"\n📋 <b>분할매수 미리보기 (고정)</b>\n"
-                    f"  2차: ₩{t2:,} ({t2_pct:.1f}%) ← 1차·240선 중간\n"
-                    f"  3차: ₩{t3:,} ({t3_pct:.1f}%) ← 240일선 (고정)"
+                    f"\n📋 <b>분할매수 미리보기</b>\n"
+                    f"  2차: ₩{t2:,} ({t2_pct:.1f}%)\n"
+                    f"  3차: ₩{t3:,} ({t3_pct:.1f}%)"
                 )
             except:
                 pass
