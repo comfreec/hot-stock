@@ -12,3 +12,4 @@ ta>=0.11.0
 pykrx>=1.0.0
 ccxt>=4.2.0
 # build: 20260411
+cryptography
