@@ -57,9 +57,13 @@ def _decrypt(token: str) -> str:
 
 # ── DB ────────────────────────────────────────────────────────────
 def _get_db_path() -> str:
-    return os.environ.get("DB_PATH",
-        "/data/scan_cache.db" if os.path.isdir("/data") else "scan_cache.db"
-    )
+    env_path = os.environ.get("DB_PATH", "")
+    if env_path:
+        return env_path
+    if os.path.isdir("/data"):
+        return "/data/scan_cache.db"
+    # 항상 이 파일 기준 절대경로로 고정
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "scan_cache.db")
 
 
 def _get_conn():

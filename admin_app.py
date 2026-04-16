@@ -7,6 +7,13 @@
 import streamlit as st
 import os
 import pandas as pd
+
+# 로컬 .env 로드
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 from datetime import datetime, date
 from auto_trader_multi import (
     get_active_users, get_user, register_user, update_user_settings,
@@ -131,10 +138,27 @@ with tab2:
                 with col2:
                     st.write("")
                     st.write("")
-                    if st.button("🗑 삭제", key=f"del_{u['user_id']}", type="secondary"):
-                        delete_user(u["chat_id"])
-                        st.success("삭제 완료!")
-                        st.rerun()
+                    # 삭제 확인 단계
+                    confirm_key = f"confirm_del_{u['user_id']}"
+                    if st.session_state.get(confirm_key):
+                        st.warning("정말 삭제?")
+                        c1, c2 = st.columns(2)
+                        if c1.button("✅ 확인", key=f"yes_{u['user_id']}", type="primary"):
+                            conn2 = _get_conn()
+                            conn2.execute("DELETE FROM trader_users WHERE chat_id=?", (u["chat_id"],))
+                            conn2.execute("DELETE FROM trade_orders_multi WHERE user_id=?", (u["user_id"],))
+                            conn2.commit()
+                            conn2.close()
+                            st.session_state.pop(confirm_key, None)
+                            st.success("삭제 완료!")
+                            st.rerun()
+                        if c2.button("❌ 취소", key=f"no_{u['user_id']}"):
+                            st.session_state.pop(confirm_key, None)
+                            st.rerun()
+                    else:
+                        if st.button("🗑 삭제", key=f"del_{u['user_id']}", type="secondary"):
+                            st.session_state[confirm_key] = True
+                            st.rerun()
                 
                 # 보유 종목 상세
                 orders = _get_pending_orders(u["user_id"])
@@ -147,14 +171,18 @@ with tab2:
 
 # ── 유저 등록 ─────────────────────────────────────────────────────
 with tab3:
-    st.subheader("신규 유저 등록")
-    
-    with st.form("register_user"):
-        chat_id = st.text_input("텔레그램 Chat ID", help="유저의 텔레그램 Chat ID (숫자)")
-        app_key = st.text_input("KIS APP KEY", type="password")
-        app_secret = st.text_input("KIS APP SECRET", type="password")
-        account = st.text_input("계좌번호", placeholder="12345678-01")
-        
+    col_title, col_clear = st.columns([4, 1])
+    col_title.subheader("신규 유저 등록")
+    if col_clear.button("🔄 초기화", key="clear_form"):
+        st.session_state["reg_form_ver"] = st.session_state.get("reg_form_ver", 0) + 1
+        st.rerun()
+
+    form_ver = st.session_state.get("reg_form_ver", 0)
+    with st.form(f"register_user_{form_ver}"):
+        chat_id = st.text_input("텔레그램 Chat ID", help="숫자만 입력 (예: 1663019049) - 봇에서 /start 후 확인", key=f"reg_chat_id_{form_ver}")
+        app_key = st.text_input("KIS APP KEY", type="password", help="한국투자증권 Open API 앱키 (영숫자 36자)", key=f"reg_app_key_{form_ver}")
+        app_secret = st.text_input("KIS APP SECRET", type="password", help="한국투자증권 Open API 시크릿 (영숫자+특수문자)", key=f"reg_app_secret_{form_ver}")
+        account = st.text_input("계좌번호", placeholder="50123456-01", help="8자리-2자리 형식 (예: 50123456-01)", key=f"reg_account_{form_ver}")        
         col1, col2 = st.columns(2)
         with col1:
             mock = st.selectbox("투자 모드", ["모의투자", "실전투자"])
@@ -168,13 +196,46 @@ with tab3:
             max_days = st.number_input("미체결 만료일", value=5, min_value=1, max_value=20)
         
         if st.form_submit_button("✅ 등록", type="primary"):
-            if not all([chat_id, app_key, app_secret, account]):
-                st.error("모든 필드를 입력해주세요.")
+            import re
+            errors = []
+
+            # Chat ID: 숫자만 (텔레그램 ID는 정수)
+            if not chat_id:
+                errors.append("Chat ID를 입력해주세요.")
+            elif not re.fullmatch(r"-?\d+", chat_id.strip()):
+                errors.append("Chat ID는 숫자만 입력하세요. (예: 1663019049)")
+
+            # APP KEY: 영숫자 40자 이상
+            if not app_key:
+                errors.append("KIS APP KEY를 입력해주세요.")
+            elif len(app_key.strip()) < 20:
+                errors.append("APP KEY가 너무 짧습니다. KIS 발급 키를 확인하세요.")
+
+            # APP SECRET: 영숫자 특수문자 포함 충분한 길이
+            if not app_secret:
+                errors.append("KIS APP SECRET을 입력해주세요.")
+            elif len(app_secret.strip()) < 20:
+                errors.append("APP SECRET이 너무 짧습니다. KIS 발급 시크릿을 확인하세요.")
+
+            # 계좌번호: 8자리-2자리 형식
+            if not account:
+                errors.append("계좌번호를 입력해주세요.")
+            elif not re.fullmatch(r"\d{8}-\d{2}", account.strip()):
+                errors.append("계좌번호 형식이 올바르지 않습니다. (예: 50123456-01)")
+
+            # 예산: 최소 10만원 이상
+            if budget < 100000:
+                errors.append("종목당 예산은 최소 100,000원 이상이어야 합니다.")
+
+            if errors:
+                for e in errors:
+                    st.error(e)
             else:
                 try:
-                    result = register_user(chat_id, app_key, app_secret, account, mock == "모의투자")
-                    # 추가 설정 업데이트
-                    update_user_settings(chat_id, budget_per=budget, max_stocks=max_stocks, max_days=max_days)
+                    result = register_user(chat_id.strip(), app_key.strip(), app_secret.strip(),
+                                           account.strip(), mock == "모의투자")
+                    update_user_settings(chat_id.strip(), budget_per=budget,
+                                         max_stocks=max_stocks, max_days=max_days)
                     action = "업데이트" if result == "updated" else "등록"
                     st.success(f"✅ 유저 {action} 완료!")
                     st.balloons()
