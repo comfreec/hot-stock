@@ -90,8 +90,10 @@ with st.sidebar:
 
     service = st.session_state["service_select"]
     is_stock = service == "📡 주식"
+    is_coin = service == "₿ 코인"
+    is_admin = service == "🔐 관리자"
 
-    col_s, col_c = st.columns(2)
+    col_s, col_c, col_a = st.columns(3)
     with col_s:
         if st.button("📡", key="btn_stock", use_container_width=True,
                      type="primary" if is_stock else "secondary"):
@@ -100,8 +102,14 @@ with st.sidebar:
             st.rerun()
     with col_c:
         if st.button("₿", key="btn_coin", use_container_width=True,
-                     type="primary" if not is_stock else "secondary"):
+                     type="primary" if is_coin else "secondary"):
             st.session_state["service_select"] = "₿ 코인"
+            st.session_state["close_sidebar"] = True
+            st.rerun()
+    with col_a:
+        if st.button("🔐", key="btn_admin", use_container_width=True,
+                     type="primary" if is_admin else "secondary"):
+            st.session_state["service_select"] = "🔐 관리자"
             st.session_state["close_sidebar"] = True
             st.rerun()
 
@@ -166,17 +174,16 @@ def _run_app(filepath: str, extra_syspath: str = None):
 
 if service == "📡 주식":
     crypto_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "crypto_surge")
-    # crypto_surge 경로 완전 제거
     while crypto_dir in sys.path:
         sys.path.remove(crypto_dir)
-    # 코인 모듈 캐시 제거
     for mod_name in list(sys.modules.keys()):
         if "crypto_surge" in mod_name or mod_name in ("cache_db", "telegram_alert", "crypto_surge_detector"):
             sys.modules.pop(mod_name, None)
     _run_app("app.py")
-else:
+elif service == "₿ 코인":
     crypto_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "crypto_surge")
-    # 주식 cache_db/telegram_alert 캐시만 제거 (symbols, crypto_surge_detector는 유지)
     for mod_name in ["cache_db", "telegram_alert"]:
         sys.modules.pop(mod_name, None)
     _run_app(os.path.join(crypto_dir, "app.py"), extra_syspath=crypto_dir)
+else:  # 🔐 관리자
+    _run_app("admin_app.py")
