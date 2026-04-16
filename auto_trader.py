@@ -363,17 +363,18 @@ def _get_ma240(symbol: str) -> float | None:
 
 def _calc_split_triggers(base_price: float, ma240: float) -> tuple:
     """
-    1차 매수가 ~ 240선 구간을 3등분한 2/3차 트리거 계산
+    분할매수 트리거 계산
+    - 2차 매수가: 1차 매수가와 240일선의 중간값
+    - 3차 매수가: 1차 매수 시점의 240일선 가격 (이후 240선 변동 무관하게 고정)
     base_price: 1차 매수가
-    ma240: 240일선 가격
+    ma240: 1차 매수 시점의 240일선 가격 (고정값으로 저장됨)
     returns: (trigger2, trigger3)
     """
     if ma240 >= base_price:
         # 240선이 매수가보다 높으면 기존 방식(-2%, -4%) 사용
-        return base_price * 0.98, base_price * 0.96
-    gap = base_price - ma240
-    trigger2 = base_price - gap / 3
-    trigger3 = base_price - gap * 2 / 3
+        return round_to_tick(base_price * 0.98), round_to_tick(base_price * 0.96)
+    trigger2 = (base_price + ma240) / 2  # 1차 매수가와 240선의 중간
+    trigger3 = ma240                      # 240일선 가격 (1차 매수 시점 고정)
     return round_to_tick(trigger2), round_to_tick(trigger3)
 
 
@@ -528,9 +529,9 @@ def place_orders(results: list):
                     f"🎯 목표가: ₩{target:,}\n"
                     f"🛑 손절가: ₩{stop:,}\n"
                     f"💰 주문금액: ₩{actual_cost:,}\n"
-                    f"\n📋 <b>분할매수 미리보기</b>\n"
-                    f"  2차: ₩{t2:,} ({t2_pct:.1f}%)\n"
-                    f"  3차: ₩{t3:,} ({t3_pct:.1f}%)"
+                    f"\n📋 <b>분할매수 미리보기 (고정)</b>\n"
+                    f"  2차: ₩{t2:,} ({t2_pct:.1f}%) ← 1차·240선 중간\n"
+                    f"  3차: ₩{t3:,} ({t3_pct:.1f}%) ← 240일선 (고정)"
                 )
             except:
                 pass
