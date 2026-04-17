@@ -706,8 +706,8 @@ with st.sidebar:
 
     max_gap   = st.slider("📍 240선 근처 범위 (%)", 1, 30, key="max_gap",
         help="현재가가 240일선 위 몇 % 이내인지")
-    ob_days   = st.slider("⏱ RSI 70 이탈 후 경과일", 30, 180, key="ob_days",
-        help="RSI 70 이탈 후 최대 경과일 (짧을수록 최근 눌림목)")
+    ob_days   = st.slider("⏱ R-cycle 70 이탈 후 경과일", 30, 180, key="ob_days",
+        help="R-cycle 70 이탈 후 최대 경과일 (짧을수록 최근 눌림목)")
     min_score = st.slider("🎯 최소 종합점수", 0, 40, key="min_score",
         help="0=전체, 높을수록 엄격")
 
@@ -730,17 +730,16 @@ with st.sidebar:
 
     st.markdown("---")
     st.markdown("""**📋 탐지 전략**
-> RSI(20) 과매도 탈출 → 240선 돌파 → 과매수 → 조정 눌림목
+> R-cycle 과매도 탈출 → 장기선 돌파 → 과매수 → 조정 눌림목
 
 | 조건 | 기준 |
 |------|------|
-| 📉 RSI 30 이하 탈출 | 과매도 구간 탈출 |
-| 📈 240일선 상향 돌파 | 추세 전환 확인 |
-| 🔥 RSI 70 이상 도달 | 과매수 확인 |
-| 📉 RSI 70 이탈 | 조정 시작 |
-| 📍 현재 RSI 55 이하 | 눌림목 진행 중 |
-| 📍 현재가 240선 위 | 0~N% 이내 |
-| 🛑 손절가 | 240선 -5% |
+| 📉 R-cycle 30 이하 탈출 | 과매도 구간 탈출 |
+| 📈 장기선 상향 돌파 | 추세 전환 확인 |
+| 🔥 R-cycle 70 이상 도달 | 과매수 확인 |
+| 📉 R-cycle 70 이탈 | 조정 시작 |
+| 📍 현재가 장기선 위 | 0~N% 이내 |
+| 🛑 손절가 | 장기선 -5% |
 
 **📊 가산점 신호**
 | 신호 | 점수 |
@@ -754,7 +753,7 @@ with st.sidebar:
 | 📈 OBV 지속 상승 | 2점 |
 | ⚡ 이평선 정배열 | 3점 |
 | 🔄 눌림목 후 재상승 | 2점 |
-| 💚 RSI 건강 구간 | 2점 |
+| 💚 R-cycle 건강 구간 | 2점 |
 | 🔥 BB수축→확장 | 3점 |
 | 📊 MACD 크로스 | 2점 |
 | 🔼 240선 상승 전환 | 3점 |
@@ -927,7 +926,7 @@ def make_rsi_chart(rsi_s, chart_data=None):
     fig = go.Figure()
     fig.add_trace(go.Scatter(
         x=rsi_s.index, y=rsi_s.values,
-        name="RSI(20)", line=dict(color="#4f8ef7", width=1.5),
+        name="R-cycle(20)", line=dict(color="#4f8ef7", width=1.5),
         fill="tozeroy", fillcolor="rgba(79,142,247,0.05)"
     ))
     fig.add_hline(y=30, line=dict(color="#00d4aa", dash="dash", width=1),
@@ -963,11 +962,11 @@ def make_rsi_chart(rsi_s, chart_data=None):
     fig.update_layout(
         paper_bgcolor="#0e1117", plot_bgcolor="#0e1117",
         font=dict(color="#8b92a5"),
-        yaxis=dict(range=[0,100], gridcolor="#1e2540", title="RSI",
+        yaxis=dict(range=[0,100], gridcolor="#1e2540", title="R-cycle",
                    tickvals=[0,20,30,50,70,80,100], fixedrange=True),
         xaxis=dict(gridcolor="#1e2540", rangeslider_visible=False, fixedrange=True),
         height=120, margin=dict(l=40,r=40,t=20,b=5),
-        title=dict(text="RSI(20)", font=dict(color="#e0e6f0", size=13)),
+        title=dict(text="R-cycle(20)", font=dict(color="#e0e6f0", size=13)),
         showlegend=False,
         dragmode=False,
     )
@@ -1017,25 +1016,13 @@ def make_candle(data, title, ma240_series=None, cross_date=None, show_levels=Tru
         atr_series = tr.rolling(14).mean().dropna()
         atr = float(atr_series.iloc[-1]) if len(atr_series) > 0 else float((high - low).mean())
 
-        # ── 매수가: 240선 근거 진입가 ───────────────────────────
+        # ── 매수가: 240일선 가격 고정 ────────────────────────────
         ma240 = close.rolling(240).mean()
         ma240_v = float(ma240.iloc[-1]) if not pd.isna(ma240.iloc[-1]) else None
-        swing_low_20 = float(low.tail(20).min())
-        ma20 = float(close.rolling(20).mean().dropna().iloc[-1])
 
-        entry_candidates = []
-        if ma240_v:
-            entry_candidates.append(("240선", ma240_v * 1.005))
-        entry_candidates.append(("MA20", ma20))
-        entry_candidates.append(("스윙저점", swing_low_20))
-
-        valid_entries = [
-            (label, price) for label, price in entry_candidates
-            if price < current and (ma240_v is None or price >= ma240_v * 0.995)
-        ]
-        if valid_entries:
-            entry_label = "+".join(l for l, _ in valid_entries)
-            entry = sum(p for _, p in valid_entries) / len(valid_entries)  # 평균가
+        if ma240_v and ma240_v < current:
+            entry_label = "장기선"
+            entry = ma240_v
         else:
             entry_label, entry = "현재가", current
 
@@ -1136,8 +1123,8 @@ if mode == "🔍 급등 예고 종목 탐지":
     date_label = f"📅 {scan_date} 기준" if (use_past_date and scan_date) else "오늘 기준"
     st.markdown(f"""<div class="cond-box">
       <b style="color:#e0e6f0;">현재 탐지 조건</b>  <span style="color:#ffd700;">{date_label}</span><br>
-      📉 RSI(20) 30탈출 → 📈 240선 돌파 → 🔥 RSI 70도달 → 📉 RSI 70이탈 →
-      📍 현재 RSI 55↓ + 240선 위 <b style="color:#4f8ef7;">0~{max_gap}%</b> 이내
+      📉 R-cycle 30탈출 → 📈 장기선 돌파 → 🔥 R-cycle 70도달 → 📉 R-cycle 70이탈 →
+      📍 장기선 위 <b style="color:#4f8ef7;">0~{max_gap}%</b> 이내
       (이탈 후 <b style="color:#ffd700;">{ob_days}일</b> 이내)
     </div>""", unsafe_allow_html=True)
 
@@ -1231,7 +1218,7 @@ if mode == "🔍 급등 예고 종목 탐지":
             c1,c2,c3,c4 = st.columns(4)
             metric_card(c1, "발견 종목", f"{len(results)}개")
             metric_card(c2, "평균 240선 이격", f"+{sum(r.get('ma240_gap',0) for r in results)/len(results):.1f}%")
-            metric_card(c3, "RSI 70이탈 평균", f"{int(sum(r.get('signals',{}).get('rsi_cycle_days_since',0) or 0 for r in results)/len(results))}일 전")
+            metric_card(c3, "R-cycle 70이탈 평균", f"{int(sum(r.get('signals',{}).get('rsi_cycle_days_since',0) or 0 for r in results)/len(results))}일 전")
             metric_card(c4, "최고 점수", f"{max(r['total_score'] for r in results)}점")
 
             st.markdown("<div class='sec-title'>🏆 급등 예고 종목 전체</div>", unsafe_allow_html=True)
@@ -1247,8 +1234,8 @@ if mode == "🔍 급등 예고 종목 탐지":
                     "등락률":     f"{'🔺' if r['price_change_1d']>0 else '🔽'}{r['price_change_1d']:.2f}%",
                     "240일선":    f"₩{r['ma240']:,.0f}",
                     "240선이격":  f"+{r['ma240_gap']:.1f}%",
-                    "RSI70이탈":  f"{r.get('signals',{}).get('rsi_cycle_days_since','-')}일 전",
-                    "RSI":        r["rsi"],
+                    "R-cycle이탈": f"{r.get('signals',{}).get('rsi_cycle_days_since','-')}일 전",
+                    "R-cycle":    r["rsi"],
                     "종합점수":   r["total_score"],
                     "원점수":     r.get("raw_score", r["total_score"]),
                     "핵심신호":   f"{r.get('core_signal_count', 0)}개",
@@ -1273,8 +1260,8 @@ if mode == "🔍 급등 예고 종목 탐지":
                         "종합점수(ML보정)", min_value=0, max_value=50, format="%d점"),
                     "원점수": st.column_config.ProgressColumn(
                         "원점수", min_value=0, max_value=39, format="%d점"),
-                    "RSI": st.column_config.ProgressColumn(
-                        "RSI", min_value=0, max_value=100, format="%.1f"),
+                    "R-cycle": st.column_config.ProgressColumn(
+                        "R-cycle", min_value=0, max_value=100, format="%.1f"),
                     "수급": st.column_config.TextColumn("기관/외국인", help="🔥=동시매수 ✅=한쪽매수 ❌=없음"),
                     "거래량": st.column_config.TextColumn("거래량", help="✅=3배이상 🔶=2배이상 ❌=미달"),
                 },
@@ -1361,9 +1348,9 @@ if mode == "🔍 급등 예고 종목 탐지":
 
                 if True:  # 바로 표시
                     m1,m2,m3,m4,m5 = st.columns(5)
-                    m1.metric("RSI(20)", f"{r['rsi']:.1f}")
+                    m1.metric("R-cycle(20)", f"{r['rsi']:.1f}")
                     m2.metric("240선 이격", f"+{r['ma240_gap']:.1f}%")
-                    m3.metric("RSI 70이탈", f"{r.get('signals',{}).get('rsi_cycle_days_since','-')}일 전")
+                    m3.metric("R-cycle 70이탈", f"{r.get('signals',{}).get('rsi_cycle_days_since','-')}일 전")
                     m4.metric("240일선", f"₩{r['ma240']:,.0f}")
                     m5.metric("손절가", f"₩{int(r['ma240']*0.95):,.0f}")
                     # 수급 정보
@@ -1381,7 +1368,7 @@ if mode == "🔍 급등 예고 종목 탐지":
                     if s.get("obv_rising"):             active.append("📈 OBV 지속 상승 (매집 진행 중)")
                     if s.get("ma_align"):               active.append("⚡ 이평선 정배열 (MA5>MA20>MA60)")
                     if s.get("pullback_recovery"):      active.append("🔄 눌림목 후 재상승")
-                    if s.get("rsi_healthy"):            active.append(f"💚 RSI 건강 구간 ({s.get('rsi',0):.1f})")
+                    if s.get("rsi_healthy"):            active.append(f"💚 R-cycle 건강 구간 ({s.get('rsi',0):.1f})")
                     if s.get("bb_squeeze_expand"):      active.append("🔥 볼린저밴드 수축→확장 (폭발 직전)")
                     if s.get("macd_cross"):             active.append("📊 MACD 골든크로스")
                     if s.get("ma240_turning_up"):       active.append("🔼 240일선 하락→상승 전환")
@@ -1505,7 +1492,7 @@ elif mode == "📈 개별 종목 분석":
             </div>""", unsafe_allow_html=True)
 
             c1,c2,c3,c4 = st.columns(4)
-            metric_card(c1,"RSI(20)",f"{result['rsi']:.1f}")
+            metric_card(c1,"R-cycle(20)",f"{result['rsi']:.1f}")
             metric_card(c2,"240선 이격",f"+{result['ma240_gap']:.1f}%")
             metric_card(c3,"240일선",f"₩{result['ma240']:,.0f}")
             metric_card(c4,"손절가",f"₩{int(result['ma240']*0.95):,.0f}")
@@ -1521,7 +1508,7 @@ elif mode == "📈 개별 종목 분석":
                 (s.get("obv_rising"),            "📈 OBV 지속 상승 (매집 진행 중)"),
                 (s.get("ma_align"),              "⚡ 이평선 정배열 (MA5>MA20>MA60)"),
                 (s.get("pullback_recovery"),     "🔄 눌림목 후 재상승"),
-                (s.get("rsi_healthy"),           f"💚 RSI 건강 구간 ({s.get('rsi',0):.1f})"),
+                (s.get("rsi_healthy"),           f"💚 R-cycle 건강 구간 ({s.get('rsi',0):.1f})"),
                 (s.get("bb_squeeze_expand"),     "🔥 볼린저밴드 수축→확장 (폭발 직전)"),
                 (s.get("macd_cross"),            "📊 MACD 골든크로스"),
                 (s.get("ma240_turning_up"),      "🔼 240일선 하락→상승 전환"),
@@ -1651,9 +1638,9 @@ elif mode == "💎 우량주 RSI 70 이탈":
     st.markdown("""
     <div style='background:linear-gradient(135deg,#1a1f35,#0e1117);
          padding:20px 24px;border-radius:12px;margin-bottom:16px;border:1px solid #2d3555;'>
-      <h3 style='color:#fff;margin:0;'>💎 재무 우량주 RSI(20) 사이클 완성 스캐너</h3>
+      <h3 style='color:#fff;margin:0;'>💎 재무 우량주 R-cycle(20) 사이클 완성 스캐너</h3>
       <p style='color:#8b92a5;margin:8px 0 0;font-size:13px;'>
-        ① RSI 30 이하 (과매도) → ② RSI 30 상향돌파 → ③ RSI 70 도달 → ④ RSI 70 이탈<br>
+        ① R-cycle 30 이하 (과매도) → ② R-cycle 30 상향돌파 → ③ R-cycle 70 도달 → ④ R-cycle 70 이탈<br>
         <b style='color:#ffd700;'>한 사이클 완성 후 다음 매수 타이밍 준비 종목</b>
       </p>
     </div>
@@ -1734,7 +1721,7 @@ elif mode == "💎 우량주 RSI 70 이탈":
         prog.empty()
 
         if not results:
-            st.warning(f"최근 {days_ago}일 이내 RSI 사이클 완성 종목이 없습니다. 기간을 늘려보세요.")
+            st.warning(f"최근 {days_ago}일 이내 R-cycle 사이클 완성 종목이 없습니다. 기간을 늘려보세요.")
         else:
             results.sort(key=lambda x: x["days_since"])
             st.success(f"✅ {len(results)}개 종목 발견!")
@@ -1744,7 +1731,7 @@ elif mode == "💎 우량주 RSI 70 이탈":
             metric_card(c2, "평균 현재 RSI", f"{sum(r['current_rsi'] for r in results)/len(results):.1f}")
             metric_card(c3, "최근 이탈", f"{min(r['days_since'] for r in results)}일 전")
 
-            st.markdown("<div class='sec-title'>📋 RSI 사이클 완성 종목</div>", unsafe_allow_html=True)
+            st.markdown("<div class='sec-title'>📋 R-cycle 사이클 완성 종목</div>", unsafe_allow_html=True)
 
             df_out = pd.DataFrame([{
                 "종목명":    r["name"],
@@ -1768,11 +1755,11 @@ elif mode == "💎 우량주 RSI 70 이탈":
 
             st.markdown("<div class='sec-title'>📈 종목별 RSI 차트</div>", unsafe_allow_html=True)
             for r in results:
-                with st.expander(f"📊 {r['name']} ({r['symbol']}) — 현재 RSI: {r['current_rsi']:.1f} | 70이탈: {r['cross70_date']}", expanded=True):
+                with st.expander(f"📊 {r['name']} ({r['symbol']}) — 현재 R-cycle: {r['current_rsi']:.1f} | 70이탈: {r['cross70_date']}", expanded=True):
                     m1, m2, m3, m4 = st.columns(4)
-                    m1.metric("바닥 RSI", f"{r['bottom_rsi']:.1f}")
-                    m2.metric("고점 RSI", f"{r['peak_rsi']:.1f}")
-                    m3.metric("현재 RSI", f"{r['current_rsi']:.1f}")
+                    m1.metric("바닥 R-cycle", f"{r['bottom_rsi']:.1f}")
+                    m2.metric("고점 R-cycle", f"{r['peak_rsi']:.1f}")
+                    m3.metric("현재 R-cycle", f"{r['current_rsi']:.1f}")
                     m4.metric("70이탈 후", f"{r['days_since']}일")
                     st.plotly_chart(
                         make_rsi_chart(r["rsi_series"], r["df"]),
@@ -1804,7 +1791,7 @@ elif mode == "🎯 최적 급등 타이밍":
 | 1 | 🏔 충분한 조정 후 바닥 | 최대 4점 | 120일+ 하락 조정 후 바닥 다지기 (에너지 축적) |
 | 2 | 📦 세력 매집 신호 | 3점 | OBV 상승 + 가격 횡보 (가격 안 오르는데 거래량 증가) |
 | 3 | 🔥 볼린저밴드 수축 | 3점 | BB Width 최저점 근처 (폭발 직전 에너지 압축) |
-| 4 | 💚 RSI 바닥 사이클 | 3점 | RSI 30 이하 → 30 돌파 → 50 이상 (건강한 반등) |
+| 4 | 💚 R-cycle 바닥 사이클 | 3점 | R-cycle 30 이하 → 30 돌파 → 50 이상 (건강한 반등) |
 | 5 | ⚡ 이평선 정배열 | 3점 | MA5 > MA20 > MA60 순서 정렬 |
 | 6 | 📊 MACD 골든크로스 | 2점 | MACD 히스토그램 0선 상향 돌파 |
 | 7 | 🕯 장대양봉 + 거래량 | 3점 | 평균 대비 2배+ 거래량에 양봉 (세력 진입 확인) |
@@ -2041,14 +2028,14 @@ elif mode == "🎯 최적 급등 타이밍":
                     "현재가":   f"₩{r['current_price']:,.0f}",
                     "등락률":   f"{'🔺' if r['price_change_1d']>0 else '🔽'}{r['price_change_1d']:.2f}%",
                     "종합점수": r["total_score"],
-                    "RSI":      round(r["rsi"], 1),
+                    "R-cycle":  round(r["rsi"], 1),
                     "거래량비": f"{s.get('vol_ratio',0):.1f}배",
                     "반등위치": f"{s.get('recovery_pct',0):.0f}%",
                     "52주고점": f"{s.get('high_ratio',0):.1f}%",
                     "240선":    "🔥" if s.get("ma240_confirmed") and s.get("ma240_no_rebreak") else ("✅" if s.get("ma240_gap") is not None and 0 <= (s.get("ma240_gap") or -1) <= 10 else "❌"),
                     "매집":     "✅" if s.get("accumulation") else "❌",
                     "BB수축":   "✅" if s.get("bb_squeeze") else "❌",
-                    "RSI사이클":"✅" if s.get("rsi_cycle") else "❌",
+                    "R-cycle사이클":"✅" if s.get("rsi_cycle") else "❌",
                     "정배열":   "✅" if s.get("ma_align") else "❌",
                     "MACD":     "✅" if s.get("macd_cross") or s.get("macd_positive") else "❌",
                     "장대양봉": "✅" if s.get("big_bull_candle") else "❌",
@@ -2088,7 +2075,7 @@ elif mode == "🎯 최적 급등 타이밍":
                     </div>
                   </div>
                   <div style="margin-top:8px;color:#8b92a5;font-size:12px;">
-                    RSI {s.get('rsi',0):.1f} | 거래량 {s.get('vol_ratio',0):.1f}배 |
+                    R-cycle {s.get('rsi',0):.1f} | 거래량 {s.get('vol_ratio',0):.1f}배 |
                     반등위치 {s.get('recovery_pct',0):.0f}% | 52주고점 {s.get('high_ratio',0):.1f}%
                     {f"| 240선 +{s['ma240_gap']:.1f}%" if s.get('ma240_gap') is not None and s['ma240_gap'] >= 0 else ""}
                   </div>
@@ -2106,7 +2093,7 @@ elif mode == "🎯 최적 급등 타이밍":
                         (s.get("obv_rising"),          "📈 OBV 상승 중"),
                         (s.get("bb_squeeze"),          f"🔥 볼린저밴드 수축 ({s.get('bb_width',0):.4f})"),
                         (s.get("bb_expanding"),        "💥 BB 확장 시작 (폭발 직전)"),
-                        (s.get("rsi_cycle"),           f"💚 RSI 바닥 사이클 완성 ({s.get('rsi',0):.1f})"),
+                        (s.get("rsi_cycle"),           f"💚 R-cycle 바닥 사이클 완성 ({s.get('rsi',0):.1f})"),
                         (s.get("ma_align"),            "⚡ 이평선 완전 정배열"),
                         (s.get("ma_align_forming"),    "⚡ 이평선 정배열 형성 중"),
                         (s.get("macd_cross"),          "📊 MACD 골든크로스"),

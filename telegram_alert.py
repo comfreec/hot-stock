@@ -255,26 +255,15 @@ def calc_price_levels(symbol: str) -> dict:
         atr_s = tr.rolling(14).mean().dropna()
         atr = float(atr_s.iloc[-1]) if len(atr_s) > 0 else current * 0.02
 
-        # ── 매수가: 현재가 근처 의미있는 지지선 ──────────────────────
+        # ── 매수가: 240일선 가격 고정 ────────────────────────────
         ma240  = close.rolling(240).mean()
         ma1000 = close.rolling(1000).mean()
-        ma20   = float(close.rolling(20).mean().iloc[-1])
         ma240_v  = float(ma240.iloc[-1])  if not pd.isna(ma240.iloc[-1])  else None
         ma1000_v = float(ma1000.iloc[-1]) if not pd.isna(ma1000.iloc[-1]) else None
-        swing_low_20 = float(low.tail(20).min())
 
-        # 현재가 아래 유효 지지선들의 평균 → 매수가
-        support_candidates = []
-        if ma240_v and ma240_v * 1.005 < current and ma240_v * 1.005 >= ma240_v * 0.995:
-            support_candidates.append(("240선", ma240_v * 1.005))
-        if ma20 < current and (ma240_v is None or ma20 >= ma240_v * 0.995):
-            support_candidates.append(("MA20", ma20))
-        if swing_low_20 < current and (ma240_v is None or swing_low_20 >= ma240_v * 0.995):
-            support_candidates.append(("스윙저점", swing_low_20))
-
-        if support_candidates:
-            entry_label = "+".join(l for l, _ in support_candidates)
-            entry = sum(p for _, p in support_candidates) / len(support_candidates)
+        if ma240_v and ma240_v < current:
+            entry_label = "장기선"
+            entry = ma240_v
         else:
             entry_label, entry = "현재가", current
 
@@ -369,27 +358,15 @@ def _calc_levels_from_result(r: dict) -> dict:
         atr_s = tr.rolling(14).mean().dropna()
         atr = float(atr_s.iloc[-1]) if len(atr_s) > 0 else float((high_s - low_s).mean())
 
-        # 매수가: app.py와 동일
+        # 매수가: 240일선 가격 고정
         ma240_s  = close_s.rolling(240).mean()
         ma1000_s = close_s.rolling(1000).mean()
         ma240_v  = float(ma240_s.iloc[-1]) if not pd.isna(ma240_s.iloc[-1]) else None
         ma1000_v = float(ma1000_s.iloc[-1]) if not pd.isna(ma1000_s.iloc[-1]) else None
-        swing_low_20 = float(low_s.tail(20).min())
-        ma20 = float(close_s.rolling(20).mean().dropna().iloc[-1])
 
-        entry_candidates = []
-        if ma240_v:
-            entry_candidates.append(("240선", ma240_v * 1.005))
-        entry_candidates.append(("MA20", ma20))
-        entry_candidates.append(("스윙저점", swing_low_20))
-
-        valid_entries = [
-            (label, price) for label, price in entry_candidates
-            if price < current and (ma240_v is None or price >= ma240_v * 0.995)
-        ]
-        if valid_entries:
-            entry_label = "+".join(l for l, _ in valid_entries)
-            entry = sum(p for _, p in valid_entries) / len(valid_entries)
+        if ma240_v and ma240_v < current:
+            entry_label = "장기선"
+            entry = ma240_v
         else:
             entry_label, entry = "현재가", current
 
