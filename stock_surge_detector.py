@@ -523,7 +523,13 @@ class KoreanStockSurgeDetector:
                 return None
 
             days_since_cross = n - 1 - cross_idx
+            # 돌파 직전 조정 기간 계산 (가산점용)
             below_days = 0
+            for i in range(cross_idx - 1, -1, -1):
+                if not pd.isna(ma240.iloc[i]) and close.iloc[i] < ma240.iloc[i]:
+                    below_days += 1
+                else:
+                    break
             cross_gap  = (float(close.iloc[cross_idx]) - float(ma240.iloc[cross_idx])) / float(ma240.iloc[cross_idx]) * 100
             gc_days    = None
             signals_pre = {
@@ -954,6 +960,14 @@ class KoreanStockSurgeDetector:
             has_volume_signal = signals.get("vol_strong_cross") or signals.get("vol_at_cross") or signals.get("vol_surge_sustained")
             has_supply_signal = signals.get("smart_money_in")
 
+            # 핵심 신호 2개 이상 필수
+            if core_count < 2:
+                return None
+
+            # 거래량 또는 수급 신호 필수
+            if not has_volume_signal and not has_supply_signal:
+                return None
+
             # ── ML 점수 보정 ─────────────────────────────────────
             ml_adjusted = ml_score_adjustment(signals, score)
             signals["ml_adjusted_score"] = ml_adjusted
@@ -1178,6 +1192,456 @@ class KoreanStockSurgeDetector:
                   f"240선위:{r['ma240_gap']:+.1f}%  "
                   f"조정:{r['below_days']}일  돌파:{r['days_since_cross']}일전")
         return results
+
+    def analyze_stock_classic(self, symbol, as_of_date=None):
+        """
+        기존 240일선 돌파 전략
+        조건:
+          1) 240선 아래 min_below_days 이상 조정
+          2) 최근 max_cross_days 이내 240선 상향 돌파
+          3) 현재가 240선 위 0~max_gap_pct%
+        """
+        try:
+            ticker = yf.Ticker(symbol)
+            data = ticker.history(period="2y", auto_adjust=False)
+
+            if as_of_date is not None:
+                import pandas as _pd
+                cutoff = _pd.Timestamp(as_of_date).tz_localize(data.index.tz) if data.index.tz else _pd.Timestamp(as_of_date)
+                data = data[data.index <= cutoff]
+                if len(data) == 0:
+                    return None
+
+            if len(data) > 0 and pd.isna(data["Close"].iloc[-1]):
+                today_price = getattr(self, '_today_price_cache', {}).get(symbol)
+                if today_price:
+                    data.loc[data.index[-1], "Open"]  = today_price
+                    data.loc[data.index[-1], "High"]  = today_price
+                    data.loc[data.index[-1], "Low"]   = today_price
+                    data.loc[data.index[-1], "Close"] = today_price
+
+            data = data.dropna(subset=["Open","High","Low","Close"])
+            if len(data) < 260:
+                return None
+
+            close = data["Close"]
+            high  = data["High"]
+            low   = data["Low"]
+            vol   = data["Volume"]
+            n     = len(close)
+
+            avg_amount = float(close.tail(20).mean()) * float(vol.tail(20).mean())
+            if avg_amount < 2_000_000_000:
+                return None
+
+            ma240 = close.rolling(240).mean()
+            ma60  = close.rolling(60).mean()
+            ma20  = close.rolling(20).mean()
+            ma5   = close.rolling(5).mean()
+
+            if pd.isna(ma240.iloc[-1]):
+                return None
+
+            current = float(close.iloc[-1])
+            ma240_v = float(ma240.iloc[-1])
+
+            # 조건1: 현재가 240선 위 0~max_gap_pct%
+            gap_pct = (current - ma240_v) / ma240_v * 100
+            if not (0 <= gap_pct <= self.max_gap_pct):
+                return None
+
+            # 조건2: max_cross_days 이내 240선 상향 돌파
+            cross_idx = None
+            for i in range(n-1, max(n - self.max_cross_days - 1, 240), -1):
+                if close.iloc[i] > ma240.iloc[i] and close.iloc[i-1] <= ma240.iloc[i-1]:
+                    cross_idx = i
+                    break
+            if cross_idx is None:
+                return None
+
+            # 가짜 돌파 방지
+            confirm_end = min(cross_idx + 4, n)
+            days_above = sum(1 for i in range(cross_idx, confirm_end) if float(close.iloc[i]) > float(ma240.iloc[i]))
+            if days_above < 3:
+                return None
+
+            cross_gap = (float(close.iloc[cross_idx]) - float(ma240.iloc[cross_idx])) / float(ma240.iloc[cross_idx]) * 100
+            if cross_gap < 0.5:
+                return None
+
+            days_since_cross = n - 1 - cross_idx
+
+            # 조건3: 돌파 직전 min_below_days 이상 조정
+            below_days = 0
+            for i in range(cross_idx - 1, -1, -1):
+                if not pd.isna(ma240.iloc[i]) and close.iloc[i] < ma240.iloc[i]:
+                    below_days += 1
+                else:
+                    break
+            if below_days < self.min_below_days:
+                below_days = sum(1 for i in range(cross_idx) if not pd.isna(ma240.iloc[i]) and close.iloc[i] < ma240.iloc[i])
+            if below_days < self.min_below_days:
+                return None
+
+            # 240선 기울기 체크
+            ma240_at_cross   = float(ma240.iloc[cross_idx])
+            ma240_20d_before = float(ma240.iloc[cross_idx - 20]) if cross_idx >= 20 else ma240_at_cross
+            if (ma240_at_cross - ma240_20d_before) / ma240_20d_before * 100 < -3.0:
+                return None
+
+            # 돌파 후 재이탈 제한
+            consecutive = 0
+            for i in range(cross_idx + 1, n):
+                if float(close.iloc[i]) < float(ma240.iloc[i]):
+                    consecutive += 1
+                    if consecutive >= 3:
+                        return None
+                else:
+                    consecutive = 0
+
+            # 점수 계산 - 기존 analyze_stock과 동일한 전체 신호
+            score   = 0
+            signals = {"rsi_cycle_pullback": False}
+
+            vol_ma20  = vol.rolling(20).mean()
+            cross_vr  = float(vol.iloc[cross_idx] / vol_ma20.iloc[cross_idx]) if vol_ma20.iloc[cross_idx] > 0 else 0
+            recent_vr = float(vol.iloc[-5:].mean() / vol_ma20.iloc[-1]) if vol_ma20.iloc[-1] > 0 else 0
+            signals["vol_at_cross"]     = cross_vr >= 2.0
+            signals["vol_strong_cross"] = cross_vr >= 3.0
+            signals["recent_vol"]       = recent_vr >= 1.5
+            signals["cross_vol_ratio"]  = round(cross_vr, 2)
+            signals["recent_vol_ratio"] = round(recent_vr, 2)
+            if signals["vol_strong_cross"]: score += 4
+            elif signals["vol_at_cross"]:   score += 3
+            if signals["recent_vol"]:       score += 2
+
+            try:
+                vol_before5 = float(vol.iloc[cross_idx-5:cross_idx].mean())
+                vol_after5  = float(vol.iloc[cross_idx:cross_idx+5].mean())
+                signals["vol_surge_sustained"] = vol_after5 > vol_before5 * 1.5
+                if signals["vol_surge_sustained"]: score += 2
+            except:
+                signals["vol_surge_sustained"] = False
+
+            obv = self._obv(data)
+            obv_after = obv.iloc[cross_idx:]
+            signals["obv_rising"] = len(obv_after) > 1 and float(obv_after.iloc[-1]) > float(obv_after.iloc[0])
+            if signals["obv_rising"]: score += 2
+
+            signals["ma_align"] = bool(ma5.iloc[-1] > ma20.iloc[-1] > ma60.iloc[-1])
+            if signals["ma_align"]: score += 3
+
+            pa = close.iloc[cross_idx:]
+            signals["pullback_recovery"] = (len(pa) >= 3 and float(pa.min()) < float(pa.iloc[0]) and current > float(close.iloc[cross_idx]))
+            if signals["pullback_recovery"]: score += 2
+
+            rsi = self._rsi(close, 20)
+            cur_rsi = float(rsi.iloc[-1])
+            signals["rsi"]         = round(cur_rsi, 1)
+            signals["rsi_healthy"] = 40 <= cur_rsi <= 65
+            if signals["rsi_healthy"]: score += 2
+
+            bb_std = close.rolling(20).std()
+            bb_mid = close.rolling(20).mean()
+            bb_w   = (4 * bb_std) / bb_mid.replace(0, np.nan)
+            bb_w_avg = bb_w.rolling(40).mean()
+            bb_sq = (not pd.isna(bb_w_avg.iloc[-5]) and float(bb_w.iloc[-5]) < float(bb_w_avg.iloc[-5]) * 0.7)
+            bb_ex = float(bb_w.iloc[-1]) > float(bb_w.iloc[-5])
+            signals["bb_squeeze_expand"] = bb_sq and bb_ex
+            if signals["bb_squeeze_expand"]: score += 3
+
+            try:
+                if _TA_AVAILABLE:
+                    _macd_ind = ta.trend.MACD(close=close, window_slow=26, window_fast=12, window_sign=9)
+                    macd   = _macd_ind.macd()
+                    macd_s = _macd_ind.macd_signal()
+                else:
+                    macd   = close.ewm(span=12).mean() - close.ewm(span=26).mean()
+                    macd_s = macd.ewm(span=9).mean()
+                signals["macd_cross"] = bool(macd.iloc[-1] > macd_s.iloc[-1] and macd.iloc[-2] <= macd_s.iloc[-2])
+            except:
+                macd   = close.ewm(span=12).mean() - close.ewm(span=26).mean()
+                macd_s = macd.ewm(span=9).mean()
+                signals["macd_cross"] = bool(macd.iloc[-1] > macd_s.iloc[-1] and macd.iloc[-2] <= macd_s.iloc[-2])
+            if signals["macd_cross"]: score += 2
+
+            ma240_old = float(ma240.iloc[-20]) - float(ma240.iloc[-40])
+            ma240_new = float(ma240.iloc[-1])  - float(ma240.iloc[-20])
+            signals["ma240_turning_up"] = ma240_old <= 0 and ma240_new >= 0
+            if signals["ma240_turning_up"]: score += 3
+
+            try:
+                if _TA_AVAILABLE:
+                    mfi_s = ta.volume.MFIIndicator(high=high, low=low, close=close, volume=vol, window=14).money_flow_index()
+                else:
+                    tp = (high + low + close) / 3
+                    mf = tp * vol
+                    pos_mf = mf.where(tp > tp.shift(1), 0).rolling(14).sum()
+                    neg_mf = mf.where(tp < tp.shift(1), 0).rolling(14).sum()
+                    mfi_s = 100 - (100 / (1 + pos_mf / neg_mf.replace(0, np.nan)))
+                cur_mfi = float(mfi_s.iloc[-1])
+                signals["mfi"] = round(cur_mfi, 1)
+                signals["mfi_oversold_recovery"] = (float(mfi_s.iloc[-5:].min()) < 25 and cur_mfi > 30)
+                if signals["mfi_oversold_recovery"]: score += 2
+            except:
+                signals["mfi"] = 50
+                signals["mfi_oversold_recovery"] = False
+
+            try:
+                if _TA_AVAILABLE:
+                    _stoch = ta.momentum.StochasticOscillator(high=high, low=low, close=close, window=14, smooth_window=3)
+                    k = _stoch.stoch(); d = _stoch.stoch_signal()
+                else:
+                    low14 = low.rolling(14).min(); high14 = high.rolling(14).max()
+                    k = 100 * (close - low14) / (high14 - low14).replace(0, np.nan)
+                    d = k.rolling(3).mean()
+                signals["stoch_k"]    = round(float(k.iloc[-1]), 1)
+                signals["stoch_cross"] = bool(k.iloc[-1] > d.iloc[-1] and k.iloc[-2] <= d.iloc[-2] and k.iloc[-1] < 50)
+                if signals["stoch_cross"]: score += 2
+            except:
+                signals["stoch_k"] = 50; signals["stoch_cross"] = False
+
+            try:
+                if _TA_AVAILABLE:
+                    _adx_ind = ta.trend.ADXIndicator(high=high, low=low, close=close, window=14)
+                    adx = _adx_ind.adx(); di_pos = _adx_ind.adx_pos(); di_neg = _adx_ind.adx_neg()
+                else:
+                    tr_s = pd.concat([high-low,(high-close.shift(1)).abs(),(low-close.shift(1)).abs()],axis=1).max(axis=1)
+                    dm_plus  = (high-high.shift(1)).where((high-high.shift(1))>(low.shift(1)-low),0).clip(lower=0)
+                    dm_minus = (low.shift(1)-low).where((low.shift(1)-low)>(high-high.shift(1)),0).clip(lower=0)
+                    atr14 = tr_s.ewm(span=14,adjust=False).mean()
+                    di_pos = 100*dm_plus.ewm(span=14,adjust=False).mean()/atr14.replace(0,np.nan)
+                    di_neg = 100*dm_minus.ewm(span=14,adjust=False).mean()/atr14.replace(0,np.nan)
+                    dx = 100*(di_pos-di_neg).abs()/(di_pos+di_neg).replace(0,np.nan)
+                    adx = dx.ewm(span=14,adjust=False).mean()
+                signals["adx"] = round(float(adx.iloc[-1]), 1)
+                signals["adx_strong"] = float(adx.iloc[-1]) >= 25 and float(di_pos.iloc[-1]) > float(di_neg.iloc[-1])
+                if signals["adx_strong"]: score += 2
+            except:
+                signals["adx"] = 0; signals["adx_strong"] = False
+
+            try:
+                vwap = (close * vol).rolling(20).sum() / vol.rolling(20).sum()
+                signals["above_vwap"] = bool(current > float(vwap.iloc[-1]))
+                if signals["above_vwap"]: score += 2
+            except:
+                signals["above_vwap"] = False
+
+            try:
+                tenkan  = (high.rolling(9).max()  + low.rolling(9).min())  / 2
+                kijun   = (high.rolling(26).max() + low.rolling(26).min()) / 2
+                senkou_a = ((tenkan + kijun) / 2).shift(26)
+                senkou_b = ((high.rolling(52).max() + low.rolling(52).min()) / 2).shift(26)
+                cloud_top = pd.concat([senkou_a, senkou_b], axis=1).max(axis=1)
+                signals["ichimoku_bull"] = bool(current > float(cloud_top.iloc[-1]) and float(tenkan.iloc[-1]) > float(kijun.iloc[-1]))
+                if signals["ichimoku_bull"]: score += 3
+            except:
+                signals["ichimoku_bull"] = False
+
+            high_52w = float(high.tail(252).max())
+            signals["near_52w_high"] = current / high_52w >= 0.95
+            signals["high_ratio"]    = round(current / high_52w * 100, 1)
+            if signals["near_52w_high"]: score += 2
+
+            market_bull, market_slope = self._market_condition()
+            signals["market_bull"] = market_bull; signals["market_slope"] = market_slope
+            if not market_bull: score = max(0, score - 3)
+            elif market_slope > 2: score += 2
+
+            sector_ret = self._sector_momentum(symbol)
+            signals["sector_momentum"] = sector_ret
+            if sector_ret > 5: score += 3
+            elif sector_ret > 2: score += 1
+            elif sector_ret < -5: score = max(0, score - 2)
+
+            vol3 = vol.iloc[-3:]; close3 = close.iloc[-3:]
+            signals["vol_price_rising3"] = bool(vol3.iloc[-1]>vol3.iloc[-2]>vol3.iloc[-3] and close3.iloc[-1]>close3.iloc[-2]>close3.iloc[-3])
+            if signals["vol_price_rising3"]: score += 3
+
+            prices_after = close.iloc[cross_idx:]
+            if len(prices_after) >= 3:
+                entry_price = float(close.iloc[cross_idx])
+                min_after   = float(prices_after.min())
+                pullback_depth = (entry_price - min_after) / entry_price * 100
+                signals["pullback_depth"] = round(pullback_depth, 1)
+                if 3 <= pullback_depth <= 15: score += 3
+                elif pullback_depth > 25: score = max(0, score - 2)
+            else:
+                signals["pullback_depth"] = 0
+
+            o_s  = data["Open"]; body = abs(close - o_s)
+            ls   = o_s.where(close > o_s, close) - low
+            tr   = (high - low).replace(0, np.nan)
+            try:    signals["hammer"]         = bool(((ls >= 2*body) & (tr > 0)).iloc[-1])
+            except: signals["hammer"]         = False
+            try:    signals["bullish_engulf"] = bool(((close > o_s) & (close.shift(1) < o_s.shift(1)) & (close > o_s.shift(1)) & (o_s < close.shift(1))).iloc[-1])
+            except: signals["bullish_engulf"] = False
+            if signals["hammer"]:         score += 1
+            if signals["bullish_engulf"]: score += 2
+
+            if   below_days >= 240: score += 3
+            elif below_days >= 180: score += 2
+            elif below_days >= 120: score += 1
+
+            try:
+                price_std_20 = float(close.tail(20).std() / close.tail(20).mean())
+                vol_trend_20 = float(vol.tail(20).mean() / vol.tail(40).mean())
+                signals["stealth_accumulation"] = price_std_20 < 0.05 and vol_trend_20 > 1.2
+                if signals["stealth_accumulation"]: score += 3
+            except:
+                signals["stealth_accumulation"] = False
+
+            try:
+                if len(prices_after) >= 5:
+                    recent_low5  = float(close.tail(5).min())
+                    recent_high5 = float(close.tail(5).max())
+                    bounce_pct   = (current - recent_low5) / (recent_low5 + 1e-9) * 100
+                    signals["pullback_bounce"] = bounce_pct >= 2.0 and current >= recent_high5 * 0.98
+                    if signals["pullback_bounce"]: score += 3
+                else:
+                    signals["pullback_bounce"] = False
+            except:
+                signals["pullback_bounce"] = False
+
+            triple_combo = signals.get("bb_squeeze_expand") and signals.get("macd_cross") and (signals.get("vol_at_cross") or signals.get("recent_vol"))
+            if triple_combo: score = int(score * 1.3)
+            trend_combo = signals.get("ma_align") and signals.get("ichimoku_bull") and signals.get("adx_strong")
+            if trend_combo: score = int(score * 1.2)
+            accumulation_combo = signals.get("stealth_accumulation") and signals.get("obv_rising") and signals.get("pullback_bounce")
+            if accumulation_combo: score = int(score * 1.25)
+
+            inst_net, foreign_net = self._institutional_flow(symbol)
+            signals["inst_net_buy"]    = inst_net
+            signals["foreign_net_buy"] = foreign_net
+            signals["smart_money_in"]  = inst_net > 0 or foreign_net > 0
+            signals["both_buying"]     = inst_net > 0 and foreign_net > 0
+            if signals["both_buying"]:      score += 6
+            elif signals["smart_money_in"]: score += 3
+
+            core_signals = [signals.get("ma_align"), signals.get("obv_rising"), signals.get("vol_at_cross"),
+                            signals.get("vol_surge_sustained"), signals.get("macd_cross"),
+                            signals.get("ichimoku_bull"), signals.get("adx_strong"), signals.get("smart_money_in")]
+            signals["core_signal_count"] = sum(1 for s in core_signals if s)
+
+            # 핵심 신호 2개 이상 필수
+            if signals["core_signal_count"] < 2:
+                return None
+
+            # 거래량 또는 수급 신호 필수
+            has_volume = signals.get("vol_strong_cross") or signals.get("vol_at_cross") or signals.get("vol_surge_sustained")
+            has_supply = signals.get("smart_money_in")
+            if not has_volume and not has_supply:
+                return None
+
+            ml_adjusted = ml_score_adjustment(signals, score)
+            signals["ml_adjusted_score"] = ml_adjusted
+
+            sentiment, pos_n, neg_n = self._news_sentiment(symbol)
+            signals["news_sentiment"] = sentiment; signals["pos_news"] = pos_n; signals["neg_news"] = neg_n
+            if sentiment > 0.3: score += 2
+            elif sentiment > 0: score += 1
+
+            has_disc, disc_types = self._dart_disclosure(symbol)
+            signals["has_disclosure"] = has_disc; signals["disclosure_types"] = disc_types
+            if has_disc: score += 2
+
+            ml_adjusted = ml_score_adjustment(signals, score)
+            signals["ml_adjusted_score"] = ml_adjusted
+
+            return {
+                "symbol":           symbol,
+                "name":             STOCK_NAMES.get(symbol, symbol),
+                "current_price":    current,
+                "price_change_1d":  round((current - float(close.iloc[-2])) / float(close.iloc[-2]) * 100, 2),
+                "ma240":            round(ma240_v, 0),
+                "ma1000":           None,
+                "ma240_gap":        round(gap_pct, 2),
+                "days_since_cross": days_since_cross,
+                "below_days":       below_days,
+                "total_score":      int(ml_adjusted),
+                "raw_score":        score,
+                "signals":          signals,
+                "rsi":              signals["rsi"],
+                "vol_ratio":        round(recent_vr, 2),
+                "vol_accumulation": signals["vol_at_cross"] or signals["recent_vol"],
+                "obv_divergence":   signals["obv_rising"],
+                "bb_squeeze":       signals["bb_squeeze_expand"],
+                "squeeze_ratio":    0,
+                "near_52w_high":    signals.get("near_52w_high", False),
+                "high_ratio":       signals.get("high_ratio", 0),
+                "golden_cross_imminent": signals["ma_align"],
+                "macd_cross":       signals["macd_cross"],
+                "disparity":        round(gap_pct, 2),
+                "candle_patterns":  {"hammer": signals["hammer"], "bullish_engulf": signals["bullish_engulf"], "morning_star": False, "inv_hammer": False},
+                "news_sentiment":   sentiment,
+                "pos_news":         pos_n,
+                "neg_news":         neg_n,
+                "has_disclosure":   has_disc,
+                "disclosure_types": disc_types,
+                "inst_net_buy":     inst_net,
+                "foreign_net_buy":  foreign_net,
+                "smart_money_in":   signals["smart_money_in"],
+                "both_buying":      signals["both_buying"],
+                "core_signal_count": signals["core_signal_count"],
+                "cross_gap_pct":    round(cross_gap, 2),
+                "rsi_cycle_pullback": False,
+                "rsi_cycle_peak":   0,
+                "rsi_cycle_cur":    cur_rsi,
+                "gc_days":          None,
+                "close_series":     close,
+                "high_series":      high,
+                "low_series":       low,
+                "open_series":      data["Open"],
+                "ma240_series":     ma240,
+                "ma1000_series":    None,
+                "ma60_series":      ma60,
+                "ma20_series":      ma20,
+                "rsi_series":       rsi,
+                "volume_series":    vol,
+                "vol_ma_series":    vol_ma20,
+            }
+        except Exception as e:
+            return None
+
+    def analyze_all_stocks_classic(self, as_of_date=None):
+        """기존 240선 돌파 전략으로 전체 종목 스캔"""
+        results = []
+        print("스캔 중 (장기선 돌파 전략)...")
+
+        kospi_filter = True
+        try:
+            kospi_df = yf.Ticker("^KS11").history(period="1y", auto_adjust=False).dropna(subset=["Close"])
+            if as_of_date:
+                import pandas as _pd
+                cutoff = _pd.Timestamp(as_of_date).tz_localize(kospi_df.index.tz) if kospi_df.index.tz else _pd.Timestamp(as_of_date)
+                kospi_df = kospi_df[kospi_df.index <= cutoff]
+            if len(kospi_df) > 200:
+                kc = float(kospi_df["Close"].iloc[-1])
+                km = float(kospi_df["Close"].rolling(200).mean().iloc[-1])
+                if kc < km * 0.97:
+                    kospi_filter = False
+                    print(f"[하락장] KOSPI {kc:,.0f} / 200선 {km:,.0f} → 스캔 중단")
+        except:
+            pass
+
+        if not kospi_filter:
+            return []
+
+        self._today_price_cache = {}
+
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            futures = {executor.submit(self.analyze_stock_classic, sym, as_of_date): sym for sym in self.all_symbols}
+            for future in as_completed(futures):
+                sym = futures[future]
+                try:
+                    r = future.result()
+                    if r:
+                        results.append(r)
+                        print(f"  OK {sym} ({r['total_score']}pt)")
+                except Exception as e:
+                    pass
+        return sorted(results, key=lambda x: x["total_score"], reverse=True)
 
 
 if __name__ == "__main__":

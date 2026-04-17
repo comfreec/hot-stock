@@ -425,6 +425,43 @@ def get_recent_closed(limit: int = 5) -> list:
     return [{"name": r[0], "status": r[1], "return_pct": r[2],
              "exit_date": r[3], "entry_price": r[4], "target_price": r[5]} for r in rows]
 
+
+# ── 앱 설정 저장/로드 ─────────────────────────────────────────────
+def save_app_setting(key: str, value: str):
+    """앱 설정값 DB 저장 (웹 UI → 스케줄러 공유)"""
+    conn = _get_conn()
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS app_settings (
+            key   TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+    """)
+    conn.execute(
+        "INSERT OR REPLACE INTO app_settings (key, value, updated_at) VALUES (?,?,?)",
+        (key, value, datetime.now().isoformat())
+    )
+    conn.commit()
+    conn.close()
+
+
+def load_app_setting(key: str, default: str = "") -> str:
+    """앱 설정값 DB 로드"""
+    try:
+        conn = _get_conn()
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS app_settings (
+                key   TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+        """)
+        row = conn.execute("SELECT value FROM app_settings WHERE key=?", (key,)).fetchone()
+        conn.close()
+        return row[0] if row else default
+    except:
+        return default
+
 # ── 백그라운드 자동 스캔 스케줄러 ────────────────────────────────
 def _run_scan_job():
     """장 마감 후 자동 스캔 실행 (별도 스레드)"""
@@ -434,7 +471,7 @@ def _run_scan_job():
         det = KoreanStockSurgeDetector(max_gap_pct=7, min_below_days=60, max_cross_days=90)
         det._ob_days = 90
         results = det.analyze_all_stocks()
-        results = [r for r in results if r.get("total_score", 0) >= 15]
+        results = [r for r in results if r.get("total_score", 0) >= 20]
         if results:
             save_scan(results)
             send_scan_alert(results)

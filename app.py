@@ -694,22 +694,42 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("### ⚙️ 스캔 조건")
 
+    # ── 스캔 전략 선택 ──────────────────────────────────────────
+    scan_mode = st.radio(
+        "🎯 스캔 전략",
+        ["🔄 R-cycle 스캔", "📈 장기선 돌파 스캔"],
+        key="scan_mode",
+        help="R-cycle: RSI 사이클 기반 / 장기선 돌파: 기존 240선 돌파 전략"
+    )
+    st.markdown("---")
+
     if "max_gap"   not in st.session_state: st.session_state["max_gap"]   = 7
-    if "ob_days"   not in st.session_state: st.session_state["ob_days"]   = 90
-    if "min_score" not in st.session_state: st.session_state["min_score"] = 15
+    if "min_score" not in st.session_state: st.session_state["min_score"] = 20
 
     if st.button("⚡ 기본 셋팅", width='stretch'):
-        st.session_state["max_gap"]   = 7
-        st.session_state["ob_days"]   = 90
-        st.session_state["min_score"] = 15
+        st.session_state["max_gap"]     = 7
+        st.session_state["ob_days"]     = 90
+        st.session_state["min_score"]   = 20
+        st.session_state["min_below_c"] = 60
+        st.session_state["max_cross_c"] = 90
         st.rerun()
 
-    max_gap   = st.slider("📍 240선 근처 범위 (%)", 1, 30, key="max_gap",
-        help="현재가가 240일선 위 몇 % 이내인지")
-    ob_days   = st.slider("⏱ R-cycle 70 이탈 후 경과일", 30, 180, key="ob_days",
-        help="R-cycle 70 이탈 후 최대 경과일 (짧을수록 최근 눌림목)")
+    max_gap   = st.slider("📍 장기선 근처 범위 (%)", 1, 30, key="max_gap",
+        help="현재가가 장기선 위 몇 % 이내인지")
     min_score = st.slider("🎯 최소 종합점수", 0, 40, key="min_score",
         help="0=전체, 높을수록 엄격")
+
+    if scan_mode == "🔄 R-cycle 스캔":
+        ob_days = st.slider("⏱ R-cycle 70 이탈 후 경과일", 30, 180, value=90, key="ob_days",
+            help="R-cycle 70 이탈 후 최대 경과일")
+        min_below_c = st.session_state.get("min_below_c", 60)
+        max_cross_c = st.session_state.get("max_cross_c", 90)
+    else:
+        ob_days = st.session_state.get("ob_days", 90)
+        min_below_c = st.slider("📉 최소 조정 기간 (일)", 30, 300, value=60, key="min_below_c",
+            help="장기선 아래 최소 체류 일수")
+        max_cross_c = st.slider("📈 돌파 후 최대 경과 (일)", 10, 180, value=90, key="max_cross_c",
+            help="장기선 돌파 후 최대 경과 일수")
 
     # ── 과거 날짜 스캔 ──────────────────────────────────────────
     st.markdown("---")
@@ -727,6 +747,28 @@ with st.sidebar:
             help="해당 날짜까지의 데이터만 사용해서 스캔"
         )
         st.info(f"📅 {scan_date} 기준으로 스캔합니다")
+
+    # ── FLY 실행전략 설정 ──────────────────────────────────────
+    st.markdown("---")
+    st.markdown("### 🚀 FLY 실행전략")
+    try:
+        from cache_db import load_app_setting, save_app_setting
+        _current_fly_mode = load_app_setting("scan_mode", "rcycle")
+        _fly_mode_label = {"rcycle": "🔄 R-cycle 스캔", "classic": "📈 장기선 돌파 스캔", "both": "🔀 둘 다 실행"}.get(_current_fly_mode, "🔄 R-cycle 스캔")
+        st.caption(f"현재 설정: **{_fly_mode_label}**")
+        fly_mode_sel = st.selectbox(
+            "스케줄러 자동 스캔 전략",
+            ["🔄 R-cycle 스캔", "📈 장기선 돌파 스캔", "🔀 둘 다 실행"],
+            index=["🔄 R-cycle 스캔", "📈 장기선 돌파 스캔", "🔀 둘 다 실행"].index(_fly_mode_label),
+            key="fly_mode_sel",
+            help="매일 15:40 자동 스캔 시 사용할 전략"
+        )
+        if st.button("💾 FLY 전략 저장", width='stretch'):
+            _val = {"🔄 R-cycle 스캔": "rcycle", "📈 장기선 돌파 스캔": "classic", "🔀 둘 다 실행": "both"}.get(fly_mode_sel, "rcycle")
+            save_app_setting("scan_mode", _val)
+            st.success(f"✅ 저장됨: {fly_mode_sel}")
+    except Exception as _e:
+        st.caption(f"설정 로드 오류: {_e}")
 
     st.markdown("---")
     st.markdown("""**📋 탐지 전략**
@@ -1119,65 +1161,77 @@ def make_candle(data, title, ma240_series=None, cross_date=None, show_levels=Tru
 # ── 급등 예고 종목 탐지 ──────────────────────────────────────────
 if mode == "🔍 급등 예고 종목 탐지":
 
-    # 현재 조건 표시
+    _as_of = scan_date if (use_past_date and scan_date) else None
     date_label = f"📅 {scan_date} 기준" if (use_past_date and scan_date) else "오늘 기준"
-    st.markdown(f"""<div class="cond-box">
-      <b style="color:#e0e6f0;">현재 탐지 조건</b>  <span style="color:#ffd700;">{date_label}</span><br>
-      📉 R-cycle 30탈출 → 📈 장기선 돌파 → 🔥 R-cycle 70도달 → 📉 R-cycle 70이탈 →
-      📍 장기선 위 <b style="color:#4f8ef7;">0~{max_gap}%</b> 이내
-      (이탈 후 <b style="color:#ffd700;">{ob_days}일</b> 이내)
-    </div>""", unsafe_allow_html=True)
 
-    if st.button("🚀 스캔 시작", type="primary", width='stretch'):
-        _as_of = scan_date if (use_past_date and scan_date) else None
-        det = KoreanStockSurgeDetector(max_gap, 60, 90)
-        det._ob_days = ob_days  # RSI 70 이탈 후 경과일 전달
-        symbols = list(dict.fromkeys(det.all_symbols))
-        total = len(symbols)
+    if scan_mode == "🔄 R-cycle 스캔":
+        st.markdown(f"""<div class="cond-box">
+          <b style="color:#e0e6f0;">R-cycle 탐지 조건</b>  <span style="color:#ffd700;">{date_label}</span><br>
+          📉 R-cycle 30탈출 → 📈 장기선 돌파 → 🔥 R-cycle 70도달 → 📉 R-cycle 70이탈 →
+          📍 장기선 위 <b style="color:#4f8ef7;">0~{max_gap}%</b> 이내
+          (이탈 후 <b style="color:#ffd700;">{ob_days}일</b> 이내)
+        </div>""", unsafe_allow_html=True)
 
-        st.markdown("<div class='sec-title'>📡 스캔 진행 중...</div>", unsafe_allow_html=True)
-        prog_bar  = st.progress(0)
-        prog_text = st.empty()
+        if st.button("🚀 R-cycle 스캔 시작", type="primary", width='stretch', key="btn_rcycle"):
+            det = KoreanStockSurgeDetector(max_gap, 60, 90)
+            det._ob_days = ob_days
+            symbols = list(dict.fromkeys(det.all_symbols))
+            total = len(symbols)
+            st.markdown("<div class='sec-title'>📡 스캔 진행 중...</div>", unsafe_allow_html=True)
+            prog_bar = st.progress(0); prog_text = st.empty()
+            results = []; completed = [0]
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+            def _scan_rc(sym): return det.analyze_stock(sym, as_of_date=_as_of)
+            with ThreadPoolExecutor(max_workers=10) as executor:
+                futures = {executor.submit(_scan_rc, sym): sym for sym in symbols}
+                for future in as_completed(futures):
+                    completed[0] += 1
+                    prog_text.markdown(f"<span style='color:#8b92a5;font-size:13px;'>({completed[0]}/{total}) {futures[future]} 분석 중...</span>", unsafe_allow_html=True)
+                    prog_bar.progress(completed[0] / total)
+                    try:
+                        r = future.result()
+                        if r: results.append(r)
+                    except: pass
+            prog_bar.empty(); prog_text.empty()
+            results = sorted(results, key=lambda x: x["total_score"], reverse=True)
+            if min_score > 0: results = [r for r in results if r["total_score"] >= min_score]
+            st.session_state["scan_results"] = results
+            try: save_scan([{k: v for k, v in r.items() if k not in ("close_series","rsi_series","ma240_series","ma60_series","ma20_series","volume_series","vol_ma_series","ma1000_series")} for r in results])
+            except: pass
 
-        results = []
-        completed = [0]
+    else:  # 장기선 돌파 스캔
+        st.markdown(f"""<div class="cond-box">
+          <b style="color:#e0e6f0;">장기선 돌파 탐지 조건</b>  <span style="color:#ffd700;">{date_label}</span><br>
+          📉 장기선 아래 <b style="color:#ffd700;">{min_below_c}일 이상</b> 조정 →
+          📈 최근 <b style="color:#00d4aa;">{max_cross_c}일 이내</b> 장기선 상향 돌파 →
+          📍 현재 주가 장기선 위 <b style="color:#4f8ef7;">0~{max_gap}%</b> 이내
+        </div>""", unsafe_allow_html=True)
 
-        from concurrent.futures import ThreadPoolExecutor, as_completed
-
-        def _scan(symbol):
-            return det.analyze_stock(symbol, as_of_date=_as_of)
-
-        with ThreadPoolExecutor(max_workers=10) as executor:
-            futures = {executor.submit(_scan, sym): sym for sym in symbols}
-            for future in as_completed(futures):
-                completed[0] += 1
-                sym = futures[future]
-                prog_text.markdown(
-                    f"<span style='color:#8b92a5;font-size:13px;'>"
-                    f"({completed[0]}/{total}) {sym} 분석 중...</span>",
-                    unsafe_allow_html=True
-                )
-                prog_bar.progress(completed[0] / total)
-                try:
-                    r = future.result()
-                    if r:
-                        results.append(r)
-                except:
-                    pass
-
-        prog_bar.empty()
-        prog_text.empty()
-        results = sorted(results, key=lambda x: x["total_score"], reverse=True)
-        if min_score > 0:
-            results = [r for r in results if r["total_score"] >= min_score]
-
-        st.session_state["scan_results"] = results
-
-        # DB 캐싱
-        try:
-            save_scan([{k: v for k, v in r.items() if k not in ("close_series","rsi_series","ma240_series","ma60_series","ma20_series","volume_series","vol_ma_series")} for r in results])
-        except:
-            pass
+        if st.button("🚀 장기선 돌파 스캔 시작", type="primary", width='stretch', key="btn_classic"):
+            det2 = KoreanStockSurgeDetector(max_gap, min_below_c, max_cross_c)
+            symbols2 = list(dict.fromkeys(det2.all_symbols))
+            total2 = len(symbols2)
+            st.markdown("<div class='sec-title'>📡 스캔 진행 중...</div>", unsafe_allow_html=True)
+            prog_bar2 = st.progress(0); prog_text2 = st.empty()
+            results2 = []; completed2 = [0]
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+            def _scan_cl(sym): return det2.analyze_stock_classic(sym, as_of_date=_as_of)
+            with ThreadPoolExecutor(max_workers=10) as executor:
+                futures2 = {executor.submit(_scan_cl, sym): sym for sym in symbols2}
+                for future in as_completed(futures2):
+                    completed2[0] += 1
+                    prog_text2.markdown(f"<span style='color:#8b92a5;font-size:13px;'>({completed2[0]}/{total2}) {futures2[future]} 분석 중...</span>", unsafe_allow_html=True)
+                    prog_bar2.progress(completed2[0] / total2)
+                    try:
+                        r = future.result()
+                        if r: results2.append(r)
+                    except: pass
+            prog_bar2.empty(); prog_text2.empty()
+            results2 = sorted(results2, key=lambda x: x["total_score"], reverse=True)
+            if min_score > 0: results2 = [r for r in results2 if r["total_score"] >= min_score]
+            st.session_state["scan_results"] = results2
+            try: save_scan([{k: v for k, v in r.items() if k not in ("close_series","rsi_series","ma240_series","ma60_series","ma20_series","volume_series","vol_ma_series","ma1000_series")} for r in results2])
+            except: pass
 
     # session_state 없으면 오늘 DB 캐시 자동 로드
     if "scan_results" not in st.session_state:

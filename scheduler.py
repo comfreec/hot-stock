@@ -28,10 +28,35 @@ def run_scan():
         from telegram_alert import send_scan_alert, send_telegram
         import pandas as _pd
 
+        scan_mode = os.environ.get("SCAN_MODE", "").lower()
+        if not scan_mode:
+            # 환경변수 없으면 DB에서 읽기 (웹 UI에서 설정한 값)
+            try:
+                from cache_db import load_app_setting
+                scan_mode = load_app_setting("scan_mode", "rcycle")
+            except:
+                scan_mode = "rcycle"
+        log(f"스캔 전략: {scan_mode}")
+
         det = KoreanStockSurgeDetector(max_gap_pct=7, min_below_days=60, max_cross_days=90)
-        det._ob_days = 90  # RSI 70 이탈 후 경과일
-        results = det.analyze_all_stocks()
-        results = [r for r in results if r.get("total_score", 0) >= 15]
+        det._ob_days = 90
+
+        if scan_mode == "classic":
+            results = det.analyze_all_stocks_classic()
+        elif scan_mode == "both":
+            r1 = det.analyze_all_stocks()
+            r2 = det.analyze_all_stocks_classic()
+            # 중복 제거 (symbol 기준), 점수 높은 것 우선
+            seen = {}
+            for r in r1 + r2:
+                sym = r["symbol"]
+                if sym not in seen or r["total_score"] > seen[sym]["total_score"]:
+                    seen[sym] = r
+            results = list(seen.values())
+        else:  # rcycle (기본)
+            results = det.analyze_all_stocks()
+
+        results = [r for r in results if r.get("total_score", 0) >= 20]
         results = sorted(results, key=lambda x: x["total_score"], reverse=True)
 
         # Series 직렬화 후 DB 저장

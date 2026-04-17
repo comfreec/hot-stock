@@ -76,7 +76,6 @@ with st.sidebar:
     st.markdown("---")
 
     st.markdown("""<style>
-    div[data-testid="stRadio"] { display:none !important; }
     section[data-testid="stSidebar"] div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] button p {
         font-size: 36px !important; line-height:1.4 !important;
     }
