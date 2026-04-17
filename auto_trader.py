@@ -305,38 +305,42 @@ def _get_trade_conn():
             split_step  INTEGER DEFAULT 1,   -- 현재 몇 차 매수 (1/2/3)
             split_qty   INTEGER DEFAULT 0,   -- 총 체결 수량
             avg_price   REAL DEFAULT 0,      -- 평균 매수가
-            base_price  INTEGER DEFAULT 0    -- 1차 매수가 (2/3차 트리거 기준)
+            base_price  INTEGER DEFAULT 0,   -- 1차 매수가 (2/3차 트리거 기준)
+            step2_price REAL DEFAULT 0,      -- 2차 실제 체결가
+            step2_qty   INTEGER DEFAULT 0,   -- 2차 체결 수량
+            step3_price REAL DEFAULT 0,      -- 3차 실제 체결가
+            step3_qty   INTEGER DEFAULT 0    -- 3차 체결 수량
         )
     """)
     conn.commit()
-    # 기존 DB에 분할매수 컬럼 없으면 추가 (마이그레이션)
+    # 기존 DB에 컬럼 없으면 추가 (마이그레이션)
     existing_cols = [r[1] for r in conn.execute("PRAGMA table_info(trade_orders)").fetchall()]
-    for col, default in [("split_step","1"),("split_qty","0"),("avg_price","0"),("base_price","0")]:
+    for col, typ, default in [
+        ("split_step", "INTEGER", "1"), ("split_qty", "INTEGER", "0"),
+        ("avg_price",  "REAL",    "0"), ("base_price","INTEGER", "0"),
+        ("trigger2",   "INTEGER", "0"), ("trigger3",  "INTEGER", "0"),
+        ("step2_price","REAL",    "0"), ("step2_qty", "INTEGER", "0"),
+        ("step3_price","REAL",    "0"), ("step3_qty", "INTEGER", "0"),
+    ]:
         if col not in existing_cols:
-            conn.execute(f"ALTER TABLE trade_orders ADD COLUMN {col} INTEGER DEFAULT {default}")
+            conn.execute(f"ALTER TABLE trade_orders ADD COLUMN {col} {typ} DEFAULT {default}")
     conn.commit()
     return conn
 
 
 def _get_pending_orders() -> list:
     conn = _get_trade_conn()
-    # trigger2/trigger3 컬럼 없으면 추가
-    existing_cols = [r[1] for r in conn.execute("PRAGMA table_info(trade_orders)").fetchall()]
-    for col in ["trigger2", "trigger3"]:
-        if col not in existing_cols:
-            conn.execute(f"ALTER TABLE trade_orders ADD COLUMN {col} INTEGER DEFAULT 0")
-    conn.commit()
     rows = conn.execute("""
         SELECT id, alert_date, symbol, name, entry_price, target_price, stop_price,
                qty, order_no, status, split_step, split_qty, avg_price, base_price,
-               trigger2, trigger3
+               trigger2, trigger3, step2_price, step2_qty, step3_price, step3_qty
         FROM trade_orders WHERE status IN ('pending', 'active')
         ORDER BY alert_date ASC
     """).fetchall()
     conn.close()
     keys = ["id","alert_date","symbol","name","entry_price","target_price","stop_price",
             "qty","order_no","status","split_step","split_qty","avg_price","base_price",
-            "trigger2","trigger3"]
+            "trigger2","trigger3","step2_price","step2_qty","step3_price","step3_qty"]
     return [dict(zip(keys, r)) for r in rows]
 
 
@@ -665,23 +669,43 @@ def monitor_positions():
                 _update_order(order["id"],
                     split_step=2, split_qty=qty + add_qty,
                     avg_price=round(new_avg, 2), qty=qty + add_qty,
+                    step2_price=round(cur, 2), step2_qty=add_qty,
                 )
                 print(f"[자동매매] {order['name']} 2차 매수 {add_qty}주 @{cur:,.0f}")
-                _send_admin(f"📥 <b>2차 분할매수</b>\n<b>{order['name']}</b> ₩{cur:,.0f} × {add_qty}주\n평균단가 ₩{new_avg:,.0f} | 손절 ₩{stop:,}")
-            continue  # 분할매수 후 이번 루프는 매도 체크 스킵
+                _send_admin(
+                    f"📥 <b>2차 분할매수</b>  <b>{order['name']}</b>\n"
+                    f"  1차 ₩{base_price:,.0f} × {qty}주\n"
+                    f"  2차 ₩{cur:,.0f} × {add_qty}주\n"
+                    f"━━━━━━━━━━━━━━\n"
+                    f"  평균단가 ₩{new_avg:,.0f} × {qty + add_qty}주\n"
+                    f"  🛑 손절 ₩{stop:,}"
+                )
+            continue
 
         elif split_step == 2 and cur <= trigger3:
             add_qty = max(1, int(split_budget / cur))
             result  = client.buy_order(order["symbol"], int(cur), add_qty, market=True)
             if result["success"]:
-                new_avg = (avg_price * qty + cur * add_qty) / (qty + add_qty)
+                new_avg     = (avg_price * qty + cur * add_qty) / (qty + add_qty)
+                step2_price = order.get("step2_price") or trigger2
+                step2_qty   = order.get("step2_qty") or 0
+                step1_qty   = qty - step2_qty
                 _update_order(order["id"],
                     split_step=3, split_qty=qty + add_qty,
                     avg_price=round(new_avg, 2), qty=qty + add_qty,
+                    step3_price=round(cur, 2), step3_qty=add_qty,
                 )
                 print(f"[자동매매] {order['name']} 3차 매수 {add_qty}주 @{cur:,.0f}")
-                _send_admin(f"📥 <b>3차 분할매수 완료</b>\n<b>{order['name']}</b> ₩{cur:,.0f} × {add_qty}주\n평균단가 ₩{new_avg:,.0f} | 손절 ₩{stop:,}")
-            continue  # 분할매수 후 이번 루프는 매도 체크 스킵
+                _send_admin(
+                    f"📥 <b>3차 분할매수 완료</b>  <b>{order['name']}</b>\n"
+                    f"  1차 ₩{base_price:,.0f} × {step1_qty}주\n"
+                    f"  2차 ₩{step2_price:,.0f} × {step2_qty}주\n"
+                    f"  3차 ₩{cur:,.0f} × {add_qty}주\n"
+                    f"━━━━━━━━━━━━━━\n"
+                    f"  평균단가 ₩{new_avg:,.0f} × {qty + add_qty}주\n"
+                    f"  🎯 목표 ₩{target:,}  🛑 손절 ₩{stop:,}"
+                )
+            continue
 
         # 목표가 도달
         if cur >= target:

@@ -698,14 +698,14 @@ with st.sidebar:
     st.markdown("### ⚙️ 핵심 조건 설정")
 
     if "max_gap"   not in st.session_state: st.session_state["max_gap"]   = 10
-    if "min_below" not in st.session_state: st.session_state["min_below"] = 120
-    if "max_cross" not in st.session_state: st.session_state["max_cross"] = 60
+    if "min_below" not in st.session_state: st.session_state["min_below"] = 60
+    if "max_cross" not in st.session_state: st.session_state["max_cross"] = 90
     if "min_score" not in st.session_state: st.session_state["min_score"] = 15
 
     if st.button("⚡ 최적 셋팅", width='stretch'):
         st.session_state["max_gap"]   = 10
-        st.session_state["min_below"] = 120
-        st.session_state["max_cross"] = 60   # 돌파 후 60일 이내
+        st.session_state["min_below"] = 60
+        st.session_state["max_cross"] = 90
         st.session_state["min_score"] = 15
         st.rerun()
 

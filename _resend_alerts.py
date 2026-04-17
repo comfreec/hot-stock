@@ -14,7 +14,7 @@ print(f"저장된 스캔 결과: {len(results)}개")
 if not results:
     print("스캔 시작...")
     from stock_surge_detector import KoreanStockSurgeDetector
-    det = KoreanStockSurgeDetector(max_gap_pct=10, min_below_days=120, max_cross_days=60)
+    det = KoreanStockSurgeDetector(max_gap_pct=10, min_below_days=60, max_cross_days=90)
     results = det.analyze_all_stocks()
     results = [r for r in results if r.get("total_score", 0) >= 15]
     results = sorted(results, key=lambda x: x["total_score"], reverse=True)

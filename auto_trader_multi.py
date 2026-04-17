@@ -124,9 +124,22 @@ def _migrate(conn):
             base_price    INTEGER DEFAULT 0,
             trigger2      INTEGER DEFAULT 0,
             trigger3      INTEGER DEFAULT 0,
+            step2_price   REAL DEFAULT 0,
+            step2_qty     INTEGER DEFAULT 0,
+            step3_price   REAL DEFAULT 0,
+            step3_qty     INTEGER DEFAULT 0,
             FOREIGN KEY (user_id) REFERENCES trader_users(user_id)
         )
     """)
+    conn.commit()
+    # 기존 DB 마이그레이션
+    existing_m = [r[1] for r in conn.execute("PRAGMA table_info(trade_orders_multi)").fetchall()]
+    for col, typ, default in [
+        ("step2_price","REAL","0"), ("step2_qty","INTEGER","0"),
+        ("step3_price","REAL","0"), ("step3_qty","INTEGER","0"),
+    ]:
+        if col not in existing_m:
+            conn.execute(f"ALTER TABLE trade_orders_multi ADD COLUMN {col} {typ} DEFAULT {default}")
     conn.commit()
 
 
@@ -250,7 +263,7 @@ def _get_pending_orders(user_id: int) -> list:
     rows = conn.execute("""
         SELECT id, alert_date, symbol, name, entry_price, target_price, stop_price,
                qty, order_no, status, split_step, split_qty, avg_price, base_price,
-               trigger2, trigger3
+               trigger2, trigger3, step2_price, step2_qty, step3_price, step3_qty
         FROM trade_orders_multi
         WHERE user_id=? AND status IN ('pending', 'active')
         ORDER BY alert_date ASC
@@ -470,6 +483,7 @@ def monitor_positions(user: dict):
         qty        = order["qty"]
         split_step = order.get("split_step", 1)
         avg_price  = order.get("avg_price", entry) or entry
+        base_price = order.get("base_price", entry) or entry
         trigger2   = order.get("trigger2") or int(entry * 0.98)
         trigger3   = order.get("trigger3") or int(entry * 0.96)
 
@@ -480,23 +494,37 @@ def monitor_positions(user: dict):
             if result["success"]:
                 new_avg = (avg_price * qty + cur * add_qty) / (qty + add_qty)
                 _update_order(order["id"], split_step=2, split_qty=qty + add_qty,
-                              avg_price=round(new_avg, 2), qty=qty + add_qty)
+                              avg_price=round(new_avg, 2), qty=qty + add_qty,
+                              step2_price=round(cur, 2), step2_qty=add_qty)
                 _send_user(chat_id,
-                    f"📥 <b>2차 분할매수</b>\n<b>{order['name']}</b> ₩{cur:,.0f} × {add_qty}주\n"
-                    f"평균단가 ₩{new_avg:,.0f} | 손절 ₩{stop:,}")
+                    f"📥 <b>2차 분할매수</b>  <b>{order['name']}</b>\n"
+                    f"  1차 ₩{base_price:,.0f} × {qty}주\n"
+                    f"  2차 ₩{cur:,.0f} × {add_qty}주\n"
+                    f"━━━━━━━━━━━━━━\n"
+                    f"  평균단가 ₩{new_avg:,.0f} × {qty + add_qty}주\n"
+                    f"  🛑 손절 ₩{stop:,}")
             continue
 
         # 3차 분할매수
         elif split_step == 2 and cur <= trigger3:
-            add_qty = max(1, int(split_budget / cur))
-            result  = client.buy_order(symbol, int(cur), add_qty, market=True)
+            add_qty     = max(1, int(split_budget / cur))
+            result      = client.buy_order(symbol, int(cur), add_qty, market=True)
             if result["success"]:
-                new_avg = (avg_price * qty + cur * add_qty) / (qty + add_qty)
+                new_avg     = (avg_price * qty + cur * add_qty) / (qty + add_qty)
+                step2_price = order.get("step2_price") or trigger2
+                step2_qty   = order.get("step2_qty") or 0
+                step1_qty   = qty - step2_qty
                 _update_order(order["id"], split_step=3, split_qty=qty + add_qty,
-                              avg_price=round(new_avg, 2), qty=qty + add_qty)
+                              avg_price=round(new_avg, 2), qty=qty + add_qty,
+                              step3_price=round(cur, 2), step3_qty=add_qty)
                 _send_user(chat_id,
-                    f"📥 <b>3차 분할매수 완료</b>\n<b>{order['name']}</b> ₩{cur:,.0f} × {add_qty}주\n"
-                    f"평균단가 ₩{new_avg:,.0f} | 손절 ₩{stop:,}")
+                    f"📥 <b>3차 분할매수 완료</b>  <b>{order['name']}</b>\n"
+                    f"  1차 ₩{base_price:,.0f} × {step1_qty}주\n"
+                    f"  2차 ₩{step2_price:,.0f} × {step2_qty}주\n"
+                    f"  3차 ₩{cur:,.0f} × {add_qty}주\n"
+                    f"━━━━━━━━━━━━━━\n"
+                    f"  평균단가 ₩{new_avg:,.0f} × {qty + add_qty}주\n"
+                    f"  🎯 목표 ₩{target:,}  🛑 손절 ₩{stop:,}")
             continue
 
         # 목표가 도달
@@ -630,11 +658,13 @@ def handle_bot_command(chat_id: str, text: str):
                 for o in active:
                     cur = client.get_price(o["symbol"])
                     avg = o.get("avg_price") or o["entry_price"]
+                    split_step = o.get("split_step", 1) or 1
+                    split_tag  = f" ({split_step}차 평균)" if split_step > 1 else ""
                     if cur and avg:
                         ret = (cur - avg) / avg * 100
-                        lines.append(f"  📌 {o['name']}  {ret:+.1f}%  (₩{cur:,.0f})")
+                        lines.append(f"  📌 {o['name']}  {ret:+.1f}%  (평균단가 ₩{avg:,.0f}{split_tag} / 현재 ₩{cur:,.0f})")
                     else:
-                        lines.append(f"  📌 {o['name']}  ₩{o['entry_price']:,}")
+                        lines.append(f"  📌 {o['name']}  평균단가 ₩{avg:,.0f}{split_tag}")
             if pending:
                 lines.append(f"\n⏳ <b>매수 대기</b> ({len(pending)}종목)")
                 for o in pending:

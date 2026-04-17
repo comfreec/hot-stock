@@ -49,9 +49,17 @@ def _get_conn():
             exit_price  REAL,
             exit_date   TEXT,
             return_pct  REAL,
-            created_at  TEXT NOT NULL
+            created_at  TEXT NOT NULL,
+            avg_price   REAL,
+            split_step  INTEGER DEFAULT 1
         )
     """)
+    conn.commit()
+    # 기존 DB 마이그레이션
+    existing_cols = [r[1] for r in conn.execute("PRAGMA table_info(alert_history)").fetchall()]
+    for col, default in [("avg_price", "NULL"), ("split_step", "1")]:
+        if col not in existing_cols:
+            conn.execute(f"ALTER TABLE alert_history ADD COLUMN {col} {'REAL' if col == 'avg_price' else 'INTEGER'} DEFAULT {default}")
     conn.commit()
     return conn
 
@@ -133,7 +141,7 @@ def is_favorite(symbol: str) -> bool:
 
 # ── 성과 추적 ────────────────────────────────────────────────────
 def save_alert_history(results: list, price_levels_map: dict = None):
-    """알림 발송 종목을 성과 추적 DB에 저장 (같은 날 중복 방지 + 진행 중 종목 중복 방지)"""
+    """알림 발송 종목을 성과 추적 DB에 저장 (같은 날 중복 방지)"""
     today = date.today().isoformat()
     conn = _get_conn()
     for r in results:
@@ -144,13 +152,6 @@ def save_alert_history(results: list, price_levels_map: dict = None):
             (today, sym)
         ).fetchone()
         if existing_today:
-            continue
-        # 아직 pending/active 상태인 종목이면 스킵 (결과 안 난 종목 중복 방지)
-        in_progress = conn.execute(
-            "SELECT id FROM alert_history WHERE symbol=? AND status IN ('pending', 'active')",
-            (sym,)
-        ).fetchone()
-        if in_progress:
             continue
         lv  = (price_levels_map or {}).get(sym, {})
         # 레벨 없으면 yfinance로 직접 계산 재시도
@@ -181,7 +182,8 @@ def get_alert_history(limit: int = 60) -> list:
     rows = conn.execute("""
         SELECT id, alert_date, symbol, name, score,
                entry_price, entry_label, target_price, stop_price, rr_ratio,
-               status, exit_price, exit_date, return_pct, created_at
+               status, exit_price, exit_date, return_pct, created_at,
+               avg_price, split_step
         FROM alert_history
         ORDER BY alert_date DESC, score DESC
         LIMIT ?
@@ -189,7 +191,8 @@ def get_alert_history(limit: int = 60) -> list:
     conn.close()
     keys = ["id","alert_date","symbol","name","score",
             "entry_price","entry_label","target_price","stop_price","rr_ratio",
-            "status","exit_price","exit_date","return_pct","created_at"]
+            "status","exit_price","exit_date","return_pct","created_at",
+            "avg_price","split_step"]
     return [dict(zip(keys, r)) for r in rows]
 
 def update_alert_status():
@@ -197,14 +200,51 @@ def update_alert_status():
     try:
         import yfinance as yf
         conn = _get_conn()
+
+        # ── trade_orders에서 avg_price / split_step 동기화 ──────────
+        try:
+            trade_rows = conn.execute("""
+                SELECT symbol, avg_price, split_step FROM trade_orders
+                WHERE status IN ('active','hit_target','hit_stop')
+                  AND avg_price > 0
+            """).fetchall()
+            for sym, avg_p, step in trade_rows:
+                conn.execute("""
+                    UPDATE alert_history SET avg_price=?, split_step=?
+                    WHERE symbol=? AND status IN ('pending','active')
+                """, (avg_p, step or 1, sym))
+            conn.commit()
+        except Exception:
+            pass  # trade_orders 없는 환경(스캔 전용)이면 스킵
+
+        # ── trade_orders_multi에서도 동기화 ─────────────────────────
+        try:
+            multi_rows = conn.execute("""
+                SELECT symbol, avg_price, split_step FROM trade_orders_multi
+                WHERE status IN ('active','hit_target','hit_stop')
+                  AND avg_price > 0
+            """).fetchall()
+            for sym, avg_p, step in multi_rows:
+                conn.execute("""
+                    UPDATE alert_history SET avg_price=?, split_step=?
+                    WHERE symbol=? AND status IN ('pending','active')
+                      AND (avg_price IS NULL OR avg_price = 0)
+                """, (avg_p, step or 1, sym))
+            conn.commit()
+        except Exception:
+            pass
+
         rows = conn.execute("""
-            SELECT id, symbol, entry_price, target_price, stop_price, alert_date, status
+            SELECT id, symbol, entry_price, target_price, stop_price, alert_date, status,
+                   avg_price
             FROM alert_history WHERE status IN ('pending', 'active')
         """).fetchall()
 
         today = date.today().isoformat()
         for row in rows:
-            rid, sym, entry, target, stop, alert_date, status = row
+            rid, sym, entry, target, stop, alert_date, status, avg_p = row
+            # 실제 평균단가 우선, 없으면 entry_price 사용
+            base = avg_p if avg_p and avg_p > 0 else entry
 
             # pending 종목만 거래일 기준 5일 경과 시 만료
             if status == 'pending':
@@ -243,16 +283,15 @@ def update_alert_status():
                         status = 'active'
 
                 if status == 'active':
-                    ret = (cur - entry) / entry * 100
                     if day_high >= target:
                         exit_price = target
-                        ret = (exit_price - entry) / entry * 100
+                        ret = (exit_price - base) / base * 100 if base else 0
                         conn.execute("""UPDATE alert_history
                             SET status='hit_target', exit_price=?, exit_date=?, return_pct=?
                             WHERE id=?""", (exit_price, today, ret, rid))
                     elif day_low <= stop:
                         exit_price = stop
-                        ret = (exit_price - entry) / entry * 100
+                        ret = (exit_price - base) / base * 100 if base else 0
                         conn.execute("""UPDATE alert_history
                             SET status='hit_stop', exit_price=?, exit_date=?, return_pct=?
                             WHERE id=?""", (exit_price, today, ret, rid))
@@ -318,7 +357,8 @@ def get_alert_history_range(date_from: str = None, date_to: str = None, limit: i
     rows = conn.execute(f"""
         SELECT id, alert_date, symbol, name, score,
                entry_price, entry_label, target_price, stop_price, rr_ratio,
-               status, exit_price, exit_date, return_pct, created_at
+               status, exit_price, exit_date, return_pct, created_at,
+               avg_price, split_step
         FROM alert_history {where}
         ORDER BY alert_date DESC, score DESC
         LIMIT ?
@@ -326,7 +366,8 @@ def get_alert_history_range(date_from: str = None, date_to: str = None, limit: i
     conn.close()
     keys = ["id","alert_date","symbol","name","score",
             "entry_price","entry_label","target_price","stop_price","rr_ratio",
-            "status","exit_price","exit_date","return_pct","created_at"]
+            "status","exit_price","exit_date","return_pct","created_at",
+            "avg_price","split_step"]
     return [dict(zip(keys, r)) for r in rows]
 
 def get_monthly_stats() -> list:
@@ -390,8 +431,9 @@ def _run_scan_job():
     try:
         from stock_surge_detector import KoreanStockSurgeDetector
         from telegram_alert import send_scan_alert
-        det = KoreanStockSurgeDetector(max_gap_pct=10, min_below_days=120, max_cross_days=60)
+        det = KoreanStockSurgeDetector(max_gap_pct=10, min_below_days=60, max_cross_days=90)
         results = det.analyze_all_stocks()
+        results = [r for r in results if r.get("total_score", 0) >= 15]
         if results:
             save_scan(results)
             send_scan_alert(results)
@@ -421,3 +463,4 @@ def start_scheduler():
 
     t = threading.Thread(target=_loop, daemon=True)
     t.start()
+

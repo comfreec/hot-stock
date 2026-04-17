@@ -487,10 +487,12 @@ def send_scan_alert(results: list, send_charts: bool = True):
         try:
             from cache_db import _get_conn as _db_conn
             _conn = _db_conn()
+            # 오늘 이전에 알림 보낸 적 있고 아직 진행 중인 종목 = 추적 중
             _row = _conn.execute(
                 "SELECT entry_price, target_price, stop_price, rr_ratio FROM alert_history "
-                "WHERE symbol=? AND status IN ('pending','active') ORDER BY id DESC LIMIT 1",
-                (r["symbol"],)
+                "WHERE symbol=? AND status IN ('pending','active') AND alert_date < ? "
+                "ORDER BY id DESC LIMIT 1",
+                (r["symbol"], date.today().isoformat())
             ).fetchone()
             _conn.close()
             if _row and _row[0]:
@@ -696,28 +698,28 @@ def send_performance_update():
             lines.append("─" * 16)
             for h in active_list:
                 days       = (date.today() - date.fromisoformat(h["alert_date"])).days
-                entry_str  = f"₩{h['entry_price']:,.0f}"  if h.get("entry_price")  else "미정"
+                base_price = h.get("avg_price") or h.get("entry_price")
+                avg_str    = f"₩{base_price:,.0f}" if base_price else "미정"
                 target_str = f"₩{h['target_price']:,.0f}" if h.get("target_price") else "?"
                 stop_str   = f"₩{h['stop_price']:,.0f}"   if h.get("stop_price")   else "?"
+                # 분할매수 차수 표시
+                split_step = h.get("split_step", 1) or 1
+                split_tag  = f" <i>({split_step}차 평균)</i>" if split_step > 1 else ""
 
                 cur_line = ""
                 try:
-                    if h.get("entry_price"):
+                    if base_price:
                         cur = float(yf.Ticker(h["symbol"]).history(period="1d")["Close"].iloc[-1])
-                        ret = (cur - h["entry_price"]) / h["entry_price"] * 100
-                        # 게이지: 손절가~목표가 범위에서 현재가 위치 비율
-                        entry  = h["entry_price"]
+                        ret = (cur - base_price) / base_price * 100
+                        entry  = base_price
                         target = h.get("target_price")
                         stop   = h.get("stop_price")
-                        entry  = h["entry_price"]
                         if target and stop:
                             if ret >= 0 and target > entry:
-                                # 매수가→목표가 진행률
                                 ratio = min((cur - entry) / (target - entry), 1.0)
                                 bar_filled = round(ratio * 8)
                                 bar = "🟩" * bar_filled + "⬜" * (8 - bar_filled)
                             elif ret < 0 and stop < entry:
-                                # 매수가→손절가 진행률 (반대 방향)
                                 ratio = min((entry - cur) / (entry - stop), 1.0)
                                 bar_filled = round(ratio * 8)
                                 bar = "🟥" * bar_filled + "⬜" * (8 - bar_filled)
@@ -732,7 +734,7 @@ def send_performance_update():
 
                 lines.append(
                     f"📌 <b>{h['name']}</b>  <i>{days}일째</i>\n"
-                    f"   매수 {entry_str}  →  목표 {target_str}  /  손절 {stop_str}"
+                    f"   평균단가 {avg_str}{split_tag}  →  목표 {target_str}  /  손절 {stop_str}"
                     + cur_line
                 )
 
@@ -801,20 +803,23 @@ def send_weekly_summary(force: bool = False):
             lines.append(f"\n🟢 <b>매수 중</b>  ({len(active_list)}종목)")
             lines.append("─" * 16)
             for h in active_list:
-                entry_str  = f"₩{h['entry_price']:,.0f}"  if h.get("entry_price")  else "미정"
+                base_price = h.get("avg_price") or h.get("entry_price")
+                avg_str    = f"₩{base_price:,.0f}" if base_price else "미정"
                 target_str = f"₩{h['target_price']:,.0f}" if h.get("target_price") else "?"
                 stop_str   = f"₩{h['stop_price']:,.0f}"   if h.get("stop_price")   else "?"
+                split_step = h.get("split_step", 1) or 1
+                split_tag  = f" <i>({split_step}차 평균)</i>" if split_step > 1 else ""
                 cur_line = ""
                 try:
-                    if h.get("entry_price"):
+                    if base_price:
                         df_cur = yf.Ticker(h["symbol"]).history(period="5d").dropna(subset=["Close"])
                         if len(df_cur) == 0:
                             raise ValueError("no data")
                         cur = float(df_cur["Close"].iloc[-1])
-                        ret = (cur - h["entry_price"]) / h["entry_price"] * 100
+                        ret = (cur - base_price) / base_price * 100
                         target = h.get("target_price")
                         stop   = h.get("stop_price")
-                        entry_p = h["entry_price"]
+                        entry_p = base_price
                         if target and stop:
                             if ret >= 0 and target > entry_p:
                                 ratio = min((cur - entry_p) / (target - entry_p), 1.0)
@@ -834,7 +839,7 @@ def send_weekly_summary(force: bool = False):
                     pass
                 lines.append(
                     f"📌 <b>{h['name']}</b>\n"
-                    f"   📍{entry_str} 🎯{target_str} 🛑{stop_str}"
+                    f"   평균단가 {avg_str}{split_tag}  🎯{target_str}  🛑{stop_str}"
                     + cur_line
                 )
 
