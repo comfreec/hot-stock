@@ -28,6 +28,7 @@ print(f"[{date.today()}] 스캔 시작 (병렬 처리)...")
 
 try:
     det = KoreanStockSurgeDetector(max_gap_pct=10, min_below_days=60, max_cross_days=90)
+    det._ob_days = 90
     results = det.analyze_all_stocks()
     results = [r for r in results if r.get("total_score", 0) >= 15]
 

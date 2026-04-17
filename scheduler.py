@@ -29,6 +29,7 @@ def run_scan():
         import pandas as _pd
 
         det = KoreanStockSurgeDetector(max_gap_pct=10, min_below_days=60, max_cross_days=90)
+        det._ob_days = 90  # RSI 70 이탈 후 경과일
         results = det.analyze_all_stocks()
         results = [r for r in results if r.get("total_score", 0) >= 15]
         results = sorted(results, key=lambda x: x["total_score"], reverse=True)
@@ -89,41 +90,11 @@ def run_performance():
         log("주간 리포트 전송 완료")
     except Exception as e:
         log(f"주간 리포트 오류: {e}")
-    # 코인 주간 리포트도 함께 전송
-    try:
-        from crypto_surge.telegram_alert import send_weekly_summary as crypto_weekly
-        crypto_weekly(force=True)
-        log("[코인] 주간 리포트 전송 완료")
-    except Exception as e:
-        log(f"[코인] 주간 리포트 오류: {e}")
-        import traceback; traceback.print_exc()
 
 
 def run_crypto_scan():
-    log("[코인] 스캔 시작...")
-    try:
-        from crypto_surge.crypto_surge_detector import CryptoSurgeDetector
-        from crypto_surge.cache_db import save_scan as crypto_save_scan, update_alert_status as crypto_update_status
-        from crypto_surge.telegram_alert import send_scan_alert as crypto_send_alert, send_telegram as crypto_send_telegram
-
-        det = CryptoSurgeDetector(max_gap_pct=10, min_below_days=120, max_cross_days=60)
-        results = det.analyze_all_coins()
-        results = [r for r in results if r.get("total_score", 0) >= 15]
-
-        crypto_save_scan(results)
-
-        if results:
-            crypto_send_alert(results, send_charts=True)
-            log(f"[코인] 완료: {len(results)}개 → 텔레그램 전송")
-        else:
-            log("[코인] 조건 충족 코인 없음 - 알림 생략")
-
-        crypto_update_status()
-
-    except Exception as e:
-        log(f"[코인] 오류: {e}")
-        import traceback
-        traceback.print_exc()
+    log("[코인] 스캔 비활성화 - 알림 생략")
+    return
 
 def main():
     log("스케줄러 시작 (주식: 평일 15:40 / 코인: 4시간 간격 / 리포트: 09:10) - KST 기준")

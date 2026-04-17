@@ -108,7 +108,6 @@ class KISClient:
     def get_price(self, symbol: str) -> float | None:
         """현재가 조회"""
         try:
-            # symbol에서 .KS/.KQ 제거
             code = symbol.replace(".KS", "").replace(".KQ", "")
             resp = requests.get(
                 f"{self.base}/uapi/domestic-stock/v1/quotations/inquire-price",
@@ -119,6 +118,55 @@ class KISClient:
             resp.raise_for_status()
             return float(resp.json()["output"]["stck_prpr"])
         except:
+            return None
+
+    def get_daily_ohlcv(self, symbol: str, start_date: str, end_date: str) -> "pd.DataFrame | None":
+        """
+        일봉 OHLCV 조회 (KIS API)
+        start_date / end_date: 'YYYYMMDD'
+        반환: DataFrame with columns [Open, High, Low, Close, Volume], index=date
+        """
+        try:
+            import pandas as pd
+            code = symbol.replace(".KS", "").replace(".KQ", "")
+            resp = requests.get(
+                f"{self.base}/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice",
+                headers=self._headers("FHKST03010100"),
+                params={
+                    "FID_COND_MRKT_DIV_CODE": "J",
+                    "FID_INPUT_ISCD":         code,
+                    "FID_INPUT_DATE_1":        start_date,
+                    "FID_INPUT_DATE_2":        end_date,
+                    "FID_PERIOD_DIV_CODE":     "D",  # D=일봉
+                    "FID_ORG_ADJ_PRC":         "0",  # 0=수정주가
+                },
+                timeout=15
+            )
+            resp.raise_for_status()
+            rows = resp.json().get("output2", [])
+            if not rows:
+                return None
+            records = []
+            for r in rows:
+                try:
+                    records.append({
+                        "date":   r["stck_bsop_date"],
+                        "Open":   float(r["stck_oprc"]),
+                        "High":   float(r["stck_hgpr"]),
+                        "Low":    float(r["stck_lwpr"]),
+                        "Close":  float(r["stck_clpr"]),
+                        "Volume": float(r["acml_vol"]),
+                    })
+                except:
+                    pass
+            if not records:
+                return None
+            df = pd.DataFrame(records)
+            df["date"] = pd.to_datetime(df["date"])
+            df = df.set_index("date").sort_index()
+            return df
+        except Exception as e:
+            print(f"[KIS] 일봉 조회 오류 {symbol}: {e}")
             return None
 
     def get_balance(self) -> dict:

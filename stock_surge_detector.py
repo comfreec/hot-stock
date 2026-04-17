@@ -22,6 +22,45 @@ try:
 except:
     def ml_score_adjustment(signals, base_score): return float(base_score)
 
+
+def _get_ohlcv_kis(symbol: str, years: int = 5):
+    """
+    KIS API로 일봉 데이터 조회 (yfinance 대체)
+    KIS_APP_KEY 없으면 None 반환 → yfinance 폴백
+    """
+    try:
+        if not os.environ.get("KIS_APP_KEY"):
+            return None
+        from auto_trader import KISClient
+        from datetime import date, timedelta
+        client = KISClient()
+        end   = date.today().strftime("%Y%m%d")
+        start = (date.today() - timedelta(days=years * 365)).strftime("%Y%m%d")
+        # KIS API는 한 번에 최대 100일치 → 여러 번 호출해서 합치기
+        all_dfs = []
+        cur_end = date.today()
+        for _ in range(years * 3):  # 최대 years*3번 호출
+            cur_start = cur_end - timedelta(days=99)
+            df_chunk = client.get_daily_ohlcv(
+                symbol,
+                cur_start.strftime("%Y%m%d"),
+                cur_end.strftime("%Y%m%d")
+            )
+            if df_chunk is not None and len(df_chunk) > 0:
+                all_dfs.append(df_chunk)
+            cur_end = cur_start - timedelta(days=1)
+            if cur_end < date.today() - timedelta(days=years * 365):
+                break
+        if not all_dfs:
+            return None
+        import pandas as pd
+        df = pd.concat(all_dfs).sort_index()
+        df = df[~df.index.duplicated(keep='last')]
+        return df
+    except Exception as e:
+        print(f"[KIS OHLCV] {symbol} 오류: {e}")
+        return None
+
 # ── 종목 리스트: combined_symbols.json에서 로드 (코스피500 + 코스닥 우량주) ──
 import json as _json, os as _os
 _symbols_path = _os.path.join(_os.path.dirname(__file__), "combined_symbols.json")
@@ -240,6 +279,96 @@ class KoreanStockSurgeDetector:
         except:
             return True, 0
 
+    def _rsi_cycle_pullback(self, close, ma_long, rsi_period=20) -> dict:
+        """
+        RSI 사이클 눌림목 패턴 탐지
+        조건:
+          1) RSI(20)이 30 이하(과매도)에서 탈출
+          2) 과매도 탈출 ~ 과매수 도달 사이에 1000일선 상향 돌파 존재
+          3) RSI가 70 이상(과매수)까지 도달
+          4) RSI가 70에서 이탈 (조정 시작)
+          5) 현재 RSI 55 이하 + 현재 주가 1000선 근처
+        """
+        try:
+            rsi = self._rsi(close, rsi_period).dropna()
+            if len(rsi) < 60:
+                return {"matched": False}
+
+            rsi_vals = rsi.values
+            n = len(rsi_vals)
+            close_arr = close.values
+            ma_arr = ma_long.values
+
+            # 최근 150일 내에서 패턴 탐색
+            search_start = max(0, n - 150)
+
+            # Step 1: 과매도 탈출 시점 찾기 (가장 최근 것)
+            oversold_exit_idx = None
+            for i in range(search_start, n - 20):
+                if rsi_vals[i-1] <= 30 and rsi_vals[i] > 30:
+                    oversold_exit_idx = i
+
+            if oversold_exit_idx is None:
+                return {"matched": False}
+
+            # Step 2: 과매도 탈출 이후 RSI 70 이상 도달 시점
+            overbought_idx = None
+            for i in range(oversold_exit_idx, n - 5):
+                if rsi_vals[i] >= 70:
+                    overbought_idx = i
+                    break
+            if overbought_idx is None:
+                return {"matched": False}
+
+            # Step 3: 과매도 탈출 ~ 과매수 도달 사이에 1000선 상향 돌파 존재 확인
+            cross_in_cycle = False
+            cross_in_cycle_idx = None
+            for i in range(oversold_exit_idx, overbought_idx + 1):
+                if i == 0 or pd.isna(ma_arr[i]) or pd.isna(ma_arr[i-1]):
+                    continue
+                if close_arr[i] > ma_arr[i] and close_arr[i-1] <= ma_arr[i-1]:
+                    cross_in_cycle = True
+                    cross_in_cycle_idx = i
+                    break
+            if not cross_in_cycle:
+                return {"matched": False}
+
+            # Step 4: 70 도달 이후 70 이탈 시점
+            overbought_exit_idx = None
+            for i in range(overbought_idx, n - 1):
+                if rsi_vals[i-1] >= 70 and rsi_vals[i] < 70:
+                    overbought_exit_idx = i
+                    break
+            if overbought_exit_idx is None:
+                return {"matched": False}
+
+            # Step 5: 현재 RSI 55 이하 (눌림목 충분히 진행)
+            cur_rsi = float(rsi_vals[-1])
+            if cur_rsi > 55:
+                return {"matched": False}
+
+            # 70 이탈 후 너무 오래된 사이클 제외 (60일 이내)
+            days_since_peak = n - 1 - overbought_exit_idx
+            if days_since_peak > 60:
+                return {"matched": False}
+
+            rsi_low  = float(rsi_vals[oversold_exit_idx - 1])
+            rsi_peak = float(rsi_vals[overbought_idx:overbought_exit_idx+1].max())
+
+            return {
+                "matched":             True,
+                "oversold_exit_idx":   oversold_exit_idx,
+                "overbought_idx":      overbought_idx,
+                "overbought_exit_idx": overbought_exit_idx,
+                "cross_in_cycle_idx":  cross_in_cycle_idx,
+                "rsi_low":             round(rsi_low, 1),
+                "rsi_peak":            round(rsi_peak, 1),
+                "cur_rsi":             round(cur_rsi, 1),
+                "days_since_peak":     days_since_peak,
+            }
+        except Exception:
+            return {"matched": False}
+
     def _sector_momentum(self, symbol):
         """섹터 모멘텀 - 같은 섹터 ETF 기준"""
         sector_etf = {
@@ -266,16 +395,22 @@ class KoreanStockSurgeDetector:
         except:
             return 0
 
-    def analyze_stock(self, symbol):
+    def analyze_stock(self, symbol, as_of_date=None):
         """
-        필수 조건 3가지 모두 통과해야 결과 반환:
-          1) 240일선 아래 min_below_days 이상 조정
-          2) 최근 max_cross_days 이내 240일선 상향 돌파
-          3) 현재 주가가 240일선 위 0 ~ max_gap_pct% 이내
+        as_of_date: datetime.date 또는 None (None이면 오늘 기준)
+        과거 날짜 지정 시 해당 날짜까지의 데이터만 사용 (백테스트용)
         """
         try:
             ticker = yf.Ticker(symbol)
-            data = ticker.history(period="2y")
+            data = ticker.history(period="2y", auto_adjust=False)
+
+            # ── as_of_date 기준으로 데이터 자르기 ──
+            if as_of_date is not None:
+                import pandas as _pd
+                cutoff = _pd.Timestamp(as_of_date).tz_localize(data.index.tz) if data.index.tz else _pd.Timestamp(as_of_date)
+                data = data[data.index <= cutoff]
+                if len(data) == 0:
+                    return None
 
             # ── 당일 종가 보완: yfinance NaN이면 네이버에서 가져오기 ──
             # _today_price_cache는 analyze_all_stocks에서 사전 조회한 값
@@ -290,42 +425,6 @@ class KoreanStockSurgeDetector:
             data = data.dropna(subset=["Open","High","Low","Close"])
             if len(data) < 260:
                 return None
-
-            # ── 재무 자동 검증 (강화) ─────────────────────────────
-            try:
-                info = ticker.info
-                market_cap       = info.get("marketCap", 0) or 0
-                per              = info.get("trailingPE") or info.get("forwardPE") or 0
-                operating_income = info.get("operatingIncome") or 0
-                revenue          = info.get("totalRevenue") or 0
-                revenue_growth   = info.get("revenueGrowth") or None
-                earnings_growth  = info.get("earningsGrowth") or None
-                roe              = info.get("returnOnEquity") or None   # ROE
-                debt_to_equity   = info.get("debtToEquity") or None     # 부채비율
-
-                # 시총 1000억 미만 제외
-                if market_cap > 0 and market_cap < 100_000_000_000:
-                    return None
-                # 영업이익 적자 제외 (데이터 있을 때만)
-                if operating_income != 0 and operating_income < 0:
-                    return None
-                # PER 비정상 제외 (음수 or 200 초과)
-                if per and (per < 0 or per > 200):
-                    return None
-                # 매출 성장률 마이너스 제외 (데이터 있을 때만)
-                if revenue_growth is not None and revenue_growth < -0.05:
-                    return None
-                # 이익 성장률 심각한 역성장 제외
-                if earnings_growth is not None and earnings_growth < -0.30:
-                    return None
-                # ROE 마이너스 제외 (데이터 있을 때만)
-                if roe is not None and roe < 0:
-                    return None
-                # 부채비율 500% 초과 제외 (과도한 레버리지)
-                if debt_to_equity is not None and debt_to_equity > 500:
-                    return None
-            except:
-                pass  # 재무 데이터 없으면 통과 (데이터 누락 방어)
 
             close = data["Close"]
             high  = data["High"]
@@ -344,6 +443,7 @@ class KoreanStockSurgeDetector:
             # (KOSPI 200일선 체크는 analyze_all_stocks에서 1회만 수행)
 
             ma240 = close.rolling(240).mean()
+            ma1000 = close.rolling(1000).mean()
             ma120 = close.rolling(120).mean()
             ma60  = close.rolling(60).mean()
             ma20  = close.rolling(20).mean()
@@ -352,80 +452,93 @@ class KoreanStockSurgeDetector:
             if pd.isna(ma240.iloc[-1]):
                 return None
 
-            current = float(close.iloc[-1])
-            ma240_v = float(ma240.iloc[-1])
+            current  = float(close.iloc[-1])
+            ma240_v  = float(ma240.iloc[-1])
+            ma1000_v = float(ma1000.iloc[-1]) if not pd.isna(ma1000.iloc[-1]) else None
 
-            # ── 필수 조건 1: 현재 주가가 240선 근처 (0 ~ max_gap_pct%) ──
-            # → 먼저 이격 체크해서 이미 많이 오른 종목은 즉시 제외 (불필요한 연산 방지)
+            # ── 핵심 조건: RSI(20) 사이클 + 240선 돌파 + 현재 240선 근처 ──
+            # 1) RSI 30 이하 탈출
+            # 2) 이후 240선 상향 돌파
+            # 3) 이후 RSI 70 이상 도달
+            # 4) 이후 RSI 70 이탈 (조정)
+            # 5) 현재 주가 240선 위 0~max_gap_pct%
+            rsi = self._rsi(close, 20)
+            rsi_vals = rsi.fillna(50).values
+            close_arr = close.values
+            ma240_arr = ma240.values
+
+            # 현재 240선 근처 체크 (빠른 사전 필터)
             gap_pct = (current - ma240_v) / ma240_v * 100
             if not (0 <= gap_pct <= self.max_gap_pct):
                 return None
 
-            # ── 필수 조건 2: 최근 max_cross_days 이내 240선 상향 돌파 ──
+            # 최근 250일 내에서 패턴 탐색
+            search_start = max(1, n - 250)
+
+            # Step1: RSI 30 이하 탈출 시점 (가장 최근)
+            oversold_exit = None
+            for i in range(search_start, n - 30):
+                if rsi_vals[i-1] <= 30 and rsi_vals[i] > 30:
+                    oversold_exit = i
+
+            if oversold_exit is None:
+                return None
+
+            # Step2: 탈출 이후 240선 상향 돌파
             cross_idx = None
-            for i in range(n-1, max(n - self.max_cross_days - 1, 240), -1):
-                if (close.iloc[i] > ma240.iloc[i] and
-                        close.iloc[i-1] <= ma240.iloc[i-1]):
+            for i in range(oversold_exit, n - 10):
+                if pd.isna(ma240_arr[i]) or pd.isna(ma240_arr[i-1]):
+                    continue
+                if close_arr[i] > ma240_arr[i] and close_arr[i-1] <= ma240_arr[i-1]:
                     cross_idx = i
                     break
             if cross_idx is None:
                 return None
 
-            # ── 가짜 돌파 방지: 돌파 후 3일 이상 240선 위 유지 ──
-            confirm_end = min(cross_idx + 4, n)
-            days_above_after = sum(
-                1 for i in range(cross_idx, confirm_end)
-                if float(close.iloc[i]) > float(ma240.iloc[i])
-            )
-            if days_above_after < 3:
-                return None  # 3일 미만 유지 = 가짜 돌파
-
-            # ── 돌파 강도 확인: 돌파 당일 종가가 240선 위 0.5% 이상 ──
-            cross_gap = (float(close.iloc[cross_idx]) - float(ma240.iloc[cross_idx])) / float(ma240.iloc[cross_idx]) * 100
-            if cross_gap < 0.5:
-                return None  # 0.5% 미만 돌파 = 신뢰도 낮음
-
-            days_since_cross = n - 1 - cross_idx
-
-            # ── 필수 조건 3: 돌파 직전 연속 하락 기간이 min_below_days 이상 ──
-            # 연속 기간 우선, 부족하면 전체 기간으로 fallback
-            below_days = 0
-            for i in range(cross_idx - 1, -1, -1):
-                if not pd.isna(ma240.iloc[i]) and close.iloc[i] < ma240.iloc[i]:
-                    below_days += 1
-                else:
+            # Step3: 240선 돌파 이후 RSI 70 이상 도달
+            overbought_idx = None
+            for i in range(cross_idx, n - 5):
+                if rsi_vals[i] >= 70:
+                    overbought_idx = i
                     break
-            # 연속 기간이 부족하면 cross_idx 이전 전체 기간으로 재계산
-            if below_days < self.min_below_days:
-                below_days = sum(
-                    1 for i in range(cross_idx)
-                    if not pd.isna(ma240.iloc[i]) and close.iloc[i] < ma240.iloc[i]
-                )
-            if below_days < self.min_below_days:
+            if overbought_idx is None:
                 return None
 
-            # ── 필수 조건 4: 240선 기울기 확인 (급격한 하락 추세만 제외) ──
-            ma240_at_cross     = float(ma240.iloc[cross_idx])
-            ma240_20d_before   = float(ma240.iloc[cross_idx - 20]) if cross_idx >= 20 else ma240_at_cross
-            ma240_slope_at_cross = (ma240_at_cross - ma240_20d_before) / ma240_20d_before * 100
-            if ma240_slope_at_cross < -3.0:
-                return None  # 20일간 3% 이상 급락 중인 240선 돌파만 제외 (기준 완화: -1.5 → -3.0)
+            # Step4: RSI 70 이탈 (조정 시작)
+            overbought_exit = None
+            for i in range(overbought_idx, n - 1):
+                if rsi_vals[i-1] >= 70 and rsi_vals[i] < 70:
+                    overbought_exit = i
+                    break
+            if overbought_exit is None:
+                return None
 
-            # ── 필수 조건 5: 돌파 후 240선 아래 재이탈 횟수 제한 ──
-            # 단 하루도 허용 안 하면 종목이 거의 없음 → 3일 이상 연속 이탈만 제외
-            rebreak_count = 0
-            consecutive = 0
-            for i in range(cross_idx + 1, n):
-                if float(close.iloc[i]) < float(ma240.iloc[i]):
-                    consecutive += 1
-                    if consecutive >= 3:  # 3일 연속 이탈 = 진짜 추세 붕괴
-                        return None
-                else:
-                    consecutive = 0
+            # Step5: 현재 RSI 55 이하 (눌림목 진행 중)
+            cur_rsi = float(rsi_vals[-1])
+            if cur_rsi > 55:
+                return None
 
+            # 70 이탈 후 너무 오래된 사이클 제외 (앱 설정값, 기본 90일)
+            ob_max_days = getattr(self, '_ob_days', 90)
+            days_since_ob_exit = n - 1 - overbought_exit
+            if days_since_ob_exit > ob_max_days:
+                return None
+
+            days_since_cross = n - 1 - cross_idx
+            below_days = 0
+            cross_gap  = (float(close.iloc[cross_idx]) - float(ma240.iloc[cross_idx])) / float(ma240.iloc[cross_idx]) * 100
+            gc_days    = None
+            signals_pre = {
+                "rsi_cycle_pullback": True,
+                "rsi_cycle_low":      round(float(rsi_vals[oversold_exit-1]), 1),
+                "rsi_cycle_peak":     round(float(rsi_vals[overbought_idx:overbought_exit+1].max()), 1),
+                "rsi_cycle_cur":      round(cur_rsi, 1),
+                "rsi_cycle_days_since": days_since_ob_exit,
+            }
             # ── 여기까지 통과 = 핵심 조건 충족 ─────────────────────
             score   = 0
             signals = {}
+            signals.update(signals_pre)
 
             # [+3] 돌파 시 거래량 급증 (기준 강화: 3배 이상 = 강한 신호)
             vol_ma20 = vol.rolling(20).mean()
@@ -839,14 +952,9 @@ class KoreanStockSurgeDetector:
             ]
             core_count = sum(1 for s in core_signals if s)
             signals["core_signal_count"] = core_count
-            if core_count < 2:
-                return None  # 핵심 신호 2개 미만 = 제외
 
-            # 거래량 또는 수급 중 하나는 반드시 있어야 함
             has_volume_signal = signals.get("vol_strong_cross") or signals.get("vol_at_cross") or signals.get("vol_surge_sustained")
             has_supply_signal = signals.get("smart_money_in")
-            if not has_volume_signal and not has_supply_signal:
-                return None  # 거래량/수급 신호 없으면 제외
 
             # ── ML 점수 보정 ─────────────────────────────────────
             ml_adjusted = ml_score_adjustment(signals, score)
@@ -912,8 +1020,6 @@ class KoreanStockSurgeDetector:
 
                 rr_f = (target_f - entry_f) / risk_f
                 signals["rr_ratio"] = round(rr_f, 2)
-                if rr_f < 2.0:  # 기준 완화: 2.5 → 2.0 (피보나치 기반이라 더 현실적)
-                    return None
             except:
                 signals["rr_ratio"] = 0
 
@@ -941,7 +1047,9 @@ class KoreanStockSurgeDetector:
                 "current_price":    current,
                 "price_change_1d":  round((current - float(close.iloc[-2])) / float(close.iloc[-2]) * 100, 2),
                 "ma240":            round(ma240_v, 0),
+                "ma1000":           round(ma1000_v, 0) if ma1000_v else None,
                 "ma240_gap":        round(gap_pct, 2),
+                "gc_days":          gc_days,  # 240/1000 골든크로스 경과일
                 "days_since_cross": days_since_cross,
                 "below_days":       below_days,
                 "total_score":      int(ml_adjusted),
@@ -975,11 +1083,15 @@ class KoreanStockSurgeDetector:
                 "both_buying":      signals["both_buying"],
                 "core_signal_count": signals["core_signal_count"],
                 "cross_gap_pct":    round(cross_gap, 2),
+                "rsi_cycle_pullback": True,
+                "rsi_cycle_peak":   signals_pre.get("rsi_cycle_peak", 0),
+                "rsi_cycle_cur":    signals_pre.get("rsi_cycle_cur", 0),
                 "close_series":     close,
                 "high_series":      high,
                 "low_series":       low,
                 "open_series":      data["Open"],
                 "ma240_series":     ma240,
+                "ma1000_series":    ma1000,
                 "ma60_series":      ma60,
                 "ma20_series":      ma20,
                 "rsi_series":       rsi,
@@ -988,56 +1100,66 @@ class KoreanStockSurgeDetector:
             }
 
         except Exception as e:
+            import traceback
+            print(f"[analyze_stock] {symbol} 오류: {e}")
+            traceback.print_exc()
             return None
 
-    def analyze_all_stocks(self):
+    def analyze_all_stocks(self, as_of_date=None):
         results = []
-        print("스캔 중 (240일선 조건 필터)...")
+        date_label = str(as_of_date) if as_of_date else "오늘"
+        print(f"스캔 중 ({date_label} 기준)...")
 
-        # ── KOSPI 상태 1회만 가져와서 공유 (종목별 중복 호출 제거) ──
-        kospi_filter = True  # 기본값: 통과
+        # ── KOSPI 상태 1회만 가져와서 공유 ──
+        kospi_filter = True
         try:
-            kospi_df = yf.Ticker("^KS11").history(period="1y").dropna(subset=["Close"])
-            kospi_cur   = float(kospi_df["Close"].iloc[-1])
-            kospi_ma200 = float(kospi_df["Close"].rolling(200).mean().iloc[-1])
-            if kospi_cur < kospi_ma200 * 0.97:
-                kospi_filter = False  # 하락장 → 전체 차단
-                print(f"[하락장 감지] KOSPI {kospi_cur:,.0f} / 200일선 {kospi_ma200:,.0f} → 스캔 중단")
+            kospi_df = yf.Ticker("^KS11").history(period="1y", auto_adjust=False).dropna(subset=["Close"])
+            if as_of_date:
+                import pandas as _pd
+                cutoff = _pd.Timestamp(as_of_date).tz_localize(kospi_df.index.tz) if kospi_df.index.tz else _pd.Timestamp(as_of_date)
+                kospi_df = kospi_df[kospi_df.index <= cutoff]
+            if len(kospi_df) > 200:
+                kospi_cur   = float(kospi_df["Close"].iloc[-1])
+                kospi_ma200 = float(kospi_df["Close"].rolling(200).mean().iloc[-1])
+                if kospi_cur < kospi_ma200 * 0.97:
+                    kospi_filter = False
+                    print(f"[하락장 감지] KOSPI {kospi_cur:,.0f} / 200일선 {kospi_ma200:,.0f} → 스캔 중단")
         except:
             pass
 
         if not kospi_filter:
             return []
 
-        # ── 당일 종가 NaN 여부 사전 체크 (삼성전자로 대표 확인) ──
+        # 과거 날짜 스캔이면 당일 종가 보완 불필요
         self._today_price_cache = {}
-        try:
-            test_df = yf.Ticker("005930.KS").history(period="3d")
-            need_today_price = len(test_df) > 0 and pd.isna(test_df["Close"].iloc[-1])
-            if need_today_price:
-                print("[당일종가] yfinance NaN → 네이버에서 병렬 수집 중...")
-                def _fetch_naver_price(sym):
-                    try:
-                        code = sym.replace(".KS","").replace(".KQ","")
-                        url = f"https://finance.naver.com/item/main.naver?code={code}"
-                        res = requests.get(url, headers={"User-Agent":"Mozilla/5.0"}, timeout=2)
-                        soup = BeautifulSoup(res.text, "html.parser")
-                        tag = soup.select_one(".no_today .blind")
-                        return (sym, float(tag.get_text().replace(",","")) if tag else None)
-                    except:
-                        return (sym, None)
-                from concurrent.futures import ThreadPoolExecutor as TPE
-                with TPE(max_workers=20) as ex:
-                    for sym, price in ex.map(_fetch_naver_price, self.all_symbols):
-                        if price:
-                            self._today_price_cache[sym] = price
-                print(f"[당일종가] {len(self._today_price_cache)}개 수집 완료")
-        except:
-            pass
+        if as_of_date is None:
+            try:
+                test_df = yf.Ticker("005930.KS").history(period="3d")
+                need_today_price = len(test_df) > 0 and pd.isna(test_df["Close"].iloc[-1])
+                if need_today_price:
+                    print("[당일종가] yfinance NaN → 네이버에서 병렬 수집 중...")
+                    def _fetch_naver_price(sym):
+                        try:
+                            code = sym.replace(".KS","").replace(".KQ","")
+                            url = f"https://finance.naver.com/item/main.naver?code={code}"
+                            res = requests.get(url, headers={"User-Agent":"Mozilla/5.0"}, timeout=2)
+                            soup = BeautifulSoup(res.text, "html.parser")
+                            tag = soup.select_one(".no_today .blind")
+                            return (sym, float(tag.get_text().replace(",","")) if tag else None)
+                        except:
+                            return (sym, None)
+                    from concurrent.futures import ThreadPoolExecutor as TPE
+                    with TPE(max_workers=20) as ex:
+                        for sym, price in ex.map(_fetch_naver_price, self.all_symbols):
+                            if price:
+                                self._today_price_cache[sym] = price
+                    print(f"[당일종가] {len(self._today_price_cache)}개 수집 완료")
+            except:
+                pass
 
         from concurrent.futures import ThreadPoolExecutor, as_completed
         with ThreadPoolExecutor(max_workers=8) as executor:
-            futures = {executor.submit(self.analyze_stock, sym): sym for sym in self.all_symbols}
+            futures = {executor.submit(self.analyze_stock, sym, as_of_date): sym for sym in self.all_symbols}
             for future in as_completed(futures):
                 sym = futures[future]
                 try:

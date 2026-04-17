@@ -66,11 +66,11 @@ def make_chart_image(symbol: str, name: str, price_levels: dict = None, df=None)
         import matplotlib.pyplot as plt
 
         if df is None:
-            df = yf.Ticker(symbol).history(period="6mo")
+            df = yf.Ticker(symbol).history(period="6mo", auto_adjust=False)
             df = df.dropna(subset=["Open","High","Low","Close"])
             if len(df) < 20:
                 return None
-            df2y = yf.Ticker(symbol).history(period="2y").dropna(subset=["Close"])
+            df2y = yf.Ticker(symbol).history(period="2y", auto_adjust=False).dropna(subset=["Close"])
             ma240_full = df2y["Close"].rolling(240).mean()
         else:
             df = df.dropna(subset=["Open","High","Low","Close"]).tail(120)
@@ -78,7 +78,7 @@ def make_chart_image(symbol: str, name: str, price_levels: dict = None, df=None)
                 return None
             # df가 짧으면 2y 데이터로 MA240 계산
             try:
-                df2y = yf.Ticker(symbol).history(period="2y").dropna(subset=["Close"])
+                df2y = yf.Ticker(symbol).history(period="2y", auto_adjust=False).dropna(subset=["Close"])
                 ma240_full = df2y["Close"].rolling(240).mean()
             except Exception:
                 ma240_full = df["Close"].rolling(240).mean()
@@ -236,7 +236,7 @@ def calc_price_levels(symbol: str) -> dict:
     """목표가/손절가/손익비 + 근거 있는 매수가 계산"""
     try:
         import yfinance as yf
-        df = yf.Ticker(symbol).history(period="2y")
+        df = yf.Ticker(symbol).history(period="5y", auto_adjust=False)
         df = df.dropna(subset=["Open","High","Low","Close"])
         if len(df) < 30:
             return {}
@@ -255,10 +255,12 @@ def calc_price_levels(symbol: str) -> dict:
         atr_s = tr.rolling(14).mean().dropna()
         atr = float(atr_s.iloc[-1]) if len(atr_s) > 0 else current * 0.02
 
-        # ── 매수가: 현재가 근처 의미있는 지지선 (분할매수 상단) ──────────
-        ma240 = close.rolling(240).mean()
-        ma20  = float(close.rolling(20).mean().iloc[-1])
-        ma240_v = float(ma240.iloc[-1]) if not pd.isna(ma240.iloc[-1]) else None
+        # ── 매수가: 현재가 근처 의미있는 지지선 ──────────────────────
+        ma240  = close.rolling(240).mean()
+        ma1000 = close.rolling(1000).mean()
+        ma20   = float(close.rolling(20).mean().iloc[-1])
+        ma240_v  = float(ma240.iloc[-1])  if not pd.isna(ma240.iloc[-1])  else None
+        ma1000_v = float(ma1000.iloc[-1]) if not pd.isna(ma1000.iloc[-1]) else None
         swing_low_20 = float(low.tail(20).min())
 
         # 현재가 아래 유효 지지선들의 평균 → 매수가
@@ -272,13 +274,15 @@ def calc_price_levels(symbol: str) -> dict:
 
         if support_candidates:
             entry_label = "+".join(l for l, _ in support_candidates)
-            entry = sum(p for _, p in support_candidates) / len(support_candidates)  # 평균가
+            entry = sum(p for _, p in support_candidates) / len(support_candidates)
         else:
             entry_label, entry = "현재가", current
 
-        # ── 손절가: 스윙저점 - ATR*0.5 (변동성 기반 명확한 무효화 지점) ──
-        # ── 손절가: 매수가 대비 -5% 고정 ────────────────────────
-        stop = entry * 0.95
+        # ── 손절가: 240일선 -5% 고정 ──────────────────────────────
+        if ma240_v and ma240_v < entry:
+            stop = ma240_v * 0.95
+        else:
+            stop = entry * 0.95
         risk = max(entry - stop, entry * 0.01)
 
         # 목표가: 피보나치 되돌림 기반
@@ -366,8 +370,10 @@ def _calc_levels_from_result(r: dict) -> dict:
         atr = float(atr_s.iloc[-1]) if len(atr_s) > 0 else float((high_s - low_s).mean())
 
         # 매수가: app.py와 동일
-        ma240_s = close_s.rolling(240).mean()
-        ma240_v = float(ma240_s.iloc[-1]) if not pd.isna(ma240_s.iloc[-1]) else None
+        ma240_s  = close_s.rolling(240).mean()
+        ma1000_s = close_s.rolling(1000).mean()
+        ma240_v  = float(ma240_s.iloc[-1]) if not pd.isna(ma240_s.iloc[-1]) else None
+        ma1000_v = float(ma1000_s.iloc[-1]) if not pd.isna(ma1000_s.iloc[-1]) else None
         swing_low_20 = float(low_s.tail(20).min())
         ma20 = float(close_s.rolling(20).mean().dropna().iloc[-1])
 
@@ -387,8 +393,11 @@ def _calc_levels_from_result(r: dict) -> dict:
         else:
             entry_label, entry = "현재가", current
 
-        # 손절가: -5%
-        stop = entry * 0.95
+        # 손절가: 240일선 -5% 고정
+        if ma240_v and ma240_v < entry:
+            stop = ma240_v * 0.95
+        else:
+            stop = entry * 0.95
         risk = max(entry - stop, entry * 0.01)
 
         # 목표가: app.py와 동일한 다중 기법
@@ -443,7 +452,8 @@ def _calc_levels_from_result(r: dict) -> dict:
             "rr":       rr,
             "upside":   (target / entry - 1) * 100,
             "downside": (stop / entry - 1) * 100,
-            "ma240":    round(ma240_v) if ma240_v else round(entry),
+            "ma240":    round(ma240_v)  if ma240_v  else round(entry),
+            "ma1000":   round(ma1000_v) if ma1000_v else None,
         }
     except Exception as e:
         print(f"[_calc_levels_from_result] {r.get('symbol')} 오류: {e}")
@@ -453,6 +463,7 @@ def _calc_levels_from_result(r: dict) -> dict:
 
 def format_signals(signals: dict) -> str:
     sig_map = {
+        "rsi_cycle_pullback":    "🔄 RSI사이클눌림목",
         "vol_at_cross":          "📦 돌파 거래량",
         "recent_vol":            "📊 거래량 급증",
         "bb_squeeze_expand":     "🔥 BB수축→확장",

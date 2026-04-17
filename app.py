@@ -206,7 +206,7 @@ STOCK_NAMES = {
     "302440.KQ":"SK바이오사이언스",
 }
 
-st.set_page_config(page_title="한국 주식 급등 예측", page_icon="🚀", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="J.A.R.V.I.S. 스윙레이더", page_icon="🎯", layout="wide", initial_sidebar_state="expanded")
 
 st.markdown("""<style>
 /* ── 뷰포트 & 기본 ── */
@@ -511,15 +511,12 @@ window.addEventListener('popstate', function() {
 
 st.markdown("""<div class="top-header">
   <div style="display:flex;align-items:center;gap:12px;">
-    <span style="font-size:36px;">🚀</span>
+    <span style="font-size:36px;">🎯</span>
     <div>
-      <h1 style="color:#f0f4ff;margin:0;font-size:clamp(18px,4vw,28px);font-weight:800;letter-spacing:-0.5px;">한국 주식 급등 예측 시스템</h1>
-      <p style="color:#4f8ef7;margin:4px 0 0;font-size:12px;font-weight:600;letter-spacing:2px;text-transform:uppercase;">Stock Surge Predictor v3.0</p>
+      <h1 style="color:#f0f4ff;margin:0;font-size:clamp(18px,4vw,28px);font-weight:800;letter-spacing:-0.5px;">J.A.R.V.I.S. 스윙레이더</h1>
+      <p style="color:#4f8ef7;margin:4px 0 0;font-size:12px;font-weight:600;letter-spacing:2px;text-transform:uppercase;">Swing Radar — 240/1000 Golden Cross Strategy</p>
     </div>
   </div>
-  <p style="color:#6b7280;margin:12px 0 0;font-size:13px;line-height:1.6;">
-    240일선 아래 충분한 조정 → 최근 돌파 → 현재 근처 → 급등 신호 복합 확인
-  </p>
 </div>""", unsafe_allow_html=True)
 
 # ── 상단 시장 현황 ────────────────────────────────────────────────
@@ -695,30 +692,57 @@ st.markdown("---")
 # ── 사이드바: 조건 설정 ──────────────────────────────────────────
 with st.sidebar:
     st.markdown("---")
-    st.markdown("### ⚙️ 핵심 조건 설정")
+    st.markdown("### ⚙️ 스캔 조건")
 
     if "max_gap"   not in st.session_state: st.session_state["max_gap"]   = 10
-    if "min_below" not in st.session_state: st.session_state["min_below"] = 60
-    if "max_cross" not in st.session_state: st.session_state["max_cross"] = 90
+    if "ob_days"   not in st.session_state: st.session_state["ob_days"]   = 90
     if "min_score" not in st.session_state: st.session_state["min_score"] = 15
 
-    if st.button("⚡ 최적 셋팅", width='stretch'):
+    if st.button("⚡ 기본 셋팅", width='stretch'):
         st.session_state["max_gap"]   = 10
-        st.session_state["min_below"] = 60
-        st.session_state["max_cross"] = 90
+        st.session_state["ob_days"]   = 90
         st.session_state["min_score"] = 15
         st.rerun()
 
-    max_gap   = st.slider("📍 240선 근처 범위 (%)", 1, 20, key="max_gap",
-        help="현재가가 240일선 위 몇 % 이내인지 (작을수록 엄격)")
-    min_below = st.slider("📉 최소 조정 기간 (일)", 60, 300, key="min_below",
-        help="240일선 아래 최소 체류 일수 (120=6개월, 240=1년)")
-    max_cross = st.slider("📈 돌파 후 최대 경과 (일)", 10, 180, key="max_cross",
-        help="240일선 돌파 후 최대 경과 일수")
+    max_gap   = st.slider("📍 240선 근처 범위 (%)", 1, 30, key="max_gap",
+        help="현재가가 240일선 위 몇 % 이내인지")
+    ob_days   = st.slider("⏱ RSI 70 이탈 후 경과일", 30, 180, key="ob_days",
+        help="RSI 70 이탈 후 최대 경과일 (짧을수록 최근 눌림목)")
     min_score = st.slider("🎯 최소 종합점수", 0, 40, key="min_score",
-        help="이 점수 이상인 종목만 표시 (0=전체, 높을수록 엄격)")
+        help="0=전체, 높을수록 엄격")
+
+    # ── 과거 날짜 스캔 ──────────────────────────────────────────
     st.markdown("---")
-    st.markdown("""**📊 추가 점수 신호**
+    st.markdown("### 📅 과거 날짜 스캔")
+    use_past_date = st.checkbox("과거 날짜 기준으로 스캔", value=False,
+        help="체크하면 선택한 날짜 기준으로 백테스트 스캔")
+    from datetime import date as _date, timedelta as _td
+    scan_date = None
+    if use_past_date:
+        scan_date = st.date_input(
+            "스캔 기준일",
+            value=_date.today() - _td(days=30),
+            min_value=_date(2020, 1, 1),
+            max_value=_date.today() - _td(days=1),
+            help="해당 날짜까지의 데이터만 사용해서 스캔"
+        )
+        st.info(f"📅 {scan_date} 기준으로 스캔합니다")
+
+    st.markdown("---")
+    st.markdown("""**📋 탐지 전략**
+> RSI(20) 과매도 탈출 → 240선 돌파 → 과매수 → 조정 눌림목
+
+| 조건 | 기준 |
+|------|------|
+| 📉 RSI 30 이하 탈출 | 과매도 구간 탈출 |
+| 📈 240일선 상향 돌파 | 추세 전환 확인 |
+| 🔥 RSI 70 이상 도달 | 과매수 확인 |
+| 📉 RSI 70 이탈 | 조정 시작 |
+| 📍 현재 RSI 55 이하 | 눌림목 진행 중 |
+| 📍 현재가 240선 위 | 0~N% 이내 |
+| 🛑 손절가 | 240선 -5% |
+
+**📊 가산점 신호**
 | 신호 | 점수 |
 |------|------|
 | 🚀 돌파 시 거래량 폭발(3배+) | 4점 |
@@ -818,7 +842,7 @@ def search_stock_by_name(query: str) -> list:
 @st.cache_data(ttl=300)
 def get_chart_data(symbol, period="2y"):
     try:
-        df = yf.Ticker(symbol).history(period=period)
+        df = yf.Ticker(symbol).history(period=period, auto_adjust=False)
         if df is None or len(df) == 0:
             return None
         df = df.dropna(subset=["Open","High","Low","Close"])
@@ -1112,16 +1136,19 @@ def make_candle(data, title, ma240_series=None, cross_date=None, show_levels=Tru
 if mode == "🔍 급등 예고 종목 탐지":
 
     # 현재 조건 표시
+    date_label = f"📅 {scan_date} 기준" if (use_past_date and scan_date) else "오늘 기준"
     st.markdown(f"""<div class="cond-box">
-      <b style="color:#e0e6f0;">현재 탐지 조건</b><br>
-      📉 240일선 아래 <b style="color:#ffd700;">{min_below}일({min_below//20}개월) 이상</b> 조정 →
-      📈 최근 <b style="color:#00d4aa;">{max_cross}일 이내</b> 240일선 상향 돌파 →
-      📍 현재 주가 240일선 위 <b style="color:#4f8ef7;">0~{max_gap}%</b> 이내
+      <b style="color:#e0e6f0;">현재 탐지 조건</b>  <span style="color:#ffd700;">{date_label}</span><br>
+      📉 RSI(20) 30탈출 → 📈 240선 돌파 → 🔥 RSI 70도달 → 📉 RSI 70이탈 →
+      📍 현재 RSI 55↓ + 240선 위 <b style="color:#4f8ef7;">0~{max_gap}%</b> 이내
+      (이탈 후 <b style="color:#ffd700;">{ob_days}일</b> 이내)
     </div>""", unsafe_allow_html=True)
 
     if st.button("🚀 스캔 시작", type="primary", width='stretch'):
-        det = KoreanStockSurgeDetector(max_gap, min_below, max_cross)
-        symbols = list(dict.fromkeys(det.all_symbols))  # 중복 제거
+        _as_of = scan_date if (use_past_date and scan_date) else None
+        det = KoreanStockSurgeDetector(max_gap, 60, 90)
+        det._ob_days = ob_days  # RSI 70 이탈 후 경과일 전달
+        symbols = list(dict.fromkeys(det.all_symbols))
         total = len(symbols)
 
         st.markdown("<div class='sec-title'>📡 스캔 진행 중...</div>", unsafe_allow_html=True)
@@ -1134,7 +1161,7 @@ if mode == "🔍 급등 예고 종목 탐지":
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
         def _scan(symbol):
-            return det.analyze_stock(symbol)
+            return det.analyze_stock(symbol, as_of_date=_as_of)
 
         with ThreadPoolExecutor(max_workers=10) as executor:
             futures = {executor.submit(_scan, sym): sym for sym in symbols}
@@ -1157,7 +1184,8 @@ if mode == "🔍 급등 예고 종목 탐지":
         prog_bar.empty()
         prog_text.empty()
         results = sorted(results, key=lambda x: x["total_score"], reverse=True)
-        results = [r for r in results if r["total_score"] >= min_score]
+        if min_score > 0:
+            results = [r for r in results if r["total_score"] >= min_score]
 
         st.session_state["scan_results"] = results
 
@@ -1205,8 +1233,8 @@ if mode == "🔍 급등 예고 종목 탐지":
             # 요약 카드
             c1,c2,c3,c4 = st.columns(4)
             metric_card(c1, "발견 종목", f"{len(results)}개")
-            metric_card(c2, "평균 조정 기간", f"{int(sum(r['below_days'] for r in results)/len(results))}일")
-            metric_card(c3, "평균 240선 이격", f"+{sum(r['ma240_gap'] for r in results)/len(results):.1f}%")
+            metric_card(c2, "평균 1000선 이격", f"+{sum(r.get('ma240_gap',0) for r in results)/len(results):.1f}%")
+            metric_card(c3, "골든크로스 평균", f"{int(sum(r.get('gc_days',0) or 0 for r in results)/len(results))}일 전")
             metric_card(c4, "최고 점수", f"{max(r['total_score'] for r in results)}점")
 
             st.markdown("<div class='sec-title'>🏆 급등 예고 종목 전체</div>", unsafe_allow_html=True)
@@ -1220,11 +1248,9 @@ if mode == "🔍 급등 예고 종목 탐지":
                     "종목코드":   r["symbol"],
                     "현재가":     f"₩{r['current_price']:,.0f}",
                     "등락률":     f"{'🔺' if r['price_change_1d']>0 else '🔽'}{r['price_change_1d']:.2f}%",
-                    "240일선":    f"₩{r['ma240']:,.0f}",
-                    "240선이격":  f"+{r['ma240_gap']:.1f}%",
-                    "조정기간":   f"{r['below_days']}일({r['below_days']//20}개월)",
-                    "돌파후":     f"{r['days_since_cross']}일",
-                    "돌파강도":   f"{r.get('cross_gap_pct', 0):.1f}%",
+                    "1000일선":   f"₩{r.get('ma1000') or r['ma240']:,.0f}",
+                    "1000선이격": f"+{r['ma240_gap']:.1f}%",
+                    "골든크로스": f"{r.get('gc_days') or '-'}일 전",
                     "RSI":        r["rsi"],
                     "종합점수":   r["total_score"],
                     "원점수":     r.get("raw_score", r["total_score"]),
@@ -1311,8 +1337,8 @@ if mode == "🔍 급등 예고 종목 탐지":
                     </div>
                   </div>
                   <div style="margin-top:6px;color:#8b92a5;font-size:12px;">
-                    240일선 ₩{r["ma240"]:,.0f} | 이격 +{r["ma240_gap"]:.1f}% |
-                    조정 {r["below_days"]}일({below_months}개월) | 돌파 {r["days_since_cross"]}일 전 | 돌파강도 {r.get("cross_gap_pct",0):.1f}% |
+                    1000일선 ₩{r.get('ma1000') or r['ma240']:,.0f} | 이격 +{r['ma240_gap']:.1f}% |
+                    골든크로스 {r.get('gc_days') or '-'}일 전 |
                     수급 {supply_str} | 핵심신호 {r.get("core_signal_count",0)}개
                   </div>
                 </div>""", unsafe_allow_html=True)
@@ -1339,10 +1365,10 @@ if mode == "🔍 급등 예고 종목 탐지":
                 if True:  # 바로 표시
                     m1,m2,m3,m4,m5 = st.columns(5)
                     m1.metric("RSI(20)", f"{r['rsi']:.1f}")
-                    m2.metric("240선 이격", f"+{r['ma240_gap']:.1f}%")
-                    m3.metric("조정 기간", f"{r['below_days']}일")
-                    m4.metric("돌파 후", f"{r['days_since_cross']}일")
-                    m5.metric("돌파강도", f"{r.get('cross_gap_pct',0):.1f}%")
+                    m2.metric("1000선 이격", f"+{r['ma240_gap']:.1f}%")
+                    m3.metric("골든크로스", f"{r.get('gc_days') or '-'}일 전")
+                    m4.metric("1000일선", f"₩{r.get('ma1000') or r['ma240']:,.0f}")
+                    m5.metric("점수", f"{r['total_score']}점")
                     # 수급 정보
                     supply_label = "🔥 기관+외국인" if r.get("both_buying") else ("✅ 수급있음" if r.get("smart_money_in") else "❌ 수급없음")
                     st.caption(f"수급: {supply_label}  |  핵심신호: {r.get('core_signal_count',0)}개  |  거래량배수: {r.get('vol_ratio',0):.1f}배")
@@ -1378,7 +1404,7 @@ if mode == "🔍 급등 예고 종목 탐지":
                     if 3 <= pd_val <= 15:               active.append(f"🎯 얕은 눌림목 ({pd_val:.1f}%)")
                     if s.get("hammer"):                 active.append("🔨 망치형 캔들")
                     if s.get("bullish_engulf"):         active.append("🕯 장악형 캔들")
-                    if r["below_days"] >= 240:          active.append(f"⏳ 1년+ 충분한 조정 ({r['below_days']}일)")
+                    if r.get("gc_days") is not None:    active.append(f"🔀 240/1000 골든크로스 {r['gc_days']}일 전")
                     if s.get("news_sentiment",0) > 0:   active.append(f"📰 긍정 뉴스 {s.get('pos_news',0)}건")
                     if s.get("has_disclosure"):         active.append(f"📋 호재 공시: {', '.join(s.get('disclosure_types',[]))}")
 
@@ -1442,7 +1468,8 @@ elif mode == "📈 개별 종목 분석":
 
     if symbol and st.button("분석", type="primary"):
         with st.spinner(f"{name} 분석 중..."):
-            det = KoreanStockSurgeDetector(max_gap, min_below, max_cross)
+            det = KoreanStockSurgeDetector(max_gap, 60, 90)
+            det._ob_days = ob_days
             result = det.analyze_stock(symbol)
             data = get_chart_data(symbol, period)
         # 결과를 session_state에 저장 (즐겨찾기 버튼 클릭 후에도 유지)
@@ -1483,9 +1510,9 @@ elif mode == "📈 개별 종목 분석":
 
             c1,c2,c3,c4 = st.columns(4)
             metric_card(c1,"RSI(20)",f"{result['rsi']:.1f}")
-            metric_card(c2,"240선 이격",f"+{result['ma240_gap']:.1f}%")
-            metric_card(c3,"조정 기간",f"{result['below_days']}일({result['below_days']//20}개월)")
-            metric_card(c4,"돌파 후",f"{result['days_since_cross']}일")
+            metric_card(c2,"1000선 이격",f"+{result['ma240_gap']:.1f}%")
+            metric_card(c3,"골든크로스",f"{result.get('gc_days') or '-'}일 전")
+            metric_card(c4,"1000일선",f"₩{result.get('ma1000') or result['ma240']:,.0f}")
 
             st.markdown("<div class='sec-title'>📊 신호 분석</div>", unsafe_allow_html=True)
             s = result["signals"]
@@ -1505,7 +1532,7 @@ elif mode == "📈 개별 종목 분석":
                 (s.get("peer_momentum",0) >= 2,  f"🔗 동종 섹터 동반 상승 ({s.get('peer_momentum',0)}개)"),
                 (s.get("hammer"),                "🔨 망치형 캔들"),
                 (s.get("bullish_engulf"),        "🕯 장악형 캔들"),
-                (result["below_days"] >= 240,    f"⏳ 1년+ 충분한 조정 ({result['below_days']}일)"),
+                (result.get("gc_days") is not None, f"🔀 240/1000 골든크로스 {result.get('gc_days')}일 전"),
                 (s.get("news_sentiment",0) > 0,  f"📰 긍정 뉴스 {s.get('pos_news',0)}건"),
                 (s.get("has_disclosure"),        f"📋 호재 공시: {', '.join(s.get('disclosure_types',[]))}"),
             ]
@@ -1647,7 +1674,7 @@ elif mode == "💎 우량주 RSI 70 이탈":
         for idx, (symbol, name) in enumerate(QUALITY_STOCKS.items()):
             prog.progress((idx + 1) / total)
             try:
-                df = yf.Ticker(symbol).history(period="2y")
+                df = yf.Ticker(symbol).history(period="2y", auto_adjust=False)
                 if df is None or len(df) < 60:
                     continue
                 rsi = calc_rsi_wilder(df["Close"], 20).dropna()
@@ -1794,7 +1821,7 @@ elif mode == "🎯 최적 급등 타이밍":
         """최적 급등 타이밍 - 필수 3조건 + 가산점"""
         try:
             ticker = yf.Ticker(symbol)
-            df = ticker.history(period="2y")
+            df = ticker.history(period="2y", auto_adjust=False)
             if df is None or len(df) < 60:
                 return None
 
