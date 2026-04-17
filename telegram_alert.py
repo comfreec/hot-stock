@@ -468,7 +468,7 @@ def format_signals(signals: dict) -> str:
         "recent_vol":            "📊 거래량 급증",
         "bb_squeeze_expand":     "🔥 BB수축→확장",
         "macd_cross":            "📈 MACD골든크로스",
-        "ma240_turning_up":      "🔼 240선 상승전환",
+        "ma240_turning_up":      "🔼 장기선 상승전환",
         "ma_align":              "⚡ 이평선 정배열",
         "obv_rising":            "💹 OBV 상승",
         "ichimoku_bull":         "☁️ 일목균형표",

@@ -28,7 +28,7 @@ def run_scan():
         from telegram_alert import send_scan_alert, send_telegram
         import pandas as _pd
 
-        det = KoreanStockSurgeDetector(max_gap_pct=10, min_below_days=60, max_cross_days=90)
+        det = KoreanStockSurgeDetector(max_gap_pct=7, min_below_days=60, max_cross_days=90)
         det._ob_days = 90  # RSI 70 이탈 후 경과일
         results = det.analyze_all_stocks()
         results = [r for r in results if r.get("total_score", 0) >= 15]
@@ -131,21 +131,20 @@ def main():
 
         # 09:05 KST 자동매매 주문 (전날 스캔 결과 기반 신규 매수 + 미체결 재주문)
         if is_weekday and now_kst.hour == 9 and now_kst.minute >= 5 and last_reorder_date != today:
+            last_reorder_date = today
+            _save_state({"last_scan_date": last_scan_date, "last_perf_date": last_perf_date,
+                         "last_crypto_hour": last_crypto_hour, "last_reorder_date": last_reorder_date})
+
             if os.environ.get("KIS_APP_KEY"):
-                last_reorder_date = today
-                _save_state({"last_scan_date": last_scan_date, "last_perf_date": last_perf_date,
-                             "last_crypto_hour": last_crypto_hour, "last_reorder_date": last_reorder_date})
                 try:
                     from auto_trader import morning_reorder, place_orders
                     from cache_db import load_scan
                     import pandas as _pd
                     from datetime import timedelta as _td
 
-                    # 미체결 재주문
                     morning_reorder()
                     log("[자동매매] 재주문 완료")
 
-                    # 전날 스캔 결과로 신규 주문
                     yesterday = (now_kst.date() - _td(days=1)).isoformat()
                     prev_results = load_scan(yesterday)
                     if prev_results:
@@ -161,7 +160,7 @@ def main():
                     except:
                         pass
 
-            # 멀티유저 재주문 + 신규 주문 (기존 1인용과 독립 실행)
+            # 멀티유저 재주문 + 신규 주문
             try:
                 from auto_trader_multi import run_all_users_morning_reorder, run_all_users_place_orders
                 from cache_db import load_scan

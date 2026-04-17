@@ -513,10 +513,8 @@ class KoreanStockSurgeDetector:
             if overbought_exit is None:
                 return None
 
-            # Step5: 현재 RSI 55 이하 (눌림목 진행 중)
+            # Step5: 현재 주가 240선 위 0~max_gap_pct% (이미 위에서 체크)
             cur_rsi = float(rsi_vals[-1])
-            if cur_rsi > 55:
-                return None
 
             # 70 이탈 후 너무 오래된 사이클 제외 (앱 설정값, 기본 90일)
             ob_max_days = getattr(self, '_ob_days', 90)
@@ -1100,9 +1098,6 @@ class KoreanStockSurgeDetector:
             }
 
         except Exception as e:
-            import traceback
-            print(f"[analyze_stock] {symbol} 오류: {e}")
-            traceback.print_exc()
             return None
 
     def analyze_all_stocks(self, as_of_date=None):

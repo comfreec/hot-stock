@@ -694,12 +694,12 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("### ⚙️ 스캔 조건")
 
-    if "max_gap"   not in st.session_state: st.session_state["max_gap"]   = 10
+    if "max_gap"   not in st.session_state: st.session_state["max_gap"]   = 7
     if "ob_days"   not in st.session_state: st.session_state["ob_days"]   = 90
     if "min_score" not in st.session_state: st.session_state["min_score"] = 15
 
     if st.button("⚡ 기본 셋팅", width='stretch'):
-        st.session_state["max_gap"]   = 10
+        st.session_state["max_gap"]   = 7
         st.session_state["ob_days"]   = 90
         st.session_state["min_score"] = 15
         st.rerun()
@@ -900,7 +900,7 @@ def show_price_levels(fig):
         <div style='color:#8b92a5;font-size:10px;letter-spacing:1px;'>🛑 손절가</div>
         <div style='color:#ff3355;font-size:18px;font-weight:700;margin:4px 0;'>₩{lv["stop"]:,.0f}</div>
         <div style='color:#ff3355;font-size:12px;'>{lv["downside"]:.1f}%</div>
-        <div style='color:#4a5568;font-size:10px;margin-top:4px;'>스윙저점+ATR×1.5</div>
+        <div style='color:#4a5568;font-size:10px;margin-top:4px;'>240일선 -5%</div>
       </div>
       <div style='flex:0.8;background:rgba(255,215,0,0.08);border:1px solid {rr_color};
            border-radius:10px;padding:12px;text-align:center;'>
@@ -1039,13 +1039,11 @@ def make_candle(data, title, ma240_series=None, cross_date=None, show_levels=Tru
         else:
             entry_label, entry = "현재가", current
 
-        # ── 손절가: 매수가 기준 근거 있는 손절 ──────────────────
-        # 매수가(entry) 아래에서 근거 있는 지지선 이탈 기준
-        # 1) 240선 아래 0.5% = 240선 지지 붕괴
-        # 2) 스윙 저점(20일) - ATR×1.0 = 추세 붕괴
-        # 3) entry 대비 -5% ~ -10% 범위 제한
-        # ── 손절가: 매수가 대비 -5% 고정 ────────────────────────
-        stop = entry * 0.95
+        # ── 손절가: 240일선 -5% 고정 ────────────────────────────
+        if ma240_v and ma240_v < entry:
+            stop = ma240_v * 0.95
+        else:
+            stop = entry * 0.95
         risk = max(entry - stop, entry * 0.01)
 
         # ── 목표가: 다중 기법 합산 ───────────────────────────────
@@ -1072,30 +1070,29 @@ def make_candle(data, title, ma240_series=None, cross_date=None, show_levels=Tru
         bb_upper = float((ma20_s + std20 * 2.0).dropna().iloc[-1])
 
         # 후보 중 현재가 +3% 이상, 손익비 2:1 이상인 것만
-        min_rr2 = current + risk * 2.0
-        min_rr3 = current + risk * 3.0
+        min_rr2 = entry + risk * 2.0
+        min_rr3 = entry + risk * 3.0
         all_cands = sorted([
             x for x in [fib_1272, fib_1618, fib_2000,
                          prev_high, prev_high_ext,
                          atr_x3, atr_x5, bb_upper]
-            if x > current * 1.03
+            if x > entry * 1.03
         ])
 
         valid_3 = [x for x in all_cands if x >= min_rr3]
         valid_2 = [x for x in all_cands if x >= min_rr2]
 
         if valid_3:
-            # 3:1 이상 후보들의 가중 평균 (가장 가까운 것에 가중치)
-            weights = [1 / (x - current) for x in valid_3]
+            weights = [1 / (x - entry) for x in valid_3]
             target = sum(x * w for x, w in zip(valid_3, weights)) / sum(weights)
         elif valid_2:
             target = valid_2[-1]
         elif all_cands:
             target = all_cands[-1]
         else:
-            target = current + risk * 3.0
+            target = entry + risk * 3.0
 
-        target   = min(target, current * 2.0)  # 상한 100%
+        target = min(target, entry * 2.0)  # 상한 100%
 
         # 호가 단위 적용
         entry  = round_to_tick(entry)
@@ -1233,8 +1230,8 @@ if mode == "🔍 급등 예고 종목 탐지":
             # 요약 카드
             c1,c2,c3,c4 = st.columns(4)
             metric_card(c1, "발견 종목", f"{len(results)}개")
-            metric_card(c2, "평균 1000선 이격", f"+{sum(r.get('ma240_gap',0) for r in results)/len(results):.1f}%")
-            metric_card(c3, "골든크로스 평균", f"{int(sum(r.get('gc_days',0) or 0 for r in results)/len(results))}일 전")
+            metric_card(c2, "평균 240선 이격", f"+{sum(r.get('ma240_gap',0) for r in results)/len(results):.1f}%")
+            metric_card(c3, "RSI 70이탈 평균", f"{int(sum(r.get('signals',{}).get('rsi_cycle_days_since',0) or 0 for r in results)/len(results))}일 전")
             metric_card(c4, "최고 점수", f"{max(r['total_score'] for r in results)}점")
 
             st.markdown("<div class='sec-title'>🏆 급등 예고 종목 전체</div>", unsafe_allow_html=True)
@@ -1248,9 +1245,9 @@ if mode == "🔍 급등 예고 종목 탐지":
                     "종목코드":   r["symbol"],
                     "현재가":     f"₩{r['current_price']:,.0f}",
                     "등락률":     f"{'🔺' if r['price_change_1d']>0 else '🔽'}{r['price_change_1d']:.2f}%",
-                    "1000일선":   f"₩{r.get('ma1000') or r['ma240']:,.0f}",
-                    "1000선이격": f"+{r['ma240_gap']:.1f}%",
-                    "골든크로스": f"{r.get('gc_days') or '-'}일 전",
+                    "240일선":    f"₩{r['ma240']:,.0f}",
+                    "240선이격":  f"+{r['ma240_gap']:.1f}%",
+                    "RSI70이탈":  f"{r.get('signals',{}).get('rsi_cycle_days_since','-')}일 전",
                     "RSI":        r["rsi"],
                     "종합점수":   r["total_score"],
                     "원점수":     r.get("raw_score", r["total_score"]),
@@ -1337,8 +1334,8 @@ if mode == "🔍 급등 예고 종목 탐지":
                     </div>
                   </div>
                   <div style="margin-top:6px;color:#8b92a5;font-size:12px;">
-                    1000일선 ₩{r.get('ma1000') or r['ma240']:,.0f} | 이격 +{r['ma240_gap']:.1f}% |
-                    골든크로스 {r.get('gc_days') or '-'}일 전 |
+                    240일선 ₩{r['ma240']:,.0f} | 이격 +{r['ma240_gap']:.1f}% |
+                    손절가 ₩{int(r['ma240']*0.95):,.0f} (240선-5%) |
                     수급 {supply_str} | 핵심신호 {r.get("core_signal_count",0)}개
                   </div>
                 </div>""", unsafe_allow_html=True)
@@ -1365,10 +1362,10 @@ if mode == "🔍 급등 예고 종목 탐지":
                 if True:  # 바로 표시
                     m1,m2,m3,m4,m5 = st.columns(5)
                     m1.metric("RSI(20)", f"{r['rsi']:.1f}")
-                    m2.metric("1000선 이격", f"+{r['ma240_gap']:.1f}%")
-                    m3.metric("골든크로스", f"{r.get('gc_days') or '-'}일 전")
-                    m4.metric("1000일선", f"₩{r.get('ma1000') or r['ma240']:,.0f}")
-                    m5.metric("점수", f"{r['total_score']}점")
+                    m2.metric("240선 이격", f"+{r['ma240_gap']:.1f}%")
+                    m3.metric("RSI 70이탈", f"{r.get('signals',{}).get('rsi_cycle_days_since','-')}일 전")
+                    m4.metric("240일선", f"₩{r['ma240']:,.0f}")
+                    m5.metric("손절가", f"₩{int(r['ma240']*0.95):,.0f}")
                     # 수급 정보
                     supply_label = "🔥 기관+외국인" if r.get("both_buying") else ("✅ 수급있음" if r.get("smart_money_in") else "❌ 수급없음")
                     st.caption(f"수급: {supply_label}  |  핵심신호: {r.get('core_signal_count',0)}개  |  거래량배수: {r.get('vol_ratio',0):.1f}배")
@@ -1404,7 +1401,6 @@ if mode == "🔍 급등 예고 종목 탐지":
                     if 3 <= pd_val <= 15:               active.append(f"🎯 얕은 눌림목 ({pd_val:.1f}%)")
                     if s.get("hammer"):                 active.append("🔨 망치형 캔들")
                     if s.get("bullish_engulf"):         active.append("🕯 장악형 캔들")
-                    if r.get("gc_days") is not None:    active.append(f"🔀 240/1000 골든크로스 {r['gc_days']}일 전")
                     if s.get("news_sentiment",0) > 0:   active.append(f"📰 긍정 뉴스 {s.get('pos_news',0)}건")
                     if s.get("has_disclosure"):         active.append(f"📋 호재 공시: {', '.join(s.get('disclosure_types',[]))}")
 
@@ -1510,9 +1506,9 @@ elif mode == "📈 개별 종목 분석":
 
             c1,c2,c3,c4 = st.columns(4)
             metric_card(c1,"RSI(20)",f"{result['rsi']:.1f}")
-            metric_card(c2,"1000선 이격",f"+{result['ma240_gap']:.1f}%")
-            metric_card(c3,"골든크로스",f"{result.get('gc_days') or '-'}일 전")
-            metric_card(c4,"1000일선",f"₩{result.get('ma1000') or result['ma240']:,.0f}")
+            metric_card(c2,"240선 이격",f"+{result['ma240_gap']:.1f}%")
+            metric_card(c3,"240일선",f"₩{result['ma240']:,.0f}")
+            metric_card(c4,"손절가",f"₩{int(result['ma240']*0.95):,.0f}")
 
             st.markdown("<div class='sec-title'>📊 신호 분석</div>", unsafe_allow_html=True)
             s = result["signals"]
@@ -1532,7 +1528,6 @@ elif mode == "📈 개별 종목 분석":
                 (s.get("peer_momentum",0) >= 2,  f"🔗 동종 섹터 동반 상승 ({s.get('peer_momentum',0)}개)"),
                 (s.get("hammer"),                "🔨 망치형 캔들"),
                 (s.get("bullish_engulf"),        "🕯 장악형 캔들"),
-                (result.get("gc_days") is not None, f"🔀 240/1000 골든크로스 {result.get('gc_days')}일 전"),
                 (s.get("news_sentiment",0) > 0,  f"📰 긍정 뉴스 {s.get('pos_news',0)}건"),
                 (s.get("has_disclosure"),        f"📋 호재 공시: {', '.join(s.get('disclosure_types',[]))}"),
             ]
