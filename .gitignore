@@ -79,3 +79,7 @@ logs/
 
 scan_cache.db
 *.db
+
+# 이미지 파일 (HuggingFace 바이너리 제한)
+landing/*.png
+이미지/
