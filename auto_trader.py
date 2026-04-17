@@ -786,6 +786,11 @@ def send_trade_report():
             rid, name, sym, avg_p, target, stop, qty, step, entry, alert_date = row
             avg_p = float(avg_p or entry or 0)
             cur   = client.get_price(sym)
+            # 현재가 조회 실패 시 1회 재시도
+            if cur is None:
+                import time as _time
+                _time.sleep(0.5)
+                cur = client.get_price(sym)
             days  = (date.today() - date.fromisoformat(alert_date)).days if alert_date else 0
             invest = avg_p * qty if avg_p and qty else 0
             eval_  = (cur * qty) if cur and qty else invest
@@ -883,25 +888,27 @@ def send_trade_report():
                 elif step == 2: split_remain = "  <i>3차 대기</i>"
 
                 cur_line = "  현재가 조회 불가"
-                if d["cur"] and d["avg_p"]:
-                    ret    = (d["cur"] - d["avg_p"]) / d["avg_p"] * 100
-                    pnl    = int((d["cur"] - d["avg_p"]) * d["qty"])
+                display_cur = d["cur"] if d["cur"] else d["avg_p"]
+                if display_cur and d["avg_p"]:
+                    ret    = (display_cur - d["avg_p"]) / d["avg_p"] * 100
+                    pnl    = int((display_cur - d["avg_p"]) * d["qty"])
                     p_sign = "+" if pnl >= 0 else ""
                     if d["target"] and d["stop"] and d["target"] > d["stop"]:
                         if ret >= 0:
-                            ratio  = min((d["cur"] - d["avg_p"]) / (d["target"] - d["avg_p"]), 1.0)
+                            ratio  = min((display_cur - d["avg_p"]) / (d["target"] - d["avg_p"]), 1.0)
                             filled = round(ratio * 8)
                             bar    = "🟩" * filled + "⬜" * (8 - filled)
                         else:
-                            ratio  = min((d["avg_p"] - d["cur"]) / (d["avg_p"] - d["stop"]), 1.0)
+                            ratio  = min((d["avg_p"] - display_cur) / (d["avg_p"] - d["stop"]), 1.0)
                             filled = round(ratio * 8)
                             bar    = "🟥" * filled + "⬜" * (8 - filled)
                     else:
                         bar = "⬜" * 8
-                    to_stop = (d["cur"] - d["stop"]) / d["cur"] * 100 if d["stop"] else 0
+                    to_stop = (display_cur - d["stop"]) / display_cur * 100 if d["stop"] else 0
+                    price_str = f"₩{d['cur']:,.0f}" if d["cur"] else "조회불가(평단기준)"
                     cur_line = (
                         f"\n  {bar}  <b>{ret:+.1f}%  {p_sign}₩{pnl:,}</b>"
-                        f"\n  현재가  ₩{d['cur']:,.0f}"
+                        f"\n  현재가  {price_str}"
                         f"\n  🎯 ₩{d['target']:,}  🛑 ₩{d['stop']:,}  (손절까지 {to_stop:.1f}%)"
                     )
 
