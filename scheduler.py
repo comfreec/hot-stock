@@ -40,7 +40,7 @@ def run_scan():
 
         det = KoreanStockSurgeDetector(max_gap_pct=7, min_below_days=60, max_cross_days=90)
         det._ob_days = 90
-        det._rc_below = 90  # 장기선 아래 최소 진행 기간 (R-cycle 전략)
+        det._rc_below = 0  # 장기선 아래 진행 기간 제한 없음
 
         if scan_mode == "classic":
             results = det.analyze_all_stocks_classic()

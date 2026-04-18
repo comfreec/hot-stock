@@ -709,7 +709,7 @@ with st.sidebar:
     if st.button("⚡ 기본 셋팅", width='stretch'):
         st.session_state["max_gap"]     = 7
         st.session_state["ob_days"]     = 90
-        st.session_state["rc_below"]    = 90
+        st.session_state["rc_below"]    = 0
         st.session_state["min_score"]   = 20
         st.session_state["min_below_c"] = 60
         st.session_state["max_cross_c"] = 90
@@ -723,7 +723,7 @@ with st.sidebar:
     if scan_mode == "🔄 R-cycle 스캔":
         ob_days = st.slider("⏱ R-cycle 70 이탈 후 경과일", 30, 180, value=90, key="ob_days",
             help="R-cycle 70 이탈 후 최대 경과일")
-        rc_below = st.slider("📉 장기선 아래 최소 진행 기간 (일)", 0, 300, value=90, key="rc_below",
+        rc_below = st.slider("📉 장기선 아래 최소 진행 기간 (일)", 0, 300, value=0, key="rc_below",
             help="장기선 아래 최소 체류 일수 (0=제한없음)")
         min_below_c = st.session_state.get("min_below_c", 60)
         max_cross_c = st.session_state.get("max_cross_c", 90)
