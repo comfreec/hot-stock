@@ -709,6 +709,7 @@ with st.sidebar:
     if st.button("⚡ 기본 셋팅", width='stretch'):
         st.session_state["max_gap"]     = 7
         st.session_state["ob_days"]     = 90
+        st.session_state["rc_below"]    = 90
         st.session_state["min_score"]   = 20
         st.session_state["min_below_c"] = 60
         st.session_state["max_cross_c"] = 90
@@ -722,6 +723,8 @@ with st.sidebar:
     if scan_mode == "🔄 R-cycle 스캔":
         ob_days = st.slider("⏱ R-cycle 70 이탈 후 경과일", 30, 180, value=90, key="ob_days",
             help="R-cycle 70 이탈 후 최대 경과일")
+        rc_below = st.slider("📉 장기선 아래 최소 진행 기간 (일)", 0, 300, value=90, key="rc_below",
+            help="장기선 아래 최소 체류 일수 (0=제한없음)")
         min_below_c = st.session_state.get("min_below_c", 60)
         max_cross_c = st.session_state.get("max_cross_c", 90)
     else:
@@ -1170,11 +1173,13 @@ if mode == "🔍 급등 예고 종목 탐지":
           📉 R-cycle 30탈출 → 📈 장기선 돌파 → 🔥 R-cycle 70도달 → 📉 R-cycle 70이탈 →
           📍 장기선 위 <b style="color:#4f8ef7;">0~{max_gap}%</b> 이내
           (이탈 후 <b style="color:#ffd700;">{ob_days}일</b> 이내)
+          {f"| 장기선 아래 최소 <b style='color:#ffd700;'>{rc_below}일</b>" if rc_below > 0 else ""}
         </div>""", unsafe_allow_html=True)
 
         if st.button("🚀 R-cycle 스캔 시작", type="primary", width='stretch', key="btn_rcycle"):
             det = KoreanStockSurgeDetector(max_gap, 60, 90)
             det._ob_days = ob_days
+            det._rc_below = rc_below  # 장기선 아래 최소 진행 기간
             symbols = list(dict.fromkeys(det.all_symbols))
             total = len(symbols)
             st.markdown("<div class='sec-title'>📡 스캔 진행 중...</div>", unsafe_allow_html=True)

@@ -530,6 +530,11 @@ class KoreanStockSurgeDetector:
                     below_days += 1
                 else:
                     break
+
+            # 장기선 아래 최소 진행 기간 필터 (앱에서 설정한 값)
+            rc_below_min = getattr(self, '_rc_below', 0)
+            if rc_below_min > 0 and below_days < rc_below_min:
+                return None
             cross_gap  = (float(close.iloc[cross_idx]) - float(ma240.iloc[cross_idx])) / float(ma240.iloc[cross_idx]) * 100
             gc_days    = None
             signals_pre = {
