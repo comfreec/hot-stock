@@ -697,20 +697,21 @@ with st.sidebar:
     # ── 스캔 전략 선택 ──────────────────────────────────────────
     scan_mode = st.radio(
         "🎯 스캔 전략",
-        ["🔄 R-cycle 스캔", "📈 장기선 돌파 스캔"],
+        ["🔄 R-cycle 스캔", "📈 장기선 돌파 스캔", "📉 RSI 다이버전스 스캔"],
         key="scan_mode",
-        help="R-cycle: RSI 사이클 기반 / 장기선 돌파: 기존 240선 돌파 전략"
+        help="R-cycle: RSI 사이클 기반 / 장기선 돌파: 기존 240선 돌파 전략 / RSI 다이버전스: RSI(20) 강세 다이버전스"
     )
     st.markdown("---")
 
     if "max_gap"   not in st.session_state: st.session_state["max_gap"]   = 7
-    if "min_score" not in st.session_state: st.session_state["min_score"] = 20
+    if "min_score" not in st.session_state: st.session_state["min_score"] = 30
+    if "ob_days"   not in st.session_state: st.session_state["ob_days"]   = 60
 
     if st.button("⚡ 기본 셋팅", width='stretch'):
         st.session_state["max_gap"]     = 7
-        st.session_state["ob_days"]     = 90
+        st.session_state["ob_days"]     = 60
         st.session_state["rc_below"]    = 0
-        st.session_state["min_score"]   = 20
+        st.session_state["min_score"]   = 30
         st.session_state["min_below_c"] = 60
         st.session_state["max_cross_c"] = 90
         st.rerun()
@@ -721,14 +722,14 @@ with st.sidebar:
         help="0=전체, 높을수록 엄격")
 
     if scan_mode == "🔄 R-cycle 스캔":
-        ob_days = st.slider("⏱ R-cycle 70 이탈 후 경과일", 30, 180, value=90, key="ob_days",
+        ob_days = st.slider("⏱ R-cycle 70 이탈 후 경과일", 30, 180, key="ob_days",
             help="R-cycle 70 이탈 후 최대 경과일")
         rc_below = st.slider("📉 장기선 아래 최소 진행 기간 (일)", 0, 300, value=0, key="rc_below",
             help="장기선 아래 최소 체류 일수 (0=제한없음)")
         min_below_c = st.session_state.get("min_below_c", 60)
         max_cross_c = st.session_state.get("max_cross_c", 90)
     else:
-        ob_days = st.session_state.get("ob_days", 90)
+        ob_days = st.session_state.get("ob_days", 60)
         min_below_c = st.slider("📉 최소 조정 기간 (일)", 30, 300, value=60, key="min_below_c",
             help="장기선 아래 최소 체류 일수")
         max_cross_c = st.slider("📈 돌파 후 최대 경과 (일)", 10, 180, value=90, key="max_cross_c",
@@ -757,17 +758,17 @@ with st.sidebar:
     try:
         from cache_db import load_app_setting, save_app_setting
         _current_fly_mode = load_app_setting("scan_mode", "rcycle")
-        _fly_mode_label = {"rcycle": "🔄 R-cycle 스캔", "classic": "📈 장기선 돌파 스캔", "both": "🔀 둘 다 실행"}.get(_current_fly_mode, "🔄 R-cycle 스캔")
+        _fly_mode_label = {"rcycle": "🔄 R-cycle 스캔", "classic": "📈 장기선 돌파 스캔", "both": "🔀 둘 다 실행", "divergence": "📉 RSI 다이버전스 스캔"}.get(_current_fly_mode, "🔄 R-cycle 스캔")
         st.caption(f"현재 설정: **{_fly_mode_label}**")
         fly_mode_sel = st.selectbox(
             "스케줄러 자동 스캔 전략",
-            ["🔄 R-cycle 스캔", "📈 장기선 돌파 스캔", "🔀 둘 다 실행"],
-            index=["🔄 R-cycle 스캔", "📈 장기선 돌파 스캔", "🔀 둘 다 실행"].index(_fly_mode_label),
+            ["🔄 R-cycle 스캔", "📈 장기선 돌파 스캔", "🔀 둘 다 실행", "📉 RSI 다이버전스 스캔"],
+            index=["🔄 R-cycle 스캔", "📈 장기선 돌파 스캔", "🔀 둘 다 실행", "📉 RSI 다이버전스 스캔"].index(_fly_mode_label),
             key="fly_mode_sel",
             help="매일 15:40 자동 스캔 시 사용할 전략"
         )
         if st.button("💾 FLY 전략 저장", width='stretch'):
-            _val = {"🔄 R-cycle 스캔": "rcycle", "📈 장기선 돌파 스캔": "classic", "🔀 둘 다 실행": "both"}.get(fly_mode_sel, "rcycle")
+            _val = {"🔄 R-cycle 스캔": "rcycle", "📈 장기선 돌파 스캔": "classic", "🔀 둘 다 실행": "both", "📉 RSI 다이버전스 스캔": "divergence"}.get(fly_mode_sel, "rcycle")
             save_app_setting("scan_mode", _val)
             st.success(f"✅ 저장됨: {fly_mode_sel}")
     except Exception as _e:
@@ -1168,12 +1169,12 @@ if mode == "🔍 급등 예고 종목 탐지":
     date_label = f"📅 {scan_date} 기준" if (use_past_date and scan_date) else "오늘 기준"
 
     if scan_mode == "🔄 R-cycle 스캔":
+        _rc_below_str = f"| 장기선 아래 최소 <b style='color:#ffd700;'>{rc_below}일</b>" if rc_below > 0 else ""
         st.markdown(f"""<div class="cond-box">
           <b style="color:#e0e6f0;">R-cycle 탐지 조건</b>  <span style="color:#ffd700;">{date_label}</span><br>
           📉 R-cycle 30탈출 → 📈 장기선 돌파 → 🔥 R-cycle 70도달 → 📉 R-cycle 70이탈 →
           📍 장기선 위 <b style="color:#4f8ef7;">0~{max_gap}%</b> 이내
-          (이탈 후 <b style="color:#ffd700;">{ob_days}일</b> 이내)
-          {f"| 장기선 아래 최소 <b style='color:#ffd700;'>{rc_below}일</b>" if rc_below > 0 else ""}
+          (이탈 후 <b style="color:#ffd700;">{ob_days}일</b> 이내) {_rc_below_str}
         </div>""", unsafe_allow_html=True)
 
         if st.button("🚀 R-cycle 스캔 시작", type="primary", width='stretch', key="btn_rcycle"):
@@ -1238,6 +1239,37 @@ if mode == "🔍 급등 예고 종목 탐지":
             try: save_scan([{k: v for k, v in r.items() if k not in ("close_series","rsi_series","ma240_series","ma60_series","ma20_series","volume_series","vol_ma_series","ma1000_series")} for r in results2])
             except: pass
 
+    if scan_mode == "📉 RSI 다이버전스 스캔":
+        st.markdown(f"""<div class="cond-box">
+          <b style="color:#e0e6f0;">RSI(20) 강세 다이버전스 조건</b><br>
+          📉 주가 신저가 + 📈 RSI(20) 전저점보다 높음 →
+          거래량 감소(매도 소진) + 두 저점 간격 <b style="color:#ffd700;">20일 이상</b> →
+          과매도 구간(RSI 35 이하)에서 발생
+        </div>""", unsafe_allow_html=True)
+
+        if st.button("🔍 RSI 다이버전스 스캔 시작", type="primary", width='stretch', key="btn_div"):
+            det_div = KoreanStockSurgeDetector(max_gap, 60, 90)
+            symbols_div = list(dict.fromkeys(det_div.all_symbols))
+            total_div = len(symbols_div)
+            st.markdown("<div class='sec-title'>📡 다이버전스 스캔 중...</div>", unsafe_allow_html=True)
+            prog_div = st.progress(0); prog_text_div = st.empty()
+            results_div = []; completed_div = [0]
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+            with ThreadPoolExecutor(max_workers=10) as executor:
+                futures_div = {executor.submit(det_div.analyze_stock_divergence, sym): sym for sym in symbols_div}
+                for future in as_completed(futures_div):
+                    completed_div[0] += 1
+                    prog_text_div.markdown(f"<span style='color:#8b92a5;font-size:13px;'>({completed_div[0]}/{total_div}) {futures_div[future]} 분석 중...</span>", unsafe_allow_html=True)
+                    prog_div.progress(completed_div[0] / total_div)
+                    try:
+                        r = future.result()
+                        if r: results_div.append(r)
+                    except: pass
+            prog_div.empty(); prog_text_div.empty()
+            results_div = sorted(results_div, key=lambda x: x["total_score"], reverse=True)
+            results_div = [r for r in results_div if r["total_score"] >= 30]  # 다이버전스 30점 기준
+            st.session_state["scan_results"] = results_div
+
     # session_state 없으면 오늘 DB 캐시 자동 로드
     if "scan_results" not in st.session_state:
         try:
@@ -1276,7 +1308,8 @@ if mode == "🔍 급등 예고 종목 탐지":
             # 요약 카드
             c1,c2,c3,c4 = st.columns(4)
             metric_card(c1, "발견 종목", f"{len(results)}개")
-            metric_card(c2, "평균 240선 이격", f"+{sum(r.get('ma240_gap',0) for r in results)/len(results):.1f}%")
+            _gaps = [r.get('ma240_gap') or 0 for r in results]
+            metric_card(c2, "평균 240선 이격", f"+{sum(_gaps)/len(results):.1f}%")
             metric_card(c3, "R-cycle 70이탈 평균", f"{int(sum(r.get('signals',{}).get('rsi_cycle_days_since',0) or 0 for r in results)/len(results))}일 전")
             metric_card(c4, "최고 점수", f"{max(r['total_score'] for r in results)}점")
 
@@ -1291,8 +1324,8 @@ if mode == "🔍 급등 예고 종목 탐지":
                     "종목코드":   r["symbol"],
                     "현재가":     f"₩{r['current_price']:,.0f}",
                     "등락률":     f"{'🔺' if r['price_change_1d']>0 else '🔽'}{r['price_change_1d']:.2f}%",
-                    "240일선":    f"₩{r['ma240']:,.0f}",
-                    "240선이격":  f"+{r['ma240_gap']:.1f}%",
+                    "240일선":    f"₩{r['ma240']:,.0f}" if r.get('ma240') else "-",
+                    "240선이격":  f"+{r['ma240_gap']:.1f}%" if r.get('ma240_gap') is not None else "-",
                     "R-cycle이탈": f"{r.get('signals',{}).get('rsi_cycle_days_since','-')}일 전",
                     "R-cycle":    r["rsi"],
                     "종합점수":   r["total_score"],
@@ -1353,7 +1386,7 @@ if mode == "🔍 급등 예고 종목 탐지":
                 news = get_news_headline(r["symbol"])
                 import html as _html
                 news_safe = _html.escape(news) if news else ""
-                below_months = r["below_days"] // 20
+                below_months = (r.get("below_days") or 0) // 20
                 # 실시간 가격
                 rt_price = get_realtime_price(r["symbol"])
                 display_price = rt_price if rt_price else r["current_price"]
@@ -1380,8 +1413,7 @@ if mode == "🔍 급등 예고 종목 탐지":
                     </div>
                   </div>
                   <div style="margin-top:6px;color:#8b92a5;font-size:12px;">
-                    240일선 ₩{r['ma240']:,.0f} | 이격 +{r['ma240_gap']:.1f}% |
-                    손절가 ₩{int(r['ma240']*0.95):,.0f} (240선-5%) |
+                    {'240일선 ₩{:,.0f} | 이격 +{:.1f}% | 손절가 ₩{:,.0f} (240선-5%) |'.format(r['ma240'], r['ma240_gap'], int(r['ma240']*0.95)) if r.get('ma240') else ''}
                     수급 {supply_str} | 핵심신호 {r.get("core_signal_count",0)}개
                   </div>
                 </div>""", unsafe_allow_html=True)
@@ -1408,10 +1440,10 @@ if mode == "🔍 급등 예고 종목 탐지":
                 if True:  # 바로 표시
                     m1,m2,m3,m4,m5 = st.columns(5)
                     m1.metric("R-cycle(20)", f"{r['rsi']:.1f}")
-                    m2.metric("240선 이격", f"+{r['ma240_gap']:.1f}%")
+                    m2.metric("240선 이격", f"+{r['ma240_gap']:.1f}%" if r.get('ma240_gap') is not None else "-")
                     m3.metric("R-cycle 70이탈", f"{r.get('signals',{}).get('rsi_cycle_days_since','-')}일 전")
-                    m4.metric("240일선", f"₩{r['ma240']:,.0f}")
-                    m5.metric("손절가", f"₩{int(r['ma240']*0.95):,.0f}")
+                    m4.metric("240일선", f"₩{r['ma240']:,.0f}" if r.get('ma240') else "-")
+                    m5.metric("손절가", f"₩{int(r['ma240']*0.95):,.0f}" if r.get('ma240') else "-")
                     # 수급 정보
                     supply_label = "🔥 기관+외국인" if r.get("both_buying") else ("✅ 수급있음" if r.get("smart_money_in") else "❌ 수급없음")
                     st.caption(f"수급: {supply_label}  |  핵심신호: {r.get('core_signal_count',0)}개  |  거래량배수: {r.get('vol_ratio',0):.1f}배")

@@ -39,7 +39,7 @@ def run_scan():
         log(f"스캔 전략: {scan_mode}")
 
         det = KoreanStockSurgeDetector(max_gap_pct=7, min_below_days=60, max_cross_days=90)
-        det._ob_days = 90
+        det._ob_days = 60  # 70이탈 후 사이클 만료 기간
         det._rc_below = 0  # 장기선 아래 진행 기간 제한 없음
 
         if scan_mode == "classic":
@@ -54,10 +54,12 @@ def run_scan():
                 if sym not in seen or r["total_score"] > seen[sym]["total_score"]:
                     seen[sym] = r
             results = list(seen.values())
+        elif scan_mode == "divergence":
+            results = det.analyze_all_stocks_divergence()
         else:  # rcycle (기본)
             results = det.analyze_all_stocks()
 
-        results = [r for r in results if r.get("total_score", 0) >= 20]
+        results = [r for r in results if r.get("total_score", 0) >= 30]
         results = sorted(results, key=lambda x: x["total_score"], reverse=True)
 
         # Series 직렬화 후 DB 저장
@@ -251,13 +253,12 @@ def main():
                          "last_crypto_hour": last_crypto_hour, "last_reorder_date": last_reorder_date})
             run_scan()
 
-        # 4시간 간격 코인 스캔 (UTC 0,4,8,12,16,20시)
-        utc_hour = now_utc.hour
-        if utc_hour in CRYPTO_SCAN_HOURS_UTC and utc_hour != last_crypto_hour:
-            last_crypto_hour = utc_hour
-            _save_state({"last_scan_date": last_scan_date, "last_perf_date": last_perf_date,
-                         "last_crypto_hour": last_crypto_hour, "last_reorder_date": last_reorder_date})
-            run_crypto_scan()
+        # 4시간 간격 코인 스캔 비활성화
+        # utc_hour = now_utc.hour
+        # if utc_hour in CRYPTO_SCAN_HOURS_UTC and utc_hour != last_crypto_hour:
+        #     last_crypto_hour = utc_hour
+        #     _save_state(...)
+        #     run_crypto_scan()
 
         time.sleep(30)
 

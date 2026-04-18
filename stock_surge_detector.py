@@ -299,17 +299,21 @@ class KoreanStockSurgeDetector:
             close_arr = close.values
             ma_arr = ma_long.values
 
-            # 최근 150일 내에서 패턴 탐색
-            search_start = max(0, n - 150)
+            # 최근 250일 내에서 패턴 탐색 (긴 사이클 포함)
+            search_start = max(0, n - 250)
 
-            # Step 1: 과매도 탈출 시점 찾기 (가장 최근 것)
-            oversold_exit_idx = None
+            # Step 1: 과매도 탈출 시점 찾기 - 가장 강한 바닥(최저 RSI) 사이클 선택
+            oversold_candidates = []
             for i in range(search_start, n - 20):
                 if rsi_vals[i-1] <= 30 and rsi_vals[i] > 30:
-                    oversold_exit_idx = i
+                    look_back = max(0, i - 20)
+                    min_rsi = float(rsi_vals[look_back:i].min()) if i > look_back else float(rsi_vals[i-1])
+                    oversold_candidates.append((i, min_rsi))
 
-            if oversold_exit_idx is None:
+            if not oversold_candidates:
                 return {"matched": False}
+
+            oversold_exit_idx = min(oversold_candidates, key=lambda x: (x[1], -x[0]))[0]
 
             # Step 2: 과매도 탈출 이후 RSI 70 이상 도달 시점
             overbought_idx = None
@@ -347,9 +351,9 @@ class KoreanStockSurgeDetector:
             if cur_rsi > 55:
                 return {"matched": False}
 
-            # 70 이탈 후 너무 오래된 사이클 제외 (60일 이내)
+            # 70 이탈 후 너무 오래된 사이클 제외 (120일로 완화)
             days_since_peak = n - 1 - overbought_exit_idx
-            if days_since_peak > 60:
+            if days_since_peak > 120:
                 return {"matched": False}
 
             rsi_low  = float(rsi_vals[oversold_exit_idx - 1])
@@ -472,28 +476,43 @@ class KoreanStockSurgeDetector:
             if not (0 <= gap_pct <= self.max_gap_pct):
                 return None
 
-            # 최근 250일 내에서 패턴 탐색
-            search_start = max(1, n - 250)
+            # 최근 400일 내에서 패턴 탐색 (긴 사이클 종목 포함)
+            search_start = max(1, n - 400)
 
-            # Step1: RSI 30 이하 탈출 시점 (가장 최근)
-            oversold_exit = None
+            # Step1: RSI 30 이하 탈출 시점 - 여러 사이클 중 가장 강한 것 선택
+            # (가장 낮은 RSI 바닥을 가진 사이클 우선)
+            oversold_candidates = []
             for i in range(search_start, n - 30):
                 if rsi_vals[i-1] <= 30 and rsi_vals[i] > 30:
-                    oversold_exit = i
+                    # 탈출 직전 최저 RSI 기록
+                    look_back = max(0, i - 20)
+                    min_rsi_before = float(rsi_vals[look_back:i].min()) if i > look_back else float(rsi_vals[i-1])
+                    oversold_candidates.append((i, min_rsi_before))
 
-            if oversold_exit is None:
+            if not oversold_candidates:
                 return None
 
-            # Step2: 탈출 이후 240선 상향 돌파
-            cross_idx = None
+            # 가장 낮은 바닥(과매도 강도 높은) 사이클 선택, 동점이면 최근 것
+            oversold_exit = min(oversold_candidates, key=lambda x: (x[1], -x[0]))[0]
+
+            # Step2: 탈출 이후 240선 상향 돌파 - 거래량 동반한 가장 강한 돌파 선택
+            # (첫 번째 돌파가 아니라 거래량 배수가 가장 높은 돌파)
+            vol_arr = vol.values
+            vol_ma20_arr = vol.rolling(20).mean().values
+            cross_candidates = []
             for i in range(oversold_exit, n - 10):
                 if pd.isna(ma240_arr[i]) or pd.isna(ma240_arr[i-1]):
                     continue
                 if close_arr[i] > ma240_arr[i] and close_arr[i-1] <= ma240_arr[i-1]:
-                    cross_idx = i
-                    break
-            if cross_idx is None:
+                    # 돌파 시 거래량 배수 계산
+                    vr = float(vol_arr[i] / vol_ma20_arr[i]) if vol_ma20_arr[i] > 0 and not pd.isna(vol_ma20_arr[i]) else 1.0
+                    cross_candidates.append((i, vr))
+
+            if not cross_candidates:
                 return None
+
+            # 거래량 배수 가장 높은 돌파 선택 (동점이면 최근 것)
+            cross_idx = max(cross_candidates, key=lambda x: (x[1], x[0]))[0]
 
             # Step3: 240선 돌파 이후 RSI 70 이상 도달
             overbought_idx = None
@@ -516,8 +535,8 @@ class KoreanStockSurgeDetector:
             # Step5: 현재 주가 240선 위 0~max_gap_pct% (이미 위에서 체크)
             cur_rsi = float(rsi_vals[-1])
 
-            # 70 이탈 후 너무 오래된 사이클 제외 (앱 설정값, 기본 90일)
-            ob_max_days = getattr(self, '_ob_days', 90)
+            # 70 이탈 후 너무 오래된 사이클 제외 (기본 60일)
+            ob_max_days = getattr(self, '_ob_days', 60)
             days_since_ob_exit = n - 1 - overbought_exit
             if days_since_ob_exit > ob_max_days:
                 return None
@@ -596,6 +615,103 @@ class KoreanStockSurgeDetector:
             signals["rsi"]         = round(cur_rsi, 1)
             signals["rsi_healthy"] = 40 <= cur_rsi <= 65
             if signals["rsi_healthy"]: score += 2
+
+            # ── RSI 고급 신호 ────────────────────────────────────
+
+            # [+3] RSI 상승 기울기 - 바닥 찍고 올라오는 중인지 확인
+            try:
+                rsi_clean = rsi.dropna()
+                rsi_slope3 = float(rsi_clean.iloc[-1]) - float(rsi_clean.iloc[-4])   # 3일 기울기
+                rsi_slope5 = float(rsi_clean.iloc[-1]) - float(rsi_clean.iloc[-6])   # 5일 기울기
+                signals["rsi_slope_up"] = rsi_slope3 > 0 and rsi_slope5 > 0
+                signals["rsi_slope_val"] = round(rsi_slope3, 1)
+                if signals["rsi_slope_up"]: score += 3
+            except:
+                signals["rsi_slope_up"]  = False
+                signals["rsi_slope_val"] = 0
+
+            # [+3] RSI 50선 재돌파 - 눌림목 후 50 상향 돌파 (최근 5일 이내)
+            try:
+                rsi_arr = rsi.dropna().values
+                rsi_cross50 = False
+                for i in range(max(1, len(rsi_arr) - 5), len(rsi_arr)):
+                    if rsi_arr[i-1] < 50 and rsi_arr[i] >= 50:
+                        rsi_cross50 = True
+                        break
+                signals["rsi_cross50"] = rsi_cross50
+                if rsi_cross50: score += 3
+            except:
+                signals["rsi_cross50"] = False
+
+            # [+4] RSI 강세 다이버전스 - 주가 신저가 but RSI 전저점보다 높음
+            try:
+                rsi_vals_d = rsi.dropna().values
+                close_vals_d = close.reindex(rsi.dropna().index).values
+                div_window = min(60, len(rsi_vals_d) - 5)
+                rsi_div = False
+                if div_window > 10:
+                    # 최근 저점 (최근 10일 내)
+                    recent_low_idx  = int(np.argmin(close_vals_d[-10:]))  + len(close_vals_d) - 10
+                    recent_rsi_low  = float(rsi_vals_d[recent_low_idx])
+                    recent_price_low = float(close_vals_d[recent_low_idx])
+                    # 이전 저점 (그 이전 div_window 내)
+                    prev_window = close_vals_d[-(div_window):-10]
+                    prev_rsi_window = rsi_vals_d[-(div_window):-10]
+                    if len(prev_window) > 0:
+                        prev_low_idx  = int(np.argmin(prev_window))
+                        prev_price_low = float(prev_window[prev_low_idx])
+                        prev_rsi_low   = float(prev_rsi_window[prev_low_idx])
+                        # 주가는 더 낮은데 RSI는 더 높으면 강세 다이버전스
+                        rsi_div = (recent_price_low < prev_price_low * 0.99 and
+                                   recent_rsi_low   > prev_rsi_low   + 2.0)
+                signals["rsi_divergence"] = rsi_div
+                if rsi_div: score += 4
+            except:
+                signals["rsi_divergence"] = False
+
+            # [+3] 주봉 RSI 50 이상 - 중기 추세 살아있음
+            try:
+                weekly = yf.Ticker(symbol).history(period="2y", interval="1wk", auto_adjust=False)
+                weekly = weekly.dropna(subset=["Close"])
+                if len(weekly) >= 25:
+                    w_rsi = self._rsi(weekly["Close"], 14).dropna()
+                    w_cur_rsi = float(w_rsi.iloc[-1])
+                    signals["weekly_rsi"]        = round(w_cur_rsi, 1)
+                    signals["weekly_rsi_bull"]   = w_cur_rsi >= 50
+                    # 주봉 RSI도 상승 기울기면 추가 가산
+                    w_slope = float(w_rsi.iloc[-1]) - float(w_rsi.iloc[-4]) if len(w_rsi) >= 4 else 0
+                    signals["weekly_rsi_rising"] = w_slope > 0
+                    if signals["weekly_rsi_bull"]:   score += 3
+                    if signals["weekly_rsi_rising"]: score += 1
+                else:
+                    signals["weekly_rsi"]        = 50
+                    signals["weekly_rsi_bull"]   = False
+                    signals["weekly_rsi_rising"] = False
+            except:
+                signals["weekly_rsi"]        = 50
+                signals["weekly_rsi_bull"]   = False
+                signals["weekly_rsi_rising"] = False
+
+            # [+3] RSI 수렴 패턴 - 고점 낮아지고 저점 높아지는 삼각 수렴
+            try:
+                rsi_c = rsi.dropna().values[-30:]  # 최근 30일
+                if len(rsi_c) >= 20:
+                    # 고점 시퀀스: 짝수 인덱스 피크
+                    peaks   = [rsi_c[i] for i in range(2, len(rsi_c)-2)
+                               if rsi_c[i] > rsi_c[i-1] and rsi_c[i] > rsi_c[i+1] and rsi_c[i] > 50]
+                    troughs = [rsi_c[i] for i in range(2, len(rsi_c)-2)
+                               if rsi_c[i] < rsi_c[i-1] and rsi_c[i] < rsi_c[i+1] and rsi_c[i] < 60]
+                    converging = (
+                        len(peaks) >= 2 and len(troughs) >= 2 and
+                        peaks[-1]   < peaks[-2]   and   # 고점 낮아짐
+                        troughs[-1] > troughs[-2]        # 저점 높아짐
+                    )
+                    signals["rsi_converging"] = converging
+                    if converging: score += 3
+                else:
+                    signals["rsi_converging"] = False
+            except:
+                signals["rsi_converging"] = False
 
             # [+3] 볼린저밴드 수축 → 확장
             bb_std   = close.rolling(20).std()
@@ -1103,6 +1219,14 @@ class KoreanStockSurgeDetector:
                 "rsi_cycle_pullback": True,
                 "rsi_cycle_peak":   signals_pre.get("rsi_cycle_peak", 0),
                 "rsi_cycle_cur":    signals_pre.get("rsi_cycle_cur", 0),
+                "rsi_slope_up":     signals.get("rsi_slope_up", False),
+                "rsi_slope_val":    signals.get("rsi_slope_val", 0),
+                "rsi_cross50":      signals.get("rsi_cross50", False),
+                "rsi_divergence":   signals.get("rsi_divergence", False),
+                "weekly_rsi":       signals.get("weekly_rsi", 50),
+                "weekly_rsi_bull":  signals.get("weekly_rsi_bull", False),
+                "weekly_rsi_rising":signals.get("weekly_rsi_rising", False),
+                "rsi_converging":   signals.get("rsi_converging", False),
                 "close_series":     close,
                 "high_series":      high,
                 "low_series":       low,
@@ -1645,6 +1769,236 @@ class KoreanStockSurgeDetector:
                         results.append(r)
                         print(f"  OK {sym} ({r['total_score']}pt)")
                 except Exception as e:
+                    pass
+        return sorted(results, key=lambda x: x["total_score"], reverse=True)
+
+    # ── RSI(20) 강세 다이버전스 전용 스캔 ────────────────────────────
+
+    def analyze_stock_divergence(self, symbol):
+        """
+        RSI(20) 강세 다이버전스 전용 스캔
+        신뢰도 높은 조건 3가지 동시 충족:
+          1) 과매도 구간(RSI 30 이하)에서 발생
+          2) 두 저점 간격 20일 이상
+          3) 두 번째 저점에서 거래량 감소 (매도 세력 소진)
+        """
+        try:
+            ticker = yf.Ticker(symbol)
+            data = ticker.history(period="2y", auto_adjust=False)
+            data = data.dropna(subset=["Open","High","Low","Close"])
+            if len(data) < 60:
+                return None
+
+            # 거래대금 필터
+            avg_amount = float(data["Close"].tail(20).mean()) * float(data["Volume"].tail(20).mean())
+            if avg_amount < 2_000_000_000:
+                return None
+
+            close = data["Close"]
+            high  = data["High"]
+            low   = data["Low"]
+            vol   = data["Volume"]
+            n     = len(close)
+
+            rsi = self._rsi(close, 20).fillna(50)
+            rsi_vals   = rsi.values
+            close_vals = close.values
+            vol_vals   = vol.values
+
+            # 최근 120일 내에서 탐색 (범위 축소 - 최신 신호만)
+            search_start = max(1, n - 120)
+
+            # 저점 후보 수집: 주가 로컬 최저점 기준, RSI 45 이하만
+            troughs = []
+            for i in range(search_start + 5, n - 5):
+                price_window = close_vals[max(0, i-5): i+6]
+                if close_vals[i] != price_window.min():
+                    continue
+                if rsi_vals[i] > 45:  # RSI 45 이하만 (과매도 근처)
+                    continue
+                troughs.append((i, float(close_vals[i]), float(rsi_vals[i]), float(vol_vals[i])))
+
+            if len(troughs) < 2:
+                return None
+
+            # 전체 저점 쌍 중 다이버전스 조건 충족하는 최적 조합 탐색
+            best_pair = None
+            for j in range(len(troughs) - 1, 0, -1):
+                t2_cand = troughs[j]
+                for i in range(j - 1, -1, -1):
+                    t1_cand = troughs[i]
+                    if t2_cand[0] - t1_cand[0] < 30:    # 30일 이상 간격
+                        continue
+                    if t2_cand[1] >= t1_cand[1] * 0.92:  # 주가 8% 이상 하락
+                        continue
+                    if t2_cand[2] <= t1_cand[2] + 6.0:   # RSI 6 이상 상승
+                        continue
+                    best_pair = (t1_cand, t2_cand)
+                    break
+                if best_pair:
+                    break
+
+            if not best_pair:
+                return None
+
+            t1, t2 = best_pair
+
+            # 거래량 감소 체크 (가산점용, 필수 아님)
+            vol_ma20_t2 = float(vol.iloc[max(0, t2[0]-20): t2[0]].mean()) if t2[0] > 20 else t2[3]
+            vol_ratio_t2 = t2[3] / vol_ma20_t2 if vol_ma20_t2 > 0 else 1.0
+            vol_decreasing = vol_ratio_t2 < 0.9
+
+            # 핵심 조건 3: 현재 RSI가 t2보다 10 이상 반등 중
+            cur_rsi = float(rsi_vals[-1])
+            if cur_rsi <= t2[2] + 10:
+                return None
+            current = float(close_vals[-1])
+            signals = {}  # 신호 딕셔너리 초기화
+
+            # ── 필수 조건: 주봉 RSI(20) 다이버전스 동시 충족 ────────
+            # 일봉 다이버전스만으로는 노이즈 많음 → 주봉도 같은 방향이어야 신뢰도 높음
+            try:
+                weekly = yf.Ticker(symbol).history(period="2y", interval="1wk", auto_adjust=False).dropna(subset=["Close"])
+                if len(weekly) >= 25:
+                    w_rsi = self._rsi(weekly["Close"], 20).dropna()
+                    w_cur = float(w_rsi.iloc[-1])
+                    w_slope = float(w_rsi.iloc[-1]) - float(w_rsi.iloc[-4]) if len(w_rsi) >= 4 else 0
+                    w_vals = w_rsi.values
+                    w_close = weekly["Close"].reindex(w_rsi.index).values
+                    w_div = False
+                    if len(w_vals) >= 10:
+                        # 최근 12주 저점 vs 이전 24주 저점 (윈도우 확대)
+                        w_recent_low_idx = int(np.argmin(w_close[-12:])) + len(w_close) - 12
+                        w_prev_window_close = w_close[-36:-12]
+                        w_prev_window_rsi   = w_vals[-36:-12]
+                        if len(w_prev_window_close) > 0:
+                            w_prev_low_idx_rel = int(np.argmin(w_prev_window_close))
+                            w_div = (
+                                w_close[w_recent_low_idx] < w_prev_window_close[w_prev_low_idx_rel] * 1.03 and
+                                w_vals[w_recent_low_idx]  > w_prev_window_rsi[w_prev_low_idx_rel] + 2.0
+                            )
+                    signals["weekly_rsi"]        = round(w_cur, 1)
+                    signals["weekly_rsi_bull"]   = w_cur >= 45
+                    signals["weekly_rsi_slope"]  = round(w_slope, 1)
+                    signals["weekly_rsi_rising"] = w_slope > 0
+                    signals["weekly_rsi_div"]    = w_div
+                else:
+                    w_div = False
+                    signals["weekly_rsi"]        = 50
+                    signals["weekly_rsi_bull"]   = False
+                    signals["weekly_rsi_slope"]  = 0
+                    signals["weekly_rsi_rising"] = False
+                    signals["weekly_rsi_div"]    = False
+            except:
+                w_div = False
+                signals["weekly_rsi"]        = 50
+                signals["weekly_rsi_bull"]   = False
+                signals["weekly_rsi_slope"]  = 0
+                signals["weekly_rsi_rising"] = False
+                signals["weekly_rsi_div"]    = False
+
+            # 주봉 필수 조건: 다이버전스 OR 주봉 RSI 상승 기울기 (둘 중 하나)
+            if not w_div and not signals.get("weekly_rsi_rising"):
+                return None
+
+            # 점수 계산 시작
+            score = 0
+            signals["div_price_drop"]   = round((t2[1] - t1[1]) / t1[1] * 100, 2)
+            signals["div_rsi_gain"]     = round(t2[2] - t1[2], 1)
+            signals["div_t1_rsi"]       = round(t1[2], 1)
+            signals["div_t2_rsi"]       = round(t2[2], 1)
+            signals["div_gap_days"]     = t2[0] - t1[0]
+            signals["vol_ratio_t2"]     = round(vol_ratio_t2, 2)
+            signals["vol_decreasing"]   = vol_decreasing
+
+            score += 10  # 일봉 다이버전스 기본
+            score += 8   # 주봉 다이버전스 추가 (필수 통과 보상)
+            if vol_decreasing: score += 3
+            if t2[2] - t1[2] >= 5: score += 3
+            elif t2[2] - t1[2] >= 3: score += 1
+            if t1[2] <= 35 and t2[2] <= 35: score += 3
+            if signals["weekly_rsi_bull"]:   score += 3
+            if signals["weekly_rsi_rising"]: score += 2
+
+            # [+2] OBV 상승 (두 번째 저점 이후)
+            obv = self._obv(data)
+            obv_after = obv.iloc[t2[0]:]
+            signals["obv_rising"] = len(obv_after) > 1 and float(obv_after.iloc[-1]) > float(obv_after.iloc[0])
+            if signals["obv_rising"]: score += 2
+
+            # [+2] 이평선 정배열 시작
+            ma5  = close.rolling(5).mean()
+            ma20_s = close.rolling(20).mean()
+            ma60_s = close.rolling(60).mean()
+            signals["ma_align"] = bool(ma5.iloc[-1] > ma20_s.iloc[-1] > ma60_s.iloc[-1])
+            if signals["ma_align"]: score += 2
+
+            # [+2] 거래량 최근 증가 (반등 확인)
+            vol_ma20 = vol.rolling(20).mean()
+            recent_vr = float(vol.iloc[-5:].mean() / vol_ma20.iloc[-1]) if vol_ma20.iloc[-1] > 0 else 0
+            signals["recent_vol"] = recent_vr >= 1.3
+            if signals["recent_vol"]: score += 2
+
+            signals["rsi"]         = round(cur_rsi, 1)
+            signals["current_rsi"] = round(cur_rsi, 1)
+
+            ma240 = close.rolling(240).mean()
+            ma240_v = float(ma240.iloc[-1]) if not pd.isna(ma240.iloc[-1]) else None
+
+            return {
+                "symbol":           symbol,
+                "name":             STOCK_NAMES.get(symbol, symbol),
+                "current_price":    current,
+                "price_change_1d":  round((current - float(close.iloc[-2])) / float(close.iloc[-2]) * 100, 2),
+                "ma240":            round(ma240_v, 0) if ma240_v else None,
+                "ma240_gap":        round((current - ma240_v) / ma240_v * 100, 2) if ma240_v else None,
+                "total_score":      score,
+                "raw_score":        score,
+                "signals":          signals,
+                "rsi":              round(cur_rsi, 1),
+                "div_price_drop":   signals["div_price_drop"],
+                "div_rsi_gain":     signals["div_rsi_gain"],
+                "div_t1_rsi":       signals["div_t1_rsi"],
+                "div_t2_rsi":       signals["div_t2_rsi"],
+                "div_gap_days":     signals["div_gap_days"],
+                "vol_decreasing":   vol_decreasing,
+                "rsi_rebounding":   cur_rsi > t2[2] + 5,
+                "weekly_rsi":       signals.get("weekly_rsi", 50),
+                "weekly_rsi_bull":  signals.get("weekly_rsi_bull", False),
+                "weekly_rsi_rising":signals.get("weekly_rsi_rising", False),
+                "weekly_rsi_div":   signals.get("weekly_rsi_div", False),
+                "obv_rising":       signals["obv_rising"],
+                "scan_type":        "divergence",
+                "close_series":     close,
+                "high_series":      high,
+                "low_series":       low,
+                "open_series":      data["Open"],
+                "ma240_series":     ma240,
+                "ma60_series":      ma60_s,
+                "ma20_series":      ma20_s,
+                "rsi_series":       rsi,
+                "volume_series":    vol,
+                "vol_ma_series":    vol_ma20,
+            }
+        except Exception:
+            return None
+
+    def analyze_all_stocks_divergence(self):
+        """RSI(20) 강세 다이버전스 전용 스캔 - 전 종목"""
+        results = []
+        print("RSI(20) 다이버전스 스캔 중...")
+
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            futures = {executor.submit(self.analyze_stock_divergence, sym): sym for sym in self.all_symbols}
+            for future in as_completed(futures):
+                sym = futures[future]
+                try:
+                    r = future.result()
+                    if r:
+                        results.append(r)
+                        print(f"  [DIV] {sym} ({r['total_score']}pt)")
+                except Exception:
                     pass
         return sorted(results, key=lambda x: x["total_score"], reverse=True)
 
