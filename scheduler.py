@@ -39,7 +39,7 @@ def run_scan():
         log(f"스캔 전략: {scan_mode}")
 
         det = KoreanStockSurgeDetector(max_gap_pct=7, min_below_days=60, max_cross_days=90)
-        det._ob_days = 60  # 70이탈 후 사이클 만료 기간
+        det._ob_days = 180  # 70이탈 후 사이클 만료 기간
         det._rc_below = 0  # 장기선 아래 진행 기간 제한 없음
 
         if scan_mode == "classic":
@@ -59,7 +59,7 @@ def run_scan():
         else:  # rcycle (기본)
             results = det.analyze_all_stocks()
 
-        results = [r for r in results if r.get("total_score", 0) >= 30]
+        results = [r for r in results if r.get("total_score", 0) >= 40]
         results = sorted(results, key=lambda x: x["total_score"], reverse=True)
 
         # Series 직렬화 후 DB 저장

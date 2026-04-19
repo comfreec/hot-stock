@@ -535,10 +535,14 @@ class KoreanStockSurgeDetector:
             # Step5: 현재 주가 240선 위 0~max_gap_pct% (이미 위에서 체크)
             cur_rsi = float(rsi_vals[-1])
 
-            # 70 이탈 후 너무 오래된 사이클 제외 (기본 60일)
-            ob_max_days = getattr(self, '_ob_days', 60)
+            # 70 이탈 후 너무 오래된 사이클 제외 (기본 180일)
+            ob_max_days = getattr(self, '_ob_days', 180)
             days_since_ob_exit = n - 1 - overbought_exit
             if days_since_ob_exit > ob_max_days:
+                return None
+
+            # 눌림목 최소 기간 하한: 70 이탈 후 최소 5일 이상 (너무 빠른 재진입 제외)
+            if days_since_ob_exit < 5:
                 return None
 
             days_since_cross = n - 1 - cross_idx
@@ -615,6 +619,57 @@ class KoreanStockSurgeDetector:
             signals["rsi"]         = round(cur_rsi, 1)
             signals["rsi_healthy"] = 40 <= cur_rsi <= 65
             if signals["rsi_healthy"]: score += 2
+
+            # [+3] RSI(2) 단기 과매도 확인 (Larry Connors 방식)
+            # 눌림목 구간에서 RSI(2) 10 이하면 단기 바닥 신호 - 진입 타이밍 정확도 향상
+            try:
+                rsi2 = self._rsi(close, 2).dropna()
+                cur_rsi2 = float(rsi2.iloc[-1])
+                signals["rsi2"]            = round(cur_rsi2, 1)
+                signals["rsi2_oversold"]   = cur_rsi2 <= 10   # 강한 신호
+                signals["rsi2_near_low"]   = cur_rsi2 <= 25   # 보통 신호
+                # 3일 연속 하락 후 반등 (Connors 진입 조건)
+                rsi2_vals = rsi2.values
+                rsi2_3day_drop = (len(rsi2_vals) >= 4 and
+                                  rsi2_vals[-4] > rsi2_vals[-3] > rsi2_vals[-2])
+                rsi2_bounce    = len(rsi2_vals) >= 2 and rsi2_vals[-1] > rsi2_vals[-2]
+                signals["rsi2_connors_entry"] = rsi2_3day_drop and rsi2_bounce and cur_rsi2 <= 25
+                if signals["rsi2_oversold"]:       score += 3
+                elif signals["rsi2_near_low"]:     score += 1
+                if signals["rsi2_connors_entry"]:  score += 3
+            except:
+                signals["rsi2"]               = 50
+                signals["rsi2_oversold"]      = False
+                signals["rsi2_near_low"]      = False
+                signals["rsi2_connors_entry"] = False
+
+            # [+3] 상대강도(RS) - KOSPI 대비 종목 수익률
+            # 시장보다 강한 종목이 눌림목에서 더 잘 반등
+            try:
+                kospi_data = yf.Ticker("^KS11").history(period="3mo").dropna(subset=["Close"])
+                if len(kospi_data) >= 20 and len(close) >= 20:
+                    stock_ret_1m  = (float(close.iloc[-1])  - float(close.iloc[-20]))  / float(close.iloc[-20])  * 100
+                    kospi_ret_1m  = (float(kospi_data["Close"].iloc[-1]) - float(kospi_data["Close"].iloc[-20])) / float(kospi_data["Close"].iloc[-20]) * 100
+                    rs_score = stock_ret_1m - kospi_ret_1m  # 양수 = 시장 대비 강함
+                    stock_ret_3m  = (float(close.iloc[-1])  - float(close.iloc[-60]))  / float(close.iloc[-60])  * 100 if len(close) >= 60 else 0
+                    kospi_ret_3m  = (float(kospi_data["Close"].iloc[-1]) - float(kospi_data["Close"].iloc[0]))   / float(kospi_data["Close"].iloc[0])   * 100
+                    rs_score_3m = stock_ret_3m - kospi_ret_3m
+                    signals["rs_score_1m"]   = round(rs_score, 1)
+                    signals["rs_score_3m"]   = round(rs_score_3m, 1)
+                    signals["rs_outperform"] = rs_score > 0       # 1개월 시장 대비 강함
+                    signals["rs_strong"]     = rs_score > 5 and rs_score_3m > 0  # 강한 상대강도
+                    if signals["rs_strong"]:     score += 3
+                    elif signals["rs_outperform"]: score += 1
+                else:
+                    signals["rs_score_1m"]   = 0
+                    signals["rs_score_3m"]   = 0
+                    signals["rs_outperform"] = False
+                    signals["rs_strong"]     = False
+            except:
+                signals["rs_score_1m"]   = 0
+                signals["rs_score_3m"]   = 0
+                signals["rs_outperform"] = False
+                signals["rs_strong"]     = False
 
             # ── RSI 고급 신호 ────────────────────────────────────
 
@@ -884,20 +939,50 @@ class KoreanStockSurgeDetector:
             if vol_rising3: score += 3
 
             # ── 눌림목 깊이 측정 ─────────────────────────────────
-            # 240선 돌파 후 최대 하락폭
+            # 240선 돌파 후 최대 하락폭 (고점 대비 낙폭)
             prices_after = close.iloc[cross_idx:]
             if len(prices_after) >= 3:
-                entry_price = float(close.iloc[cross_idx])
-                min_after   = float(prices_after.min())
+                entry_price    = float(close.iloc[cross_idx])
+                peak_after     = float(prices_after.max())
+                min_after      = float(prices_after.min())
                 pullback_depth = (entry_price - min_after) / entry_price * 100
-                signals["pullback_depth"] = round(pullback_depth, 1)
-                # 얕은 눌림(5~15%) = 강한 신호
+                # 고점 대비 낙폭 (더 정확한 눌림목 측정)
+                peak_drawdown  = (peak_after - float(close.iloc[-1])) / peak_after * 100 if peak_after > 0 else 0
+                signals["pullback_depth"]  = round(pullback_depth, 1)
+                signals["peak_drawdown"]   = round(peak_drawdown, 1)
+                # 이상적 낙폭 구간: 고점 대비 10~25%
+                if 10 <= peak_drawdown <= 25:
+                    score += 4   # 이상적 눌림목 구간
+                elif 5 <= peak_drawdown < 10:
+                    score += 2   # 얕은 눌림
+                elif peak_drawdown > 35:
+                    score = max(0, score - 3)  # 너무 깊은 낙폭 패널티
+                # 기존 돌파가격 기준 낙폭
                 if 3 <= pullback_depth <= 15:
-                    score += 3
+                    score += 2
                 elif pullback_depth > 25:
-                    score = max(0, score - 2)  # 깊은 눌림 패널티
+                    score = max(0, score - 2)
             else:
                 signals["pullback_depth"] = 0
+                signals["peak_drawdown"]  = 0
+
+            # ── Higher Low 패턴 (눌림목 저점 상승) ──────────────
+            # 70 이탈 후 저점들이 점점 높아지는지 확인
+            try:
+                after_ob = close.iloc[overbought_exit:]
+                if len(after_ob) >= 10:
+                    # 5일 단위로 저점 비교
+                    lows = []
+                    chunk = 5
+                    for i in range(0, len(after_ob) - chunk, chunk):
+                        lows.append(float(after_ob.iloc[i:i+chunk].min()))
+                    higher_low = len(lows) >= 2 and all(lows[i] <= lows[i+1] for i in range(len(lows)-1))
+                    signals["higher_low"] = higher_low
+                    if higher_low: score += 4
+                else:
+                    signals["higher_low"] = False
+            except:
+                signals["higher_low"] = False
 
             # [+1~2] 캔들 패턴
             o_s  = data["Open"]
@@ -1227,6 +1312,15 @@ class KoreanStockSurgeDetector:
                 "weekly_rsi_bull":  signals.get("weekly_rsi_bull", False),
                 "weekly_rsi_rising":signals.get("weekly_rsi_rising", False),
                 "rsi_converging":   signals.get("rsi_converging", False),
+                "rsi2":             signals.get("rsi2", 50),
+                "rsi2_oversold":    signals.get("rsi2_oversold", False),
+                "rsi2_connors_entry": signals.get("rsi2_connors_entry", False),
+                "rs_score_1m":      signals.get("rs_score_1m", 0),
+                "rs_score_3m":      signals.get("rs_score_3m", 0),
+                "rs_outperform":    signals.get("rs_outperform", False),
+                "rs_strong":        signals.get("rs_strong", False),
+                "peak_drawdown":    signals.get("peak_drawdown", 0),
+                "higher_low":       signals.get("higher_low", False),
                 "close_series":     close,
                 "high_series":      high,
                 "low_series":       low,

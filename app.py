@@ -704,27 +704,28 @@ with st.sidebar:
     st.markdown("---")
 
     if "max_gap"   not in st.session_state: st.session_state["max_gap"]   = 7
-    if "min_score" not in st.session_state: st.session_state["min_score"] = 30
-    if "ob_days"   not in st.session_state: st.session_state["ob_days"]   = 60
+    if "min_score" not in st.session_state: st.session_state["min_score"] = 40
+    if "ob_days"   not in st.session_state: st.session_state["ob_days"]   = 180
+    if "rc_below"  not in st.session_state: st.session_state["rc_below"]  = 0
 
     if st.button("⚡ 기본 셋팅", width='stretch'):
         st.session_state["max_gap"]     = 7
-        st.session_state["ob_days"]     = 60
+        st.session_state["ob_days"]     = 180
         st.session_state["rc_below"]    = 0
-        st.session_state["min_score"]   = 30
+        st.session_state["min_score"]   = 40
         st.session_state["min_below_c"] = 60
         st.session_state["max_cross_c"] = 90
         st.rerun()
 
     max_gap   = st.slider("📍 장기선 근처 범위 (%)", 1, 30, key="max_gap",
         help="현재가가 장기선 위 몇 % 이내인지")
-    min_score = st.slider("🎯 최소 종합점수", 0, 40, key="min_score",
+    min_score = st.slider("🎯 최소 종합점수", 0, 100, key="min_score",
         help="0=전체, 높을수록 엄격")
 
     if scan_mode == "🔄 R-cycle 스캔":
         ob_days = st.slider("⏱ R-cycle 70 이탈 후 경과일", 30, 180, key="ob_days",
             help="R-cycle 70 이탈 후 최대 경과일")
-        rc_below = st.slider("📉 장기선 아래 최소 진행 기간 (일)", 0, 300, value=0, key="rc_below",
+        rc_below = st.slider("📉 장기선 아래 최소 진행 기간 (일)", 0, 300, key="rc_below",
             help="장기선 아래 최소 체류 일수 (0=제한없음)")
         min_below_c = st.session_state.get("min_below_c", 60)
         max_cross_c = st.session_state.get("max_cross_c", 90)
