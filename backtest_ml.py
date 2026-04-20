@@ -202,7 +202,7 @@ def backtest_signal(symbol, lookback_days=60, hold_days=20, min_score=5):
 
 
 def ml_score_adjustment(signals: dict, base_score: int) -> float:
-    """신호 조합 기반 ML 점수 보정"""
+    """신호 조합 기반 ML 점수 보정 (최적화된 가중치 사용)"""
     weighted_sum = 0.0
     active_count = 0
 
@@ -215,6 +215,7 @@ def ml_score_adjustment(signals: dict, base_score: int) -> float:
     if active_count == 0:
         return float(base_score)
 
+    # 활성 신호 수에 따른 콤보 배율
     combo_multiplier = 1.0
     if active_count >= 5:   combo_multiplier = 1.3
     elif active_count >= 3: combo_multiplier = 1.15
@@ -231,5 +232,9 @@ def ml_score_adjustment(signals: dict, base_score: int) -> float:
     # 기관+외국인 동시 수급 + 거래량 = 최강 조합
     if signals.get("both_buying") and (signals.get("vol_strong_cross") or signals.get("vol_at_cross")):
         combo_multiplier *= 1.15
+
+    # 주봉 RSI 상승 + 일봉 눌림목 = 신뢰도 높은 조합 (개선1 반영)
+    if signals.get("weekly_rsi_rising") and signals.get("rsi_slope_up"):
+        combo_multiplier *= 1.1
 
     return round(base_score * combo_multiplier + (weighted_sum - active_count) * 0.5, 1)
