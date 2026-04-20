@@ -1200,12 +1200,12 @@ class KoreanStockSurgeDetector:
                 valid_e = [p for p in entry_cands if p < current]
                 entry_f = max(valid_e) if valid_e else current
 
-                # 손절가
-                stop_cands = []
-                if not pd.isna(ma240_v_f):
-                    stop_cands.append(ma240_v_f * 0.995)
-                stop_cands.append(swing_low_f - atr_f * 1.0)
-                stop_f = max(stop_cands) if stop_cands else entry_f * 0.93
+                # 손절가: RSI(20) 30 돌파 시점 직전 5일 저가 최솟값
+                ob_exit_idx = oversold_exit
+                look_back_start = max(0, ob_exit_idx - 5)
+                stop_f = float(low.iloc[look_back_start:ob_exit_idx].min())
+
+                # 안전 범위: 매수가 대비 -12% ~ -5%
                 stop_f = max(stop_f, entry_f * 0.88)
                 stop_f = min(stop_f, entry_f * 0.95)
                 risk_f = max(entry_f - stop_f, entry_f * 0.01)
