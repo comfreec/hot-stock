@@ -301,6 +301,45 @@ class KISClient:
             print(f"[KIS] 체결 조회 오류: {e}")
             return "unknown"
 
+    def get_filled_price(self, order_no: str, symbol: str) -> float:
+        """실제 체결 평균가 조회 - 체결된 경우 평균 체결가 반환, 없으면 0"""
+        try:
+            code    = symbol.replace(".KS", "").replace(".KQ", "")
+            acct_no = self.account.split("-")[0]
+            acct_cd = self.account.split("-")[1] if "-" in self.account else "01"
+            tr_id   = "VTTC8001R" if self.mock else "TTTC8001R"
+            resp = requests.get(
+                f"{self.base}/uapi/domestic-stock/v1/trading/inquire-daily-ccld",
+                headers=self._headers(tr_id),
+                params={
+                    "CANO": acct_no, "ACNT_PRDT_CD": acct_cd,
+                    "INQR_STRT_DT": date.today().strftime("%Y%m%d"),
+                    "INQR_END_DT":  date.today().strftime("%Y%m%d"),
+                    "SLL_BUY_DVSN_CD": "02",
+                    "INQR_DVSN": "00", "PDNO": code,
+                    "CCLD_DVSN": "00", "ORD_GNO_BRNO": "", "ODNO": order_no,
+                    "INQR_DVSN_3": "00", "INQR_DVSN_1": "",
+                    "CTX_AREA_FK100": "", "CTX_AREA_NK100": ""
+                },
+                timeout=10
+            )
+            resp.raise_for_status()
+            rows = resp.json().get("output1", [])
+            if not rows:
+                return 0.0
+            row = rows[0]
+            # avg_prvs: 체결 평균가, tot_ccld_amt/tot_ccld_qty로 계산
+            fill_qty = int(row.get("tot_ccld_qty", 0))
+            fill_amt = float(row.get("tot_ccld_amt", 0))
+            if fill_qty > 0 and fill_amt > 0:
+                return round(fill_amt / fill_qty, 2)
+            # 단일 체결가
+            ccld_pric = float(row.get("avg_prvs", 0) or row.get("ccld_pric", 0))
+            return ccld_pric
+        except Exception as e:
+            print(f"[KIS] 체결가 조회 오류: {e}")
+            return 0.0
+
     def cancel_order(self, order_no: str, symbol: str, qty: int) -> bool:
         code  = symbol.replace(".KS", "").replace(".KQ", "")
         acct_no = self.account.split("-")[0]
@@ -560,27 +599,62 @@ def place_orders(results: list):
             t2, t3 = _calc_split_triggers(entry, ma240) if ma240 else (int(entry * 0.98), int(entry * 0.96))
             _save_order(today, symbol, name, entry, target, stop, qty, order_no,
                        split_step=1, base_price=entry, trigger2=t2, trigger3=t3)
-            # 시장가 주문은 즉시 체결 → 바로 active로 전환
+
+            # 시장가 주문 → 잠시 후 실제 체결가 조회 (2가지 방법 병행)
+            time.sleep(2)
+            actual_entry = entry  # 기본값
+
+            # 방법1: 체결 내역 API
+            filled_price = client.get_filled_price(order_no, symbol) if order_no else 0
+            if filled_price > 0:
+                actual_entry = int(filled_price)
+            else:
+                # 방법2: 잔고 조회에서 평균매수가 (더 신뢰도 높음)
+                try:
+                    balance = client.get_balance()
+                    code = symbol.replace(".KS", "").replace(".KQ", "")
+                    holding = balance.get("holdings", {}).get(code)
+                    if holding and holding.get("avg_price", 0) > 0:
+                        actual_entry = int(holding["avg_price"])
+                except:
+                    pass
+
+            # 실제 체결가로 업데이트 후 active 전환
             conn = _get_trade_conn()
-            conn.execute("UPDATE trade_orders SET status='active' WHERE symbol=? AND alert_date=?", (symbol, today))
+            conn.execute(
+                "UPDATE trade_orders SET status='active', entry_price=?, avg_price=?, base_price=? WHERE symbol=? AND alert_date=?",
+                (actual_entry, float(actual_entry), actual_entry, symbol, today)
+            )
             conn.commit()
             conn.close()
-            cash -= actual_cost
+
+            # 실제 체결가 기준으로 분할매수 트리거 재계산
+            if actual_entry != entry:
+                t2, t3 = _calc_split_triggers(actual_entry, ma240) if ma240 else (int(actual_entry * 0.98), int(actual_entry * 0.96))
+                conn2 = _get_trade_conn()
+                conn2.execute(
+                    "UPDATE trade_orders SET trigger2=?, trigger3=? WHERE symbol=? AND alert_date=?",
+                    (t2, t3, symbol, today)
+                )
+                conn2.commit()
+                conn2.close()
+
+            cash -= actual_entry * qty
             ordered += 1
 
-            # 텔레그램 알림
+            # 텔레그램 알림 (실제 체결가 기준)
             try:
                 from telegram_alert import send_telegram
                 mock_tag = "[모의] " if cfg["mock"] else ""
-                t2_pct = (t2 / entry - 1) * 100 if entry else 0
-                t3_pct = (t3 / entry - 1) * 100 if entry else 0
+                t2_pct = (t2 / actual_entry - 1) * 100 if actual_entry else 0
+                t3_pct = (t3 / actual_entry - 1) * 100 if actual_entry else 0
                 _send_admin(
-                    f"🤖 {mock_tag}<b>자동매수 주문</b>\n"
+                    f"🤖 {mock_tag}<b>자동매수 체결</b>\n"
                     f"<b>{name}</b> ({symbol})\n"
-                    f"📍 1차 매수: ₩{entry:,}  ×  {qty}주\n"
+                    f"📍 1차 매수: ₩{actual_entry:,}  ×  {qty}주\n"
                     f"🎯 목표가: ₩{target:,}\n"
                     f"🛑 손절가: ₩{stop:,}\n"
-                    f"💰 주문금액: ₩{actual_cost:,}\n"
+                    f"💰 체결금액: ₩{actual_entry * qty:,}\n"
                     f"\n📋 <b>분할매수 미리보기</b>\n"
                     f"  2차: ₩{t2:,} ({t2_pct:.1f}%)\n"
                     f"  3차: ₩{t3:,} ({t3_pct:.1f}%)"
@@ -639,9 +713,30 @@ def morning_reorder():
             if order.get("order_no"):
                 status = client.get_order_status(order["order_no"], order["symbol"])
                 if status == "filled":
-                    _update_order(order["id"], status="active")
-                    print(f"[자동매매] {order['name']} 체결 확인 → active")
-                    _send_admin(f"✅ <b>매수 체결 확인</b>\n<b>{order['name']}</b> ₩{order['entry_price']:,} × {order['qty']}주")
+                    # 실제 체결가 조회 (2가지 방법)
+                    filled_price = client.get_filled_price(order["order_no"], order["symbol"])
+                    actual_price = int(filled_price) if filled_price > 0 else 0
+                    if actual_price == 0:
+                        try:
+                            bal = client.get_balance()
+                            code = order["symbol"].replace(".KS","").replace(".KQ","")
+                            h = bal.get("holdings",{}).get(code)
+                            if h and h.get("avg_price",0) > 0:
+                                actual_price = int(h["avg_price"])
+                        except:
+                            pass
+                    if actual_price == 0:
+                        actual_price = order["entry_price"]
+                    # 트리거 재계산
+                    ma240 = _get_ma240(order["symbol"])
+                    t2, t3 = _calc_split_triggers(actual_price, ma240) if ma240 else (int(actual_price*0.98), int(actual_price*0.96))
+                    _update_order(order["id"], status="active",
+                                  entry_price=actual_price,
+                                  avg_price=float(actual_price),
+                                  base_price=actual_price,
+                                  trigger2=t2, trigger3=t3)
+                    print(f"[자동매매] {order['name']} 체결 확인 → active (체결가 ₩{actual_price:,.0f})")
+                    _send_admin(f"✅ <b>매수 체결 확인</b>\n<b>{order['name']}</b> ₩{actual_price:,.0f} × {order['qty']}주")
                 elif status == "partial":
                     print(f"[자동매매] {order['name']} 부분 체결 - 대기 유지")
             continue
@@ -650,20 +745,73 @@ def morning_reorder():
         if order.get("order_no"):
             status = client.get_order_status(order["order_no"], order["symbol"])
             if status == "filled":
-                _update_order(order["id"], status="active")
-                print(f"[자동매매] {order['name']} 전날 체결 확인 → active")
-                _send_admin(f"✅ <b>매수 체결 확인</b>\n<b>{order['name']}</b> ₩{order['entry_price']:,} × {order['qty']}주")
+                filled_price = client.get_filled_price(order["order_no"], order["symbol"])
+                actual_price = int(filled_price) if filled_price > 0 else 0
+                if actual_price == 0:
+                    try:
+                        bal = client.get_balance()
+                        code = order["symbol"].replace(".KS","").replace(".KQ","")
+                        h = bal.get("holdings",{}).get(code)
+                        if h and h.get("avg_price",0) > 0:
+                            actual_price = int(h["avg_price"])
+                    except:
+                        pass
+                if actual_price == 0:
+                    actual_price = order["entry_price"]
+                ma240 = _get_ma240(order["symbol"])
+                t2, t3 = _calc_split_triggers(actual_price, ma240) if ma240 else (int(actual_price*0.98), int(actual_price*0.96))
+                _update_order(order["id"], status="active",
+                              entry_price=actual_price,
+                              avg_price=float(actual_price),
+                              base_price=actual_price,
+                              trigger2=t2, trigger3=t3)
+                print(f"[자동매매] {order['name']} 전날 체결 확인 → active (체결가 ₩{actual_price:,.0f})")
+                _send_admin(f"✅ <b>매수 체결 확인</b>\n<b>{order['name']}</b> ₩{actual_price:,.0f} × {order['qty']}주")
                 continue
             # 미체결이면 취소 후 재주문
             client.cancel_order(order["order_no"], order["symbol"], order["qty"])
 
         result = client.buy_order(order["symbol"], order["entry_price"], order["qty"], market=True)
         if result["success"]:
+            new_order_no = result.get("order_no", "")
             _update_order(order["id"],
                 alert_date=today,
-                order_no=result.get("order_no", ""),
+                order_no=new_order_no,
             )
-            print(f"[자동매매] {order['name']} 재주문 완료 (시장가)")
+            # 재주문도 시장가 → 잠시 후 실제 체결가 조회 (2가지 방법 병행)
+            time.sleep(2)
+            actual_price = order["entry_price"]  # 기본값
+
+            filled_price = client.get_filled_price(new_order_no, order["symbol"]) if new_order_no else 0
+            if filled_price > 0:
+                actual_price = int(filled_price)
+            else:
+                # 잔고 조회에서 평균매수가 (더 신뢰도 높음)
+                try:
+                    balance = client.get_balance()
+                    code = order["symbol"].replace(".KS", "").replace(".KQ", "")
+                    holding = balance.get("holdings", {}).get(code)
+                    if holding and holding.get("avg_price", 0) > 0:
+                        actual_price = int(holding["avg_price"])
+                except:
+                    pass
+
+            if actual_price != order["entry_price"]:
+                ma240 = _get_ma240(order["symbol"])
+                t2, t3 = _calc_split_triggers(actual_price, ma240) if ma240 else (int(actual_price * 0.98), int(actual_price * 0.96))
+                _update_order(order["id"],
+                    status="active",
+                    entry_price=actual_price,
+                    avg_price=float(actual_price),
+                    base_price=actual_price,
+                    trigger2=t2, trigger3=t3,
+                )
+                _send_admin(f"✅ <b>재주문 체결</b>\n<b>{order['name']}</b> ₩{actual_price:,.0f} × {order['qty']}주")
+                print(f"[자동매매] {order['name']} 재주문 체결 ₩{actual_price:,.0f}")
+            else:
+                # 체결가 조회 실패해도 active로는 전환
+                _update_order(order["id"], status="active")
+                print(f"[자동매매] {order['name']} 재주문 완료 (체결가 조회 실패 - 예상가 사용)")
         else:
             print(f"[자동매매] {order['name']} 재주문 실패")
 
