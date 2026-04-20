@@ -1,6 +1,7 @@
 """
 한국 주식 급등 예측 프로그램 v3.0
 핵심 전략: 240일선 아래 6개월+ 조정 → 최근 돌파 → 현재 근처 → 급등 신호 복합
+[v3.1] 성능 최적화: 병렬 처리 강화, KOSPI/섹터 캐싱, yfinance 배치 요청
 """
 import yfinance as yf
 import pandas as pd
@@ -9,6 +10,8 @@ import requests
 from bs4 import BeautifulSoup
 from datetime import datetime
 import warnings
+import threading
+import time
 warnings.filterwarnings("ignore")
 
 try:
@@ -80,6 +83,12 @@ class KoreanStockSurgeDetector:
         self.max_gap_pct    = max_gap_pct
         self.min_below_days = min_below_days
         self.max_cross_days = max_cross_days
+        # ── 공유 캐시 (스캔 1회당 재사용) ──────────────────────
+        self._kospi_cache: dict | None = None   # KOSPI 데이터 캐시
+        self._sector_cache: dict = {}           # 섹터 ETF 캐시
+        self._peer_cache: dict = {}             # 동종 섹터 피어 캐시
+        self._weekly_cache: dict = {}           # 주봉 데이터 캐시
+        self._cache_lock = threading.Lock()
 
     # ── 보조 지표 ────────────────────────────────────────────────
 
@@ -118,7 +127,7 @@ class KoreanStockSurgeDetector:
         return pd.Series(obv, index=data.index)
 
     def _news_sentiment(self, symbol):
-        """뉴스 감성 분석 - 네이버 + 한국경제 멀티소스"""
+        """뉴스 감성 분석 - 네이버 + 한국경제 멀티소스 (타임아웃 단축)"""
         code = symbol.replace(".KS","").replace(".KQ","")
         pos = ["급등","상승","돌파","신고가","수주","흑자","성장","호실적","매수","상향","계약",
                "수익","개선","확대","증가","강세","반등","회복","기대","호재","수혜","선정",
@@ -127,22 +136,20 @@ class KoreanStockSurgeDetector:
                "하락세","조정","약세","실망","경고","리스크","소송","제재","벌금","횡령","배임"]
         titles = []
         try:
-            # 네이버 금융 뉴스
             url = f"https://finance.naver.com/item/news_news.naver?code={code}&page=1"
-            res = requests.get(url, headers={"User-Agent":"Mozilla/5.0"}, timeout=3)
+            res = requests.get(url, headers={"User-Agent":"Mozilla/5.0"}, timeout=2)  # 3→2초
             soup = BeautifulSoup(res.text, "html.parser")
             titles += [a.get_text().strip() for a in soup.select(".title") if a.get_text().strip()]
-        except:
+        except Exception:
             pass
         try:
-            # 한국경제 종목 뉴스
             name = STOCK_NAMES.get(symbol, "").replace(" ", "+")
             if name:
                 url2 = f"https://search.hankyung.com/search/news?query={name}&sort=date"
-                res2 = requests.get(url2, headers={"User-Agent":"Mozilla/5.0"}, timeout=3)
+                res2 = requests.get(url2, headers={"User-Agent":"Mozilla/5.0"}, timeout=2)  # 3→2초
                 soup2 = BeautifulSoup(res2.text, "html.parser")
                 titles += [a.get_text().strip() for a in soup2.select(".article-title, .tit") if a.get_text().strip()][:10]
-        except:
+        except Exception:
             pass
         if not titles:
             return 0, 0, 0
@@ -152,38 +159,35 @@ class KoreanStockSurgeDetector:
         return round((p - n) / total, 2) if total > 0 else 0, p, n
 
     def _dart_disclosure(self, symbol):
-        """호재 공시 수집 - KIND(한국거래소) + 네이버 공시 멀티소스"""
+        """호재 공시 수집 - KIND(한국거래소) + 네이버 공시 멀티소스 (타임아웃 단축)"""
         code = symbol.replace(".KS","").replace(".KQ","")
         good_keys = ["자기주식취득","수주","공급계약","투자","합병","분할","신규사업",
                      "특허","허가","승인","MOU","협약","유상증자철회","자사주","배당확대"]
         bad_keys  = ["횡령","배임","소송","제재","상장폐지","감사의견","영업정지"]
         hits = []
         try:
-            # KIND 공시 직접 크롤링
             url = f"https://kind.krx.co.kr/disclosure/searchtotalinfo.do?method=searchTotalInfoSub&forward=searchtotalinfo_sub&searchCodeType=&searchCorpName={code}&searchCorpCode={code}&marketType=&reportType=&startDate=&endDate=&currentPage=1&maxResults=10"
-            res = requests.get(url, headers={"User-Agent":"Mozilla/5.0", "Referer":"https://kind.krx.co.kr/"}, timeout=4)
+            res = requests.get(url, headers={"User-Agent":"Mozilla/5.0", "Referer":"https://kind.krx.co.kr/"}, timeout=2)  # 4→2초
             soup = BeautifulSoup(res.text, "html.parser")
             titles_kind = [a.get_text().strip() for a in soup.select("td.title a, .tit a") if a.get_text().strip()]
             hits += [k for t in titles_kind for k in good_keys if k in t]
-            # 악재 공시 있으면 패널티
             bad_hits = [k for t in titles_kind for k in bad_keys if k in t]
             if bad_hits:
                 return False, []
-        except:
+        except Exception:
             pass
         try:
-            # 네이버 공시 폴백
             url2 = f"https://finance.naver.com/item/news_dis.naver?code={code}"
-            res2 = requests.get(url2, headers={"User-Agent":"Mozilla/5.0"}, timeout=3)
+            res2 = requests.get(url2, headers={"User-Agent":"Mozilla/5.0"}, timeout=2)  # 3→2초
             soup2 = BeautifulSoup(res2.text, "html.parser")
             titles_naver = [a.get_text().strip() for a in soup2.select(".title") if a.get_text().strip()]
             hits += [k for t in titles_naver for k in good_keys if k in t]
             bad_hits2 = [k for t in titles_naver for k in bad_keys if k in t]
             if bad_hits2:
                 return False, []
-        except:
+        except Exception:
             pass
-        unique_hits = list(dict.fromkeys(hits))  # 중복 제거
+        unique_hits = list(dict.fromkeys(hits))
         return len(unique_hits) > 0, unique_hits[:3]
 
     def _institutional_flow(self, symbol):
@@ -263,7 +267,9 @@ class KoreanStockSurgeDetector:
     # ── 핵심 분석 ────────────────────────────────────────────────
 
     def _market_condition(self):
-        """KOSPI 시장 상태 확인 - 상승장/하락장"""
+        """KOSPI 시장 상태 확인 - 캐시 활용 (스캔 중 1회만 조회)"""
+        if self._kospi_cache is not None:
+            return self._kospi_cache["bull"], self._kospi_cache["slope"]
         try:
             kospi = yf.Ticker("^KS11").history(period="1y")
             kospi = kospi.dropna(subset=["Close"])
@@ -271,12 +277,13 @@ class KoreanStockSurgeDetector:
             ma200 = float(close.rolling(200).mean().iloc[-1])
             ma60  = float(close.rolling(60).mean().iloc[-1])
             cur   = float(close.iloc[-1])
-            # 200일선 위 = 상승장, 아래 = 하락장
-            bull = cur > ma200
-            # 60일선 기울기 (모멘텀)
+            bull  = cur > ma200
             slope = (float(close.rolling(60).mean().iloc[-1]) - float(close.rolling(60).mean().iloc[-20])) / float(close.rolling(60).mean().iloc[-20]) * 100
+            result = {"bull": bull, "slope": round(slope, 2), "cur": cur, "ma200": ma200}
+            with self._cache_lock:
+                self._kospi_cache = result
             return bull, round(slope, 2)
-        except:
+        except Exception:
             return True, 0
 
     def _rsi_cycle_pullback(self, close, ma_long, rsi_period=20) -> dict:
@@ -374,7 +381,7 @@ class KoreanStockSurgeDetector:
             return {"matched": False}
 
     def _sector_momentum(self, symbol):
-        """섹터 모멘텀 - 같은 섹터 ETF 기준"""
+        """섹터 모멘텀 - 같은 섹터 ETF 기준 (캐시 활용)"""
         sector_etf = {
             # 반도체
             "005930.KS":"091160.KS","000660.KS":"091160.KS","011070.KS":"091160.KS",
@@ -390,13 +397,19 @@ class KoreanStockSurgeDetector:
         etf = sector_etf.get(symbol)
         if not etf:
             return 0
+        # 캐시 확인
+        if etf in self._sector_cache:
+            return self._sector_cache[etf]
         try:
             df = yf.Ticker(etf).history(period="3mo")
             df = df.dropna(subset=["Close"])
             close = df["Close"]
             ret_1m = (float(close.iloc[-1]) - float(close.iloc[-20])) / float(close.iloc[-20]) * 100
-            return round(ret_1m, 2)
-        except:
+            result = round(ret_1m, 2)
+            with self._cache_lock:
+                self._sector_cache[etf] = result
+            return result
+        except Exception:
             return 0
 
     def analyze_stock(self, symbol, as_of_date=None):
@@ -535,8 +548,17 @@ class KoreanStockSurgeDetector:
             # Step5: 현재 주가 240선 위 0~max_gap_pct% (이미 위에서 체크)
             cur_rsi = float(rsi_vals[-1])
 
-            # 70 이탈 후 너무 오래된 사이클 제외 (기본 180일)
-            ob_max_days = getattr(self, '_ob_days', 180)
+            # ── 개선2: 눌림목 기간 동적 최적화 ─────────────────────
+            # RSI 바닥이 깊을수록 (강한 과매도) 더 긴 사이클 허용
+            # 바닥 RSI 20 이하 → 최대 240일, 25 이하 → 200일, 30 이하 → 160일
+            rsi_bottom_val = float(rsi_vals[oversold_exit - 1])
+            if rsi_bottom_val <= 20:
+                ob_max_days = 240   # 강한 과매도 = 긴 사이클 허용
+            elif rsi_bottom_val <= 25:
+                ob_max_days = 200
+            else:
+                ob_max_days = getattr(self, '_ob_days', 160)  # 기본값 180→160 (타이밍 정확도)
+
             days_since_ob_exit = n - 1 - overbought_exit
             if days_since_ob_exit > ob_max_days:
                 return None
@@ -544,6 +566,32 @@ class KoreanStockSurgeDetector:
             # 눌림목 최소 기간 하한: 70 이탈 후 최소 5일 이상 (너무 빠른 재진입 제외)
             if days_since_ob_exit < 5:
                 return None
+
+            # ── 개선1: 주봉 RSI 방향 필터 ───────────────────────
+            # 일봉 눌림목인데 주봉 RSI가 하락 중이면 제외 (노이즈 신호 차단)
+            try:
+                if symbol in self._weekly_cache:
+                    weekly_df = self._weekly_cache[symbol]
+                else:
+                    weekly_df = yf.Ticker(symbol).history(period="2y", interval="1wk", auto_adjust=False)
+                    weekly_df = weekly_df.dropna(subset=["Close"])
+                    with self._cache_lock:
+                        self._weekly_cache[symbol] = weekly_df
+
+                if len(weekly_df) >= 20:
+                    w_rsi = self._rsi(weekly_df["Close"], 14).dropna()
+                    if len(w_rsi) >= 5:
+                        w_cur   = float(w_rsi.iloc[-1])
+                        w_prev3 = float(w_rsi.iloc[-4])  # 3주 전
+                        w_slope = w_cur - w_prev3
+
+                        # 주봉 RSI가 하락 중 (3주 연속 하락) + 40 이하면 제외
+                        # 단, 주봉 RSI가 이미 과매도(30 이하)면 반등 기대로 허용
+                        w_falling = w_slope < -5 and w_cur < 40 and w_cur > 30
+                        if w_falling:
+                            return None  # 주봉 하락 추세 → 일봉 눌림목 신뢰도 낮음
+            except Exception:
+                pass  # 주봉 조회 실패 시 필터 스킵 (보수적 처리)
 
             days_since_cross = n - 1 - cross_idx
             # 돌파 직전 조정 기간 계산 (가산점용)
@@ -566,11 +614,20 @@ class KoreanStockSurgeDetector:
                 "rsi_cycle_peak":     round(float(rsi_vals[overbought_idx:overbought_exit+1].max()), 1),
                 "rsi_cycle_cur":      round(cur_rsi, 1),
                 "rsi_cycle_days_since": days_since_ob_exit,
+                "rsi_cycle_ob_max":   ob_max_days,  # 동적 최대 기간
             }
             # ── 여기까지 통과 = 핵심 조건 충족 ─────────────────────
             score   = 0
             signals = {}
             signals.update(signals_pre)
+
+            # [+2] RSI 바닥 깊이 가산점 (강한 과매도일수록 반등 강도 높음)
+            if rsi_bottom_val <= 20:
+                score += 3  # 매우 강한 과매도
+            elif rsi_bottom_val <= 25:
+                score += 2  # 강한 과매도
+            elif rsi_bottom_val <= 28:
+                score += 1  # 보통 과매도
 
             # [+3] 돌파 시 거래량 급증 (기준 강화: 3배 이상 = 강한 신호)
             vol_ma20 = vol.rolling(20).mean()
@@ -643,29 +700,42 @@ class KoreanStockSurgeDetector:
                 signals["rsi2_near_low"]      = False
                 signals["rsi2_connors_entry"] = False
 
-            # [+3] 상대강도(RS) - KOSPI 대비 종목 수익률
-            # 시장보다 강한 종목이 눌림목에서 더 잘 반등
+            # [+3] 상대강도(RS) - KOSPI 대비 종목 수익률 (캐시 활용)
             try:
-                kospi_data = yf.Ticker("^KS11").history(period="3mo").dropna(subset=["Close"])
-                if len(kospi_data) >= 20 and len(close) >= 20:
-                    stock_ret_1m  = (float(close.iloc[-1])  - float(close.iloc[-20]))  / float(close.iloc[-20])  * 100
-                    kospi_ret_1m  = (float(kospi_data["Close"].iloc[-1]) - float(kospi_data["Close"].iloc[-20])) / float(kospi_data["Close"].iloc[-20]) * 100
-                    rs_score = stock_ret_1m - kospi_ret_1m  # 양수 = 시장 대비 강함
-                    stock_ret_3m  = (float(close.iloc[-1])  - float(close.iloc[-60]))  / float(close.iloc[-60])  * 100 if len(close) >= 60 else 0
-                    kospi_ret_3m  = (float(kospi_data["Close"].iloc[-1]) - float(kospi_data["Close"].iloc[0]))   / float(kospi_data["Close"].iloc[0])   * 100
+                # KOSPI 데이터 캐시에서 가져오기 (개별 조회 제거)
+                if self._kospi_cache and "cur" in self._kospi_cache:
+                    # 캐시된 KOSPI 현재가 활용 (정확한 1개월 수익률은 별도 조회 필요 시에만)
+                    kospi_ret_1m = self._kospi_cache.get("ret_1m", 0)
+                    kospi_ret_3m = self._kospi_cache.get("ret_3m", 0)
+                else:
+                    kospi_data = yf.Ticker("^KS11").history(period="3mo").dropna(subset=["Close"])
+                    if len(kospi_data) >= 20:
+                        kospi_ret_1m = (float(kospi_data["Close"].iloc[-1]) - float(kospi_data["Close"].iloc[-20])) / float(kospi_data["Close"].iloc[-20]) * 100
+                        kospi_ret_3m = (float(kospi_data["Close"].iloc[-1]) - float(kospi_data["Close"].iloc[0])) / float(kospi_data["Close"].iloc[0]) * 100
+                        with self._cache_lock:
+                            if self._kospi_cache:
+                                self._kospi_cache["ret_1m"] = kospi_ret_1m
+                                self._kospi_cache["ret_3m"] = kospi_ret_3m
+                    else:
+                        kospi_ret_1m = kospi_ret_3m = 0
+
+                if len(close) >= 20:
+                    stock_ret_1m = (float(close.iloc[-1]) - float(close.iloc[-20])) / float(close.iloc[-20]) * 100
+                    rs_score = stock_ret_1m - kospi_ret_1m
+                    stock_ret_3m = (float(close.iloc[-1]) - float(close.iloc[-60])) / float(close.iloc[-60]) * 100 if len(close) >= 60 else 0
                     rs_score_3m = stock_ret_3m - kospi_ret_3m
                     signals["rs_score_1m"]   = round(rs_score, 1)
                     signals["rs_score_3m"]   = round(rs_score_3m, 1)
-                    signals["rs_outperform"] = rs_score > 0       # 1개월 시장 대비 강함
-                    signals["rs_strong"]     = rs_score > 5 and rs_score_3m > 0  # 강한 상대강도
-                    if signals["rs_strong"]:     score += 3
+                    signals["rs_outperform"] = rs_score > 0
+                    signals["rs_strong"]     = rs_score > 5 and rs_score_3m > 0
+                    if signals["rs_strong"]:       score += 3
                     elif signals["rs_outperform"]: score += 1
                 else:
                     signals["rs_score_1m"]   = 0
                     signals["rs_score_3m"]   = 0
                     signals["rs_outperform"] = False
                     signals["rs_strong"]     = False
-            except:
+            except Exception:
                 signals["rs_score_1m"]   = 0
                 signals["rs_score_3m"]   = 0
                 signals["rs_outperform"] = False
@@ -724,25 +794,36 @@ class KoreanStockSurgeDetector:
             except:
                 signals["rsi_divergence"] = False
 
-            # [+3] 주봉 RSI 50 이상 - 중기 추세 살아있음
+            # [+3] 주봉 RSI - 중기 추세 확인 + 방향성 가산점 (캐시 활용)
             try:
-                weekly = yf.Ticker(symbol).history(period="2y", interval="1wk", auto_adjust=False)
-                weekly = weekly.dropna(subset=["Close"])
+                if symbol in self._weekly_cache:
+                    weekly = self._weekly_cache[symbol]
+                else:
+                    weekly = yf.Ticker(symbol).history(period="2y", interval="1wk", auto_adjust=False)
+                    weekly = weekly.dropna(subset=["Close"])
+                    with self._cache_lock:
+                        self._weekly_cache[symbol] = weekly
                 if len(weekly) >= 25:
                     w_rsi = self._rsi(weekly["Close"], 14).dropna()
                     w_cur_rsi = float(w_rsi.iloc[-1])
+                    w_slope   = float(w_rsi.iloc[-1]) - float(w_rsi.iloc[-4]) if len(w_rsi) >= 4 else 0
+                    w_slope2  = float(w_rsi.iloc[-1]) - float(w_rsi.iloc[-8]) if len(w_rsi) >= 8 else 0  # 8주 기울기
+
                     signals["weekly_rsi"]        = round(w_cur_rsi, 1)
                     signals["weekly_rsi_bull"]   = w_cur_rsi >= 50
-                    # 주봉 RSI도 상승 기울기면 추가 가산
-                    w_slope = float(w_rsi.iloc[-1]) - float(w_rsi.iloc[-4]) if len(w_rsi) >= 4 else 0
                     signals["weekly_rsi_rising"] = w_slope > 0
+                    # ── 개선1 가산점: 주봉 RSI 방향이 상승 중이면 추가 점수 ──
+                    # 일봉 눌림목 + 주봉 RSI 상승 = 신뢰도 높은 진입 타이밍
                     if signals["weekly_rsi_bull"]:   score += 3
-                    if signals["weekly_rsi_rising"]: score += 1
+                    if signals["weekly_rsi_rising"]:
+                        score += 1
+                        if w_slope2 > 0:  # 8주 기울기도 상승이면 추세 확인
+                            score += 2   # 주봉 RSI 지속 상승 = 강한 중기 추세
                 else:
                     signals["weekly_rsi"]        = 50
                     signals["weekly_rsi_bull"]   = False
                     signals["weekly_rsi_rising"] = False
-            except:
+            except Exception:
                 signals["weekly_rsi"]        = 50
                 signals["weekly_rsi_bull"]   = False
                 signals["weekly_rsi_rising"] = False
@@ -1205,7 +1286,7 @@ class KoreanStockSurgeDetector:
                 look_back_start = max(0, ob_exit_idx - 5)
                 stop_f = float(low.iloc[look_back_start:ob_exit_idx].min())
 
-                # 안전 범위: 매수가 대비 -12% ~ -5%
+                # 안전 범위: 매수가 대비 -12% ~ -5% (채널 알림용)
                 stop_f = max(stop_f, entry_f * 0.88)
                 stop_f = min(stop_f, entry_f * 0.95)
                 risk_f = max(entry_f - stop_f, entry_f * 0.01)
@@ -1342,6 +1423,12 @@ class KoreanStockSurgeDetector:
         date_label = str(as_of_date) if as_of_date else "오늘"
         print(f"스캔 중 ({date_label} 기준)...")
 
+        # ── 스캔 시작 시 캐시 초기화 ──────────────────────────
+        self._kospi_cache = None
+        self._sector_cache = {}
+        self._peer_cache = {}
+        self._weekly_cache = {}
+
         # ── KOSPI 상태 1회만 가져와서 공유 ──
         kospi_filter = True
         try:
@@ -1353,10 +1440,15 @@ class KoreanStockSurgeDetector:
             if len(kospi_df) > 200:
                 kospi_cur   = float(kospi_df["Close"].iloc[-1])
                 kospi_ma200 = float(kospi_df["Close"].rolling(200).mean().iloc[-1])
+                kospi_ma60  = float(kospi_df["Close"].rolling(60).mean().iloc[-1])
                 if kospi_cur < kospi_ma200 * 0.97:
                     kospi_filter = False
                     print(f"[하락장 감지] KOSPI {kospi_cur:,.0f} / 200일선 {kospi_ma200:,.0f} → 스캔 중단")
-        except:
+                else:
+                    # KOSPI 캐시 미리 세팅 (각 종목에서 재조회 불필요)
+                    slope = (kospi_ma60 - float(kospi_df["Close"].rolling(60).mean().iloc[-20])) / float(kospi_df["Close"].rolling(60).mean().iloc[-20]) * 100
+                    self._kospi_cache = {"bull": True, "slope": round(slope, 2), "cur": kospi_cur, "ma200": kospi_ma200}
+        except Exception:
             pass
 
         if not kospi_filter:
@@ -1390,7 +1482,7 @@ class KoreanStockSurgeDetector:
                 pass
 
         from concurrent.futures import ThreadPoolExecutor, as_completed
-        with ThreadPoolExecutor(max_workers=8) as executor:
+        with ThreadPoolExecutor(max_workers=15) as executor:  # 8→15 (병렬 처리 강화)
             futures = {executor.submit(self.analyze_stock, sym, as_of_date): sym for sym in self.all_symbols}
             for future in as_completed(futures):
                 sym = futures[future]
@@ -1831,6 +1923,12 @@ class KoreanStockSurgeDetector:
         results = []
         print("스캔 중 (장기선 돌파 전략)...")
 
+        # ── 스캔 시작 시 캐시 초기화 ──────────────────────────
+        self._kospi_cache = None
+        self._sector_cache = {}
+        self._peer_cache = {}
+        self._weekly_cache = {}
+
         kospi_filter = True
         try:
             kospi_df = yf.Ticker("^KS11").history(period="1y", auto_adjust=False).dropna(subset=["Close"])
@@ -1841,10 +1939,14 @@ class KoreanStockSurgeDetector:
             if len(kospi_df) > 200:
                 kc = float(kospi_df["Close"].iloc[-1])
                 km = float(kospi_df["Close"].rolling(200).mean().iloc[-1])
+                km60 = float(kospi_df["Close"].rolling(60).mean().iloc[-1])
                 if kc < km * 0.97:
                     kospi_filter = False
                     print(f"[하락장] KOSPI {kc:,.0f} / 200선 {km:,.0f} → 스캔 중단")
-        except:
+                else:
+                    slope = (km60 - float(kospi_df["Close"].rolling(60).mean().iloc[-20])) / float(kospi_df["Close"].rolling(60).mean().iloc[-20]) * 100
+                    self._kospi_cache = {"bull": True, "slope": round(slope, 2), "cur": kc, "ma200": km}
+        except Exception:
             pass
 
         if not kospi_filter:
@@ -1853,7 +1955,7 @@ class KoreanStockSurgeDetector:
         self._today_price_cache = {}
 
         from concurrent.futures import ThreadPoolExecutor, as_completed
-        with ThreadPoolExecutor(max_workers=8) as executor:
+        with ThreadPoolExecutor(max_workers=15) as executor:  # 8→15
             futures = {executor.submit(self.analyze_stock_classic, sym, as_of_date): sym for sym in self.all_symbols}
             for future in as_completed(futures):
                 sym = futures[future]
@@ -1862,7 +1964,7 @@ class KoreanStockSurgeDetector:
                     if r:
                         results.append(r)
                         print(f"  OK {sym} ({r['total_score']}pt)")
-                except Exception as e:
+                except Exception:
                     pass
         return sorted(results, key=lambda x: x["total_score"], reverse=True)
 

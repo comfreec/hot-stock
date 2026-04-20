@@ -558,16 +558,14 @@ def place_orders(results: list):
         lv = {}
         try:
             _conn = _db_conn()
-            # 오늘 또는 어제 날짜로 조회 (스캔 날짜 기준)
             _row = _conn.execute(
                 "SELECT entry_price, target_price, stop_price FROM alert_history "
                 "WHERE symbol=? ORDER BY id DESC LIMIT 1",
                 (symbol,)
             ).fetchone()
-            _conn.close()
             if _row:
                 lv = {"entry": _row[0], "target": _row[1], "stop": _row[2]}
-        except:
+        except Exception:
             pass
 
         if not lv.get("entry") or not lv.get("target") or not lv.get("stop"):
@@ -576,7 +574,35 @@ def place_orders(results: list):
 
         entry  = int(lv["entry"])
         target = int(lv["target"])
-        stop   = int(lv["stop"])
+
+        # ── 자동매매 전용 손절가: RSI(20) 30 돌파 직전 5일 저가 ──
+        # 채널 알림 손절가(240선 -5%)와 별도로 계산 (whipsaw 방지)
+        try:
+            import yfinance as _yf
+            _df = _yf.Ticker(symbol).history(period="2y", auto_adjust=False).dropna(subset=["Close","Low"])
+            _close = _df["Close"]
+            _low   = _df["Low"]
+            _n     = len(_close)
+            # RSI 계산
+            _d = _close.diff()
+            _gain = _d.where(_d > 0, 0.0).ewm(alpha=1/20, min_periods=20, adjust=False).mean()
+            _loss = (-_d.where(_d < 0, 0.0)).ewm(alpha=1/20, min_periods=20, adjust=False).mean()
+            _rsi  = (100 - 100 / (1 + _gain / _loss.replace(0, float("nan")))).fillna(50)
+            _rsi_vals = _rsi.values
+            # RSI 30 돌파 시점 중 가장 최근 것
+            _oversold_exit = None
+            for _i in range(1, _n):
+                if _rsi_vals[_i-1] <= 30 and _rsi_vals[_i] > 30:
+                    _oversold_exit = _i
+            if _oversold_exit is not None:
+                _lb = max(0, _oversold_exit - 5)
+                stop = int(float(_low.iloc[_lb:_oversold_exit].min()))
+                print(f"[자동매매] {name} 손절가 RSI바닥 저점 적용: ₩{stop:,}")
+            else:
+                stop = int(lv["stop"])  # RSI 패턴 없으면 스캔 손절가 사용
+        except Exception as _e:
+            print(f"[자동매매] {name} RSI 손절가 계산 실패 ({_e}) → 스캔 손절가 사용")
+            stop = int(lv["stop"])
 
         if cash < budget * 0.8:
             print(f"[자동매매] 예수금 부족 ({cash:,.0f}원) - 주문 중단")

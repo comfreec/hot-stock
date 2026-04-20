@@ -2,6 +2,7 @@
 SQLite 기반 스캔 결과 캐싱 + 스케줄러
 - 장 마감 후 자동 스캔 결과 저장
 - 앱에서 캐시된 결과 즉시 로드 (yfinance 재호출 없음)
+- [v2] WAL 모드 + 연결 풀 + 초기화 1회만 수행
 """
 import sqlite3
 import json
@@ -12,13 +13,21 @@ import threading
 import os as _os
 _data_path = "/data/scan_cache.db"
 _local_path = _os.path.join(_os.path.dirname(__file__), "scan_cache.db")
-# scheduler는 /data 볼륨 마운트됨, web은 /data 없으면 로컬 경로 (빈 DB)
 DB_PATH = _os.environ.get("DB_PATH",
     _data_path if _os.path.isdir("/data") else _local_path
 )
 
-def _get_conn():
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+# ── 연결 풀 (스레드별 전용 연결) ────────────────────────────────
+_local = threading.local()
+_db_initialized = False
+_init_lock = threading.Lock()
+
+
+def _init_db(conn):
+    """테이블 생성 및 마이그레이션 - 최초 1회만"""
+    conn.execute("PRAGMA journal_mode=WAL")   # WAL 모드: 동시 읽기 성능 향상
+    conn.execute("PRAGMA synchronous=NORMAL") # 안전성 유지하면서 속도 개선
+    conn.execute("PRAGMA cache_size=-8000")   # 8MB 캐시
     conn.execute("""
         CREATE TABLE IF NOT EXISTS scan_results (
             scan_date TEXT PRIMARY KEY,
@@ -45,7 +54,7 @@ def _get_conn():
             target_price REAL,
             stop_price  REAL,
             rr_ratio    REAL,
-            status      TEXT DEFAULT 'active',  -- active / hit_target / hit_stop / expired
+            status      TEXT DEFAULT 'active',
             exit_price  REAL,
             exit_date   TEXT,
             return_pct  REAL,
@@ -55,12 +64,28 @@ def _get_conn():
         )
     """)
     conn.commit()
-    # 기존 DB 마이그레이션
+    # 마이그레이션
     existing_cols = [r[1] for r in conn.execute("PRAGMA table_info(alert_history)").fetchall()]
     for col, default in [("avg_price", "NULL"), ("split_step", "1")]:
         if col not in existing_cols:
             conn.execute(f"ALTER TABLE alert_history ADD COLUMN {col} {'REAL' if col == 'avg_price' else 'INTEGER'} DEFAULT {default}")
     conn.commit()
+
+
+def _get_conn():
+    """스레드별 전용 연결 반환 (연결 풀 방식)"""
+    global _db_initialized
+    conn = getattr(_local, "conn", None)
+    if conn is None:
+        conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+        conn.row_factory = sqlite3.Row
+        _local.conn = conn
+    # 초기화는 전역 1회만
+    if not _db_initialized:
+        with _init_lock:
+            if not _db_initialized:
+                _init_db(conn)
+                _db_initialized = True
     return conn
 
 # ── 스캔 결과 저장/로드 ───────────────────────────────────────────
@@ -75,7 +100,6 @@ def save_scan(results: list, scan_date: str = None):
          datetime.now().isoformat())
     )
     conn.commit()
-    conn.close()
 
 def load_scan(scan_date: str = None) -> list:
     """저장된 스캔 결과 로드"""
@@ -85,7 +109,6 @@ def load_scan(scan_date: str = None) -> list:
     row = conn.execute(
         "SELECT results FROM scan_results WHERE scan_date=?", (scan_date,)
     ).fetchone()
-    conn.close()
     return json.loads(row[0]) if row else []
 
 def list_scan_dates() -> list:
@@ -94,7 +117,6 @@ def list_scan_dates() -> list:
     rows = conn.execute(
         "SELECT scan_date, created_at FROM scan_results ORDER BY scan_date DESC LIMIT 30"
     ).fetchall()
-    conn.close()
     return [{"date": r[0], "created_at": r[1]} for r in rows]
 
 # ── 즐겨찾기 ─────────────────────────────────────────────────────
@@ -106,17 +128,15 @@ def add_favorite(symbol: str, name: str):
             (symbol, name, datetime.now().isoformat())
         )
         conn.commit()
-        conn.close()
-    except:
-        pass  # DB 없으면 session_state로 폴백 (호출부에서 처리)
+    except Exception:
+        pass
 
 def remove_favorite(symbol: str):
     try:
         conn = _get_conn()
         conn.execute("DELETE FROM favorites WHERE symbol=?", (symbol,))
         conn.commit()
-        conn.close()
-    except:
+    except Exception:
         pass
 
 def get_favorites() -> list:
@@ -125,18 +145,16 @@ def get_favorites() -> list:
         rows = conn.execute(
             "SELECT symbol, name, added_at FROM favorites ORDER BY added_at DESC"
         ).fetchall()
-        conn.close()
         return [{"symbol": r[0], "name": r[1], "added_at": r[2]} for r in rows]
-    except:
+    except Exception:
         return []
 
 def is_favorite(symbol: str) -> bool:
     try:
         conn = _get_conn()
         row = conn.execute("SELECT 1 FROM favorites WHERE symbol=?", (symbol,)).fetchone()
-        conn.close()
         return row is not None
-    except:
+    except Exception:
         return False
 
 # ── 성과 추적 ────────────────────────────────────────────────────
@@ -188,7 +206,6 @@ def get_alert_history(limit: int = 60) -> list:
         ORDER BY alert_date DESC, score DESC
         LIMIT ?
     """, (limit,)).fetchall()
-    conn.close()
     keys = ["id","alert_date","symbol","name","score",
             "entry_price","entry_label","target_price","stop_price","rr_ratio",
             "status","exit_price","exit_date","return_pct","created_at",
@@ -324,7 +341,6 @@ def get_performance_summary(date_from: str = None, date_to: str = None) -> dict:
         if date_to:
             count_where += " AND alert_date <= ?"; count_params.append(date_to)
     counts = dict(conn.execute(f"SELECT status, COUNT(*) FROM alert_history {count_where} GROUP BY status", count_params).fetchall())
-    conn.close()
 
     wins    = [r[1] for r in closed_rows if r[0] == 'hit_target' and r[1] is not None]
     losses  = [r[1] for r in closed_rows if r[0] == 'hit_stop'   and r[1] is not None]
@@ -363,7 +379,6 @@ def get_alert_history_range(date_from: str = None, date_to: str = None, limit: i
         ORDER BY alert_date DESC, score DESC
         LIMIT ?
     """, params).fetchall()
-    conn.close()
     keys = ["id","alert_date","symbol","name","score",
             "entry_price","entry_label","target_price","stop_price","rr_ratio",
             "status","exit_price","exit_date","return_pct","created_at",
@@ -387,7 +402,6 @@ def get_monthly_stats() -> list:
         GROUP BY month
         ORDER BY month ASC
     """).fetchall()
-    conn.close()
     result = []
     for r in rows:
         month, total, wins, losses, expired, avg_ret, total_ret = r
@@ -408,7 +422,6 @@ def get_available_date_range() -> tuple:
     """DB에 저장된 최초/최근 날짜 반환"""
     conn = _get_conn()
     row = conn.execute("SELECT MIN(alert_date), MAX(alert_date) FROM alert_history").fetchone()
-    conn.close()
     return row[0], row[1]
 
 def get_recent_closed(limit: int = 5) -> list:
@@ -421,7 +434,6 @@ def get_recent_closed(limit: int = 5) -> list:
         ORDER BY exit_date DESC
         LIMIT ?
     """, (limit,)).fetchall()
-    conn.close()
     return [{"name": r[0], "status": r[1], "return_pct": r[2],
              "exit_date": r[3], "entry_price": r[4], "target_price": r[5]} for r in rows]
 
@@ -442,7 +454,6 @@ def save_app_setting(key: str, value: str):
         (key, value, datetime.now().isoformat())
     )
     conn.commit()
-    conn.close()
 
 
 def load_app_setting(key: str, default: str = "") -> str:
@@ -457,9 +468,8 @@ def load_app_setting(key: str, default: str = "") -> str:
             )
         """)
         row = conn.execute("SELECT value FROM app_settings WHERE key=?", (key,)).fetchone()
-        conn.close()
         return row[0] if row else default
-    except:
+    except Exception:
         return default
 
 # ── 백그라운드 자동 스캔 스케줄러 ────────────────────────────────
