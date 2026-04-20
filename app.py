@@ -1319,16 +1319,17 @@ if mode == "🔍 급등 예고 종목 탐지":
             # 테이블
             rows = []
             for r in results:
-                s = r["signals"]
+                s = r.get("signals", {})
+                pct = r.get("price_change_1d", 0) or 0
                 rows.append({
                     "종목명":     r["name"],
                     "종목코드":   r["symbol"],
                     "현재가":     f"₩{r['current_price']:,.0f}",
-                    "등락률":     f"{'🔺' if r['price_change_1d']>0 else '🔽'}{r['price_change_1d']:.2f}%",
+                    "등락률":     f"{'🔺' if pct>0 else '🔽'}{pct:.2f}%",
                     "240일선":    f"₩{r['ma240']:,.0f}" if r.get('ma240') else "-",
                     "240선이격":  f"+{r['ma240_gap']:.1f}%" if r.get('ma240_gap') is not None else "-",
-                    "R-cycle이탈": f"{r.get('signals',{}).get('rsi_cycle_days_since','-')}일 전",
-                    "R-cycle":    r["rsi"],
+                    "R-cycle이탈": f"{s.get('rsi_cycle_days_since','-')}일 전",
+                    "R-cycle":    r.get("rsi", "-"),
                     "종합점수":   r["total_score"],
                     "원점수":     r.get("raw_score", r["total_score"]),
                     "핵심신호":   f"{r.get('core_signal_count', 0)}개",
@@ -1379,8 +1380,9 @@ if mode == "🔍 급등 예고 종목 탐지":
                 medal = medals[i] if i < 3 else "rank-card"
                 icon  = icons[i]  if i < 3 else f"{i+1}."
                 pct   = r["total_score"] / 28 * 100
-                color = "#ff3355" if r["price_change_1d"] > 0 else "#4f8ef7"
-                arrow = "▲" if r["price_change_1d"] > 0 else "▼"
+                _pct1d = r.get("price_change_1d") or 0
+                color = "#ff3355" if _pct1d > 0 else "#4f8ef7"
+                arrow = "▲" if _pct1d > 0 else "▼"
 
                 # 스파크라인 제거 (렌더링 충돌 방지)
                 spark_svg = ""
@@ -1409,7 +1411,7 @@ if mode == "🔍 급등 예고 종목 탐지":
                     <div style="display:flex;align-items:center;gap:12px;">
                       <div style="text-align:right;">
                         <span style="color:#fff;font-size:clamp(14px,3vw,20px);font-weight:700;">₩{display_price:,.0f}</span>
-                        <span style="color:{color};font-size:14px;margin-left:8px;">{arrow} {abs(r["price_change_1d"]):.2f}%</span>
+                        <span style="color:{color};font-size:14px;margin-left:8px;">{arrow} {abs(_pct1d):.2f}%</span>
                       </div>
                     </div>
                   </div>
@@ -1440,7 +1442,7 @@ if mode == "🔍 급등 예고 종목 탐지":
 
                 if True:  # 바로 표시
                     m1,m2,m3,m4,m5 = st.columns(5)
-                    m1.metric("R-cycle(20)", f"{r['rsi']:.1f}")
+                    m1.metric("R-cycle(20)", f"{r.get('rsi', 0):.1f}")
                     m2.metric("240선 이격", f"+{r['ma240_gap']:.1f}%" if r.get('ma240_gap') is not None else "-")
                     m3.metric("R-cycle 70이탈", f"{r.get('signals',{}).get('rsi_cycle_days_since','-')}일 전")
                     m4.metric("240일선", f"₩{r['ma240']:,.0f}" if r.get('ma240') else "-")
@@ -1449,7 +1451,7 @@ if mode == "🔍 급등 예고 종목 탐지":
                     supply_label = "🔥 기관+외국인" if r.get("both_buying") else ("✅ 수급있음" if r.get("smart_money_in") else "❌ 수급없음")
                     st.caption(f"수급: {supply_label}  |  핵심신호: {r.get('core_signal_count',0)}개  |  거래량배수: {r.get('vol_ratio',0):.1f}배")
 
-                    s = r["signals"]
+                    s = r.get("signals", {})
                     active = []
                     if s.get("vol_strong_cross"):       active.append(f"🚀 돌파 시 거래량 폭발 ({s['cross_vol_ratio']:.1f}배 - 강한 돌파)")
                     elif s.get("vol_at_cross"):         active.append(f"📦 돌파 시 거래량 급증 ({s['cross_vol_ratio']:.1f}배)")
@@ -1501,7 +1503,7 @@ if mode == "🔍 급등 예고 종목 탐지":
                                 "Volume": r.get("volume_series", pd.Series(0, index=close_s.index))
                             })
                             cross_date = None
-                            if r["days_since_cross"] < len(close_s):
+                            if r.get("days_since_cross") is not None and r["days_since_cross"] < len(close_s):
                                 cross_date = close_s.index[-(r["days_since_cross"]+1)]
                             _c1 = make_candle(cd, f"{r['name']} ({r['symbol']})", cross_date=cross_date)
                             st.plotly_chart(_c1, config={"scrollZoom":False,"displayModeBar":False,"staticPlot":True}, width='stretch', key=f"candle_{r['symbol']}_{i}")
@@ -1623,7 +1625,7 @@ elif mode == "📈 개별 종목 분석":
                 for sig in inactive: st.error(sig)
 
             close_s2 = result.get("close_series")
-            cross_date = close_s2.index[-(result["days_since_cross"]+1)] if close_s2 is not None else None
+            cross_date = close_s2.index[-(result["days_since_cross"]+1)] if (close_s2 is not None and result.get("days_since_cross") is not None) else None
             _c2 = make_candle(data, f"{name} ({symbol})", cross_date=cross_date)
             st.plotly_chart(_c2, config={"scrollZoom":False,"displayModeBar":False,"staticPlot":True}, width='stretch')
             show_price_levels(_c2)
@@ -1829,7 +1831,7 @@ elif mode == "💎 우량주 RSI 70 이탈":
                 "종목명":    r["name"],
                 "종목코드":  r["symbol"],
                 "현재가":    f"₩{r['current_price']:,.0f}",
-                "등락률":    f"{'🔺' if r['price_change_1d']>0 else '🔽'}{r['price_change_1d']:.2f}%",
+                "등락률":    f"{'🔺' if (r.get('price_change_1d') or 0)>0 else '🔽'}{(r.get('price_change_1d') or 0):.2f}%",
                 "현재RSI":   round(r["current_rsi"], 1),
                 "바닥RSI":   round(r["bottom_rsi"], 1),
                 "고점RSI":   round(r["peak_rsi"], 1),
@@ -2114,11 +2116,12 @@ elif mode == "🎯 최적 급등 타이밍":
 
             rows = []
             for r in results:
-                s = r["signals"]
+                s = r.get("signals", {})
+                _p = r.get("price_change_1d") or 0
                 rows.append({
                     "종목명":   r["name"],
                     "현재가":   f"₩{r['current_price']:,.0f}",
-                    "등락률":   f"{'🔺' if r['price_change_1d']>0 else '🔽'}{r['price_change_1d']:.2f}%",
+                    "등락률":   f"{'🔺' if _p>0 else '🔽'}{_p:.2f}%",
                     "종합점수": r["total_score"],
                     "R-cycle":  round(r["rsi"], 1),
                     "거래량비": f"{s.get('vol_ratio',0):.1f}배",
@@ -2149,10 +2152,11 @@ elif mode == "🎯 최적 급등 타이밍":
             for i, r in enumerate(results[:10]):
                 medal = medals[i] if i < 3 else ""
                 icon  = icons[i]  if i < 3 else f"{i+1}."
-                s     = r["signals"]
+                s     = r.get("signals", {})
                 pct   = r["total_score"] / 30 * 100
-                color = "#00d4aa" if r["price_change_1d"] > 0 else "#ff4b6e"
-                arrow = "▲" if r["price_change_1d"] > 0 else "▼"
+                _p2   = r.get("price_change_1d") or 0
+                color = "#00d4aa" if _p2 > 0 else "#ff4b6e"
+                arrow = "▲" if _p2 > 0 else "▼"
 
                 st.markdown(f"""<div class="rank-card {medal}">
                   <div style="display:flex;justify-content:space-between;align-items:center;">
@@ -2163,7 +2167,7 @@ elif mode == "🎯 최적 급등 타이밍":
                     </div>
                     <div style="text-align:right;">
                       <span style="color:#fff;font-size:20px;font-weight:700;">₩{r["current_price"]:,.0f}</span>
-                      <span style="color:{color};font-size:14px;margin-left:8px;">{arrow} {abs(r["price_change_1d"]):.2f}%</span>
+                      <span style="color:{color};font-size:14px;margin-left:8px;">{arrow} {abs(_p2):.2f}%</span>
                     </div>
                   </div>
                   <div style="margin-top:8px;color:#8b92a5;font-size:12px;">
