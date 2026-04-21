@@ -654,9 +654,11 @@ def place_orders(results: list):
             conn.commit()
             conn.close()
 
-            # 실제 체결가 기준으로 분할매수 트리거 재계산
+            # 실제 체결가 기준으로 분할매수 트리거 + 손절가 재계산
             if actual_entry != entry:
                 t2, t3 = _calc_split_triggers(actual_entry, ma240) if ma240 else (int(actual_entry * 0.98), int(actual_entry * 0.96))
+                # 손절가도 실제 체결가 기준으로 재계산 (RSI 저점은 동일, stop 그대로 유효)
+                # stop은 RSI 바닥 절대가격이라 entry 변동과 무관하게 유지
                 conn2 = _get_trade_conn()
                 conn2.execute(
                     "UPDATE trade_orders SET trigger2=?, trigger3=? WHERE symbol=? AND alert_date=?",
