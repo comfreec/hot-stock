@@ -62,6 +62,20 @@ def run_scan():
         results = [r for r in results if r.get("total_score", 0) >= 40]
         results = sorted(results, key=lambda x: x["total_score"], reverse=True)
 
+        # ── 이미 매수중/대기중인 종목 채널 알림에서 제외 ──────────
+        try:
+            from cache_db import _get_conn as _db_conn
+            _conn = _db_conn()
+            active_syms = set(r[0] for r in _conn.execute(
+                "SELECT symbol FROM trade_orders WHERE status IN ('pending','active')"
+            ).fetchall())
+            before = len(results)
+            results = [r for r in results if r.get("symbol") not in active_syms]
+            if before != len(results):
+                log(f"매수중 종목 {before - len(results)}개 채널 알림 제외")
+        except Exception as _e:
+            log(f"매수중 종목 필터 오류 (무시): {_e}")
+
         # Series 직렬화 후 DB 저장
         def _serialize(r):
             out = {}

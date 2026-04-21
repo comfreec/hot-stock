@@ -548,9 +548,9 @@ def place_orders(results: list):
             print(f"[자동매매] {name} 이미 보유 중 - 스킵")
             continue
 
-        # 이미 대기 주문 있으면 스킵
+        # 이미 대기/매수중 주문 있으면 스킵 (pending + active 모두 체크)
         if any(o["symbol"] == symbol for o in pending):
-            print(f"[자동매매] {name} 이미 대기 주문 있음 - 스킵")
+            print(f"[자동매매] {name} 이미 주문 진행 중 (pending/active) - 스킵")
             continue
 
         # 가격 레벨 - alert_history에서 조회 (전날 스캔 기준)
