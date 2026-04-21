@@ -202,12 +202,20 @@ def main():
             except Exception as e:
                 log(f"[멀티유저] 재주문 오류: {e}")
 
-        # 09:10 KST 주간 리포트
+        # 09:10 KST 잔고검증 + 주간 리포트
         if is_weekday and now_kst.hour == 9 and now_kst.minute >= 10 and last_perf_date != today:
             last_perf_date = today
             _save_state({"last_scan_date": last_scan_date, "last_perf_date": last_perf_date,
                          "last_crypto_hour": last_crypto_hour, "last_reorder_date": last_reorder_date})
             run_performance()
+            # 자동매매 잔고 검증 (DB ↔ 실제 잔고 일치 확인)
+            if os.environ.get("KIS_APP_KEY"):
+                try:
+                    from auto_trader import verify_positions
+                    verify_positions()
+                    log("[자동매매] 잔고 검증 완료")
+                except Exception as e:
+                    log(f"[자동매매] 잔고 검증 오류: {e}")
             # 자동매매 전용 리포트
             if os.environ.get("KIS_APP_KEY"):
                 try:

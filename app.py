@@ -755,25 +755,7 @@ with st.sidebar:
 
     # ── FLY 실행전략 설정 ──────────────────────────────────────
     st.markdown("---")
-    st.markdown("### 🚀 FLY 실행전략")
-    try:
-        from cache_db import load_app_setting, save_app_setting
-        _current_fly_mode = load_app_setting("scan_mode", "rcycle")
-        _fly_mode_label = {"rcycle": "🔄 R-cycle 스캔", "classic": "📈 장기선 돌파 스캔", "both": "🔀 둘 다 실행", "divergence": "📉 RSI 다이버전스 스캔"}.get(_current_fly_mode, "🔄 R-cycle 스캔")
-        st.caption(f"현재 설정: **{_fly_mode_label}**")
-        fly_mode_sel = st.selectbox(
-            "스케줄러 자동 스캔 전략",
-            ["🔄 R-cycle 스캔", "📈 장기선 돌파 스캔", "🔀 둘 다 실행", "📉 RSI 다이버전스 스캔"],
-            index=["🔄 R-cycle 스캔", "📈 장기선 돌파 스캔", "🔀 둘 다 실행", "📉 RSI 다이버전스 스캔"].index(_fly_mode_label),
-            key="fly_mode_sel",
-            help="매일 15:40 자동 스캔 시 사용할 전략"
-        )
-        if st.button("💾 FLY 전략 저장", width='stretch'):
-            _val = {"🔄 R-cycle 스캔": "rcycle", "📈 장기선 돌파 스캔": "classic", "🔀 둘 다 실행": "both", "📉 RSI 다이버전스 스캔": "divergence"}.get(fly_mode_sel, "rcycle")
-            save_app_setting("scan_mode", _val)
-            st.success(f"✅ 저장됨: {fly_mode_sel}")
-    except Exception as _e:
-        st.caption(f"설정 로드 오류: {_e}")
+    st.caption("💡 FLY 실행전략은 관리자 페이지 → Fly 동기화 탭에서 설정하세요.")
 
     st.markdown("---")
     st.markdown("""**📋 탐지 전략**

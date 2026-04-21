@@ -717,30 +717,48 @@ def handle_bot_command(chat_id: str, text: str):
 
 # ── 스케줄러용 진입점 ─────────────────────────────────────────────
 def run_all_users_morning_reorder():
-    """09:05 - 전체 활성 유저 재주문"""
-    for user in get_active_users():
+    """09:05 - 전체 활성 유저 재주문 (병렬 처리)"""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    users = get_active_users()
+    if not users:
+        return
+    def _reorder(user):
         try:
             morning_reorder(user)
         except Exception as e:
             print(f"[멀티유저] morning_reorder 오류 ({user.get('chat_id')}): {e}")
+    with ThreadPoolExecutor(max_workers=min(len(users), 10)) as ex:
+        list(ex.map(_reorder, users))
 
 
 def run_all_users_place_orders(results: list):
-    """스캔 결과 → 전체 활성 유저 매수 주문"""
-    for user in get_active_users():
+    """스캔 결과 → 전체 활성 유저 매수 주문 (병렬 처리)"""
+    from concurrent.futures import ThreadPoolExecutor
+    users = get_active_users()
+    if not users:
+        return
+    def _place(user):
         try:
             place_orders(results, user)
         except Exception as e:
             print(f"[멀티유저] place_orders 오류 ({user.get('chat_id')}): {e}")
+    with ThreadPoolExecutor(max_workers=min(len(users), 10)) as ex:
+        list(ex.map(_place, users))
 
 
 def run_all_users_monitor():
-    """장중 모니터링 - 전체 활성 유저"""
-    for user in get_active_users():
+    """장중 모니터링 - 전체 활성 유저 (병렬 처리)"""
+    from concurrent.futures import ThreadPoolExecutor
+    users = get_active_users()
+    if not users:
+        return
+    def _monitor(user):
         try:
             monitor_positions(user)
         except Exception as e:
             print(f"[멀티유저] monitor 오류 ({user.get('chat_id')}): {e}")
+    with ThreadPoolExecutor(max_workers=min(len(users), 10)) as ex:
+        list(ex.map(_monitor, users))
 
 
 def poll_bot_commands():

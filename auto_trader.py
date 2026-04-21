@@ -1224,3 +1224,108 @@ def send_trade_report():
     except Exception as e:
         print(f"[자동매매] 리포트 오류: {e}")
         import traceback; traceback.print_exc()
+
+
+def verify_positions():
+    """
+    실제 KIS 잔고 vs DB 상태 검증 (매일 09:10 실행)
+    불일치 발견 시 DB 자동 수정 + 개인 알림
+    케이스:
+      1) DB active/pending인데 실제 미보유 → DB를 cancelled로 수정
+      2) DB pending인데 실제 보유 중 → DB를 active로 수정 + 평균단가 동기화
+      3) DB 수량 vs 실제 수량 불일치 → DB 수량 동기화
+    """
+    if not is_enabled():
+        return
+
+    try:
+        client = KISClient()
+        balance = client.get_balance()
+        holdings = balance.get("holdings", {})  # {code: {qty, avg_price, ...}}
+
+        conn = _get_trade_conn()
+        db_orders = conn.execute(
+            "SELECT id, symbol, name, status, qty, avg_price, entry_price FROM trade_orders "
+            "WHERE status IN ('pending', 'active')"
+        ).fetchall()
+
+        issues = []
+        today = date.today().isoformat()
+
+        for row in db_orders:
+            oid, symbol, name, status, db_qty, db_avg, db_entry = row
+            code = symbol.replace(".KS", "").replace(".KQ", "")
+            real = holdings.get(code)
+
+            # ── 케이스 1: DB active인데 실제 미보유 ──────────────
+            if status == "active" and not real:
+                conn.execute(
+                    "UPDATE trade_orders SET status='cancelled' WHERE id=?", (oid,)
+                )
+                issues.append(
+                    f"⚠️ <b>{name}</b>\n"
+                    f"  DB: active → 실제: 미보유\n"
+                    f"  → DB를 cancelled로 수정"
+                )
+
+            # ── 케이스 2: DB pending인데 실제 보유 중 ────────────
+            elif status == "pending" and real:
+                real_qty = int(real.get("qty", 0))
+                real_avg = float(real.get("avg_price", db_entry or 0))
+                conn.execute(
+                    "UPDATE trade_orders SET status='active', qty=?, avg_price=?, entry_price=? WHERE id=?",
+                    (real_qty, real_avg, int(real_avg), oid)
+                )
+                issues.append(
+                    f"✅ <b>{name}</b>\n"
+                    f"  DB: pending → 실제: 보유 {real_qty}주 @₩{real_avg:,.0f}\n"
+                    f"  → DB를 active로 수정"
+                )
+
+            # ── 케이스 3: DB active + 실제 보유 but 수량 불일치 ──
+            elif status == "active" and real:
+                real_qty = int(real.get("qty", 0))
+                real_avg = float(real.get("avg_price", db_avg or db_entry or 0))
+                if real_qty != db_qty:
+                    conn.execute(
+                        "UPDATE trade_orders SET qty=?, avg_price=? WHERE id=?",
+                        (real_qty, real_avg, oid)
+                    )
+                    issues.append(
+                        f"🔧 <b>{name}</b>\n"
+                        f"  수량 불일치: DB {db_qty}주 → 실제 {real_qty}주\n"
+                        f"  평균단가: ₩{real_avg:,.0f}\n"
+                        f"  → DB 수량/단가 동기화"
+                    )
+                elif abs((real_avg or 0) - (db_avg or db_entry or 0)) > 10:
+                    # 평균단가만 불일치
+                    conn.execute(
+                        "UPDATE trade_orders SET avg_price=? WHERE id=?",
+                        (real_avg, oid)
+                    )
+                    issues.append(
+                        f"🔧 <b>{name}</b>\n"
+                        f"  평균단가 불일치: DB ₩{db_avg:,.0f} → 실제 ₩{real_avg:,.0f}\n"
+                        f"  → DB 단가 동기화"
+                    )
+
+        conn.commit()
+        conn.close()
+
+        # ── 결과 알림 ─────────────────────────────────────────────
+        if issues:
+            msg = (
+                f"🔍 <b>잔고 검증 완료</b>  {today}\n"
+                f"{'━'*20}\n"
+                f"불일치 {len(issues)}건 발견 → 자동 수정\n\n"
+                + "\n\n".join(issues)
+            )
+            _send_admin(msg)
+            print(f"[잔고검증] {len(issues)}건 불일치 수정 완료")
+        else:
+            print(f"[잔고검증] 이상 없음 (DB ↔ 실제 잔고 일치)")
+
+    except Exception as e:
+        print(f"[잔고검증] 오류: {e}")
+        import traceback; traceback.print_exc()
+        _send_admin(f"⚠️ <b>잔고검증 오류</b>\n{e}")

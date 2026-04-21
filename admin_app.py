@@ -40,7 +40,7 @@ if not st.session_state["admin_auth"]:
     st.stop()
 
 # ── 탭 구성 ──────────────────────────────────────────────────────
-tab1, tab2, tab3, tab4 = st.tabs(["📊 대시보드", "👥 유저 관리", "➕ 유저 등록", "📈 전체 통계"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["📊 대시보드", "👥 유저 관리", "➕ 유저 등록", "📈 전체 통계", "🔄 Fly 동기화"])
 
 # ── 대시보드 ─────────────────────────────────────────────────────
 with tab1:
@@ -130,27 +130,64 @@ with tab2:
                     # 설정 수정 폼
                     with st.form(f"edit_{u['user_id']}"):
                         st.write("**설정 수정**")
-                        new_name = st.text_input("이름", value=u.get("name") or "", key=f"name_{u['user_id']}")
+                        new_name    = st.text_input("이름", value=u.get("name") or "", key=f"name_{u['user_id']}")
                         new_contact = st.text_input("연락처", value=u.get("contact") or "", key=f"contact_{u['user_id']}")
-                        new_budget = st.number_input("종목당 예산", value=u["budget_per"], step=10000, key=f"budget_{u['user_id']}")
-                        new_stocks = st.number_input("최대 종목", value=u["max_stocks"], min_value=1, max_value=30, key=f"stocks_{u['user_id']}")
-                        new_days = st.number_input("만료일 (거래일)", value=u["max_days"], min_value=1, max_value=20, key=f"days_{u['user_id']}")
-                        new_mock = st.selectbox("모드", ["모의투자", "실전투자"], index=0 if u["mock"] else 1, key=f"mock_{u['user_id']}")
-                        new_active = st.checkbox("활성화", value=bool(u["is_active"]), key=f"active_{u['user_id']}")
+                        new_account = st.text_input("계좌번호", value=u.get("account") or "", placeholder="50123456-01", key=f"account_{u['user_id']}")
+                        new_mock    = st.selectbox("투자 모드", ["모의투자", "실전투자"], index=0 if u["mock"] else 1, key=f"mock_{u['user_id']}")
+
+                        st.caption("🔑 KEY 변경 시에만 입력 (비워두면 기존 유지)")
+                        new_app_key    = st.text_input("KIS APP KEY (변경 시)", type="password", placeholder="변경 시에만 입력", key=f"appkey_{u['user_id']}")
+                        new_app_secret = st.text_input("KIS APP SECRET (변경 시)", type="password", placeholder="변경 시에만 입력", key=f"appsecret_{u['user_id']}")
+
+                        new_budget  = st.number_input("종목당 예산", value=u["budget_per"], step=100000, key=f"budget_{u['user_id']}")
+                        new_stocks  = st.number_input("최대 종목", value=u["max_stocks"], min_value=1, max_value=30, key=f"stocks_{u['user_id']}")
+                        new_days    = st.number_input("만료일 (거래일)", value=u["max_days"], min_value=1, max_value=20, key=f"days_{u['user_id']}")
+                        new_active  = st.checkbox("활성화", value=bool(u["is_active"]), key=f"active_{u['user_id']}")
 
                         if st.form_submit_button("💾 저장"):
-                            update_user_settings(
-                                u["chat_id"],
-                                name=new_name,
-                                contact=new_contact,
-                                budget_per=new_budget,
-                                max_stocks=new_stocks,
-                                max_days=new_days,
+                            import re
+                            save_kwargs = dict(
+                                name=new_name, contact=new_contact,
+                                account=new_account.strip(),
                                 mock=1 if new_mock == "모의투자" else 0,
+                                budget_per=new_budget, max_stocks=new_stocks,
+                                max_days=new_days,
                                 is_active=1 if new_active else 0
                             )
-                            st.success("저장 완료!")
-                            st.rerun()
+                            # KEY 변경 시에만 업데이트
+                            if new_app_key.strip() and new_app_secret.strip():
+                                if len(new_app_key.strip()) < 20:
+                                    st.error("APP KEY가 너무 짧습니다.")
+                                elif len(new_app_secret.strip()) < 20:
+                                    st.error("APP SECRET이 너무 짧습니다.")
+                                else:
+                                    # register_user로 KEY 업데이트 (암호화 포함)
+                                    from auto_trader_multi import register_user as _reg
+                                    _reg(u["chat_id"], new_app_key.strip(), new_app_secret.strip(),
+                                         new_account.strip(), new_mock == "모의투자",
+                                         new_contact.strip(), new_name.strip())
+                                    update_user_settings(u["chat_id"], **save_kwargs)
+                                    st.success("저장 완료! (KEY 변경됨)")
+                                    # KIS 연결 재검증
+                                    try:
+                                        from auto_trader_multi import UserKISClient, get_all_users
+                                        users_all = get_all_users()
+                                        target = next((x for x in users_all if x["chat_id"] == u["chat_id"]), None)
+                                        if target:
+                                            client = UserKISClient(target)
+                                            token = client._get_token()
+                                            if token:
+                                                bal = client.get_balance()
+                                                st.success(f"✅ KIS 연결 확인! 예수금: ₩{bal.get('cash',0):,.0f}")
+                                            else:
+                                                st.error("❌ KIS 연결 실패 - KEY를 다시 확인하세요.")
+                                    except Exception as ve:
+                                        st.error(f"연결 확인 오류: {ve}")
+                                    st.rerun()
+                            else:
+                                update_user_settings(u["chat_id"], **save_kwargs)
+                                st.success("저장 완료!")
+                                st.rerun()
                 
                 with col2:
                     st.write("")
@@ -194,24 +231,83 @@ with tab3:
         st.session_state["reg_form_ver"] = st.session_state.get("reg_form_ver", 0) + 1
         st.rerun()
 
+    # ── 발급 도움말 ──────────────────────────────────────────────
+    with st.expander("📖 입력 정보 발급 방법 (클릭해서 펼치기)"):
+        st.markdown("""
+### 1️⃣ 텔레그램 Chat ID 확인
+1. 텔레그램에서 **@userinfobot** 검색 후 `/start` 전송
+2. 응답 메시지에서 **Id:** 뒤의 숫자가 Chat ID
+3. 또는 **@getmyid_bot** 에서도 확인 가능
+> 예시: `1663019049` (숫자만, 하이픈 없음)
+
+---
+
+### 2️⃣ KIS APP KEY / APP SECRET 발급
+1. **한국투자증권 홈페이지** → [Open API](https://apiportal.koreainvestment.com) 접속
+2. 로그인 후 **마이페이지 → API 신청** 클릭
+3. **앱 등록** → 앱 이름 입력 (예: `자동매매`) → 등록
+4. 등록 완료 후 **앱 상세** 페이지에서 `APP KEY` / `APP SECRET` 확인
+
+> ⚠️ **모의투자 ↔ 실전투자 KEY는 완전히 별개입니다**
+> - 모의투자 KEY로 실전 서버 접속 불가 (인증 오류)
+> - 실전 전환 시 반드시 **실전투자 전용 KEY를 새로 발급**해야 합니다
+> - Open API 페이지 → **실전투자 신청** 탭에서 별도 발급
+
+---
+
+### 3️⃣ 계좌번호 형식
+- 한국투자증권 계좌번호: `8자리-2자리` 형식
+- 예: `50123456-01`
+- HTS/MTS 로그인 후 계좌 선택 화면에서 확인
+
+---
+
+### 4️⃣ 투자 모드
+- **모의투자**: 실제 돈 없이 테스트 (모의투자 KEY 필요)
+- **실전투자**: 실제 계좌로 자동매매 (실전 KEY 필요)
+> ⚠️ 처음에는 반드시 **모의투자**로 먼저 테스트하세요!
+        """)
+
     form_ver = st.session_state.get("reg_form_ver", 0)
     with st.form(f"register_user_{form_ver}"):
-        chat_id = st.text_input("텔레그램 Chat ID", help="숫자만 입력 (예: 1663019049) - 봇에서 /start 후 확인", key=f"reg_chat_id_{form_ver}")
+        chat_id = st.text_input(
+            "텔레그램 Chat ID *",
+            placeholder="예: 1663019049",
+            help="@userinfobot 에서 확인 가능. 숫자만 입력",
+            key=f"reg_chat_id_{form_ver}"
+        )
         name = st.text_input("이름", placeholder="홍길동", help="유저 식별용 이름", key=f"reg_name_{form_ver}")
-        app_key = st.text_input("KIS APP KEY", type="password", help="한국투자증권 Open API 앱키 (영숫자 36자)", key=f"reg_app_key_{form_ver}")
-        app_secret = st.text_input("KIS APP SECRET", type="password", help="한국투자증권 Open API 시크릿 (영숫자+특수문자)", key=f"reg_app_secret_{form_ver}")
-        account = st.text_input("계좌번호", placeholder="50123456-01", help="8자리-2자리 형식 (예: 50123456-01)", key=f"reg_account_{form_ver}")
+        app_key = st.text_input(
+            "KIS APP KEY *",
+            type="password",
+            placeholder="한국투자증권 Open API 앱키 (36자)",
+            help="apiportal.koreainvestment.com → 앱 등록 후 발급",
+            key=f"reg_app_key_{form_ver}"
+        )
+        app_secret = st.text_input(
+            "KIS APP SECRET *",
+            type="password",
+            placeholder="한국투자증권 Open API 시크릿",
+            help="APP KEY와 함께 발급되는 시크릿 키",
+            key=f"reg_app_secret_{form_ver}"
+        )
+        account = st.text_input(
+            "계좌번호 *",
+            placeholder="50123456-01",
+            help="8자리-2자리 형식. HTS/MTS 계좌 선택 화면에서 확인",
+            key=f"reg_account_{form_ver}"
+        )
         contact = st.text_input("연락처", placeholder="010-1234-5678", help="관리자 연락용 (선택)", key=f"reg_contact_{form_ver}")
 
         col1, col2 = st.columns(2)
         with col1:
-            mock = st.selectbox("투자 모드", ["모의투자", "실전투자"])
+            mock = st.selectbox("투자 모드", ["모의투자", "실전투자"], help="처음에는 모의투자로 테스트 권장")
         with col2:
-            budget = st.number_input("종목당 예산 (원)", value=300000, step=10000)
+            budget = st.number_input("종목당 예산 (원)", value=1000000, step=100000, help="기본값 100만원")
 
         col3, col4 = st.columns(2)
         with col3:
-            max_stocks = st.number_input("최대 보유 종목", value=10, min_value=1, max_value=30)
+            max_stocks = st.number_input("최대 보유 종목", value=20, min_value=1, max_value=30, help="기본값 20개")
         with col4:
             max_days = st.number_input("미체결 만료일 (거래일)", value=7, min_value=1, max_value=20)
         
@@ -219,31 +315,26 @@ with tab3:
             import re
             errors = []
 
-            # Chat ID: 숫자만 (텔레그램 ID는 정수)
             if not chat_id:
                 errors.append("Chat ID를 입력해주세요.")
             elif not re.fullmatch(r"-?\d+", chat_id.strip()):
                 errors.append("Chat ID는 숫자만 입력하세요. (예: 1663019049)")
 
-            # APP KEY: 영숫자 40자 이상
             if not app_key:
                 errors.append("KIS APP KEY를 입력해주세요.")
             elif len(app_key.strip()) < 20:
                 errors.append("APP KEY가 너무 짧습니다. KIS 발급 키를 확인하세요.")
 
-            # APP SECRET: 영숫자 특수문자 포함 충분한 길이
             if not app_secret:
                 errors.append("KIS APP SECRET을 입력해주세요.")
             elif len(app_secret.strip()) < 20:
                 errors.append("APP SECRET이 너무 짧습니다. KIS 발급 시크릿을 확인하세요.")
 
-            # 계좌번호: 8자리-2자리 형식
             if not account:
                 errors.append("계좌번호를 입력해주세요.")
             elif not re.fullmatch(r"\d{8}-\d{2}", account.strip()):
                 errors.append("계좌번호 형식이 올바르지 않습니다. (예: 50123456-01)")
 
-            # 예산: 최소 10만원 이상
             if budget < 100000:
                 errors.append("종목당 예산은 최소 100,000원 이상이어야 합니다.")
 
@@ -259,6 +350,28 @@ with tab3:
                                          max_stocks=max_stocks, max_days=max_days)
                     action = "업데이트" if result == "updated" else "등록"
                     st.success(f"✅ 유저 {action} 완료!")
+
+                    # ── KIS API 연결 검증 ──────────────────────────
+                    with st.spinner("KIS API 연결 확인 중..."):
+                        try:
+                            from auto_trader_multi import UserKISClient, get_all_users
+                            users = get_all_users()
+                            target = next((u for u in users if u["chat_id"] == chat_id.strip()), None)
+                            if target:
+                                client = UserKISClient(target)
+                                token = client._get_token()
+                                if token:
+                                    balance = client.get_balance()
+                                    cash = balance.get("cash", 0)
+                                    mode_str = "모의투자" if mock == "모의투자" else "실전투자"
+                                    st.success(f"✅ KIS API 연결 성공! [{mode_str}] 예수금: ₩{cash:,.0f}")
+                                else:
+                                    st.error("❌ KIS API 토큰 발급 실패 - APP KEY/SECRET을 확인하세요.")
+                            else:
+                                st.warning("유저 조회 실패 - 페이지를 새로고침 후 확인하세요.")
+                        except Exception as ve:
+                            st.error(f"❌ KIS API 연결 실패: {ve}\nAPP KEY/SECRET/계좌번호를 다시 확인하세요.")
+
                     st.balloons()
                 except Exception as e:
                     st.error(f"등록 실패: {e}")
@@ -306,3 +419,98 @@ st.sidebar.markdown("---")
 if st.sidebar.button("🚪 로그아웃"):
     st.session_state["admin_auth"] = False
     st.rerun()
+
+
+# ── Fly 동기화 ────────────────────────────────────────────────────
+with tab5:
+    st.subheader("🔄 Fly.io 동기화")
+    st.info("로컬에서 등록/수정한 유저 데이터와 스캔 전략 설정을 Fly.io 서버에 동기화합니다.")
+
+    col_a, col_b = st.columns(2)
+
+    # ── 유저 동기화 ──────────────────────────────────────────────
+    with col_a:
+        st.markdown("#### 👥 유저 동기화")
+        local_users = get_active_users()
+        st.write(f"로컬 유저: **{len(local_users)}명**")
+        for u in local_users:
+            mode = "모의" if u.get("mock") else "실전"
+            st.write(f"  - {u.get('name') or u['chat_id']} [{mode}]")
+
+        if st.button("🚀 유저 → Fly 동기화", type="primary", key="sync_fly_users"):
+            with st.spinner("유저 동기화 중..."):
+                try:
+                    from _sync_users_to_fly import sync
+                    import io, sys
+                    old_stdout = sys.stdout
+                    sys.stdout = buf = io.StringIO()
+                    sync()
+                    sys.stdout = old_stdout
+                    st.success("✅ 유저 동기화 완료!")
+                    st.code(buf.getvalue())
+                except Exception as e:
+                    st.error(f"❌ 실패: {e}")
+
+    # ── 전략 설정 동기화 ─────────────────────────────────────────
+    with col_b:
+        st.markdown("#### 🎯 스캔 전략 동기화")
+        try:
+            from cache_db import load_app_setting, save_app_setting
+            _mode_map = {
+                "rcycle":     "🔄 R-cycle 스캔",
+                "classic":    "📈 장기선 돌파 스캔",
+                "both":       "🔀 둘 다 실행",
+                "divergence": "📉 RSI 다이버전스 스캔",
+            }
+            _mode_map_rev = {v: k for k, v in _mode_map.items()}
+            _cur = load_app_setting("scan_mode", "rcycle")
+            st.write(f"현재 로컬 설정: **{_mode_map.get(_cur, _cur)}**")
+
+            _sel = st.selectbox(
+                "Fly에 적용할 전략",
+                list(_mode_map.values()),
+                index=list(_mode_map.keys()).index(_cur) if _cur in _mode_map else 0,
+                key="admin_fly_strategy"
+            )
+
+            if st.button("💾 전략 → Fly 동기화", type="primary", key="sync_fly_strategy"):
+                with st.spinner("전략 동기화 중..."):
+                    try:
+                        _val = _mode_map_rev.get(_sel, "rcycle")
+                        # 로컬 저장
+                        save_app_setting("scan_mode", _val)
+
+                        # fly DB에 직접 저장
+                        import subprocess, tempfile, os
+                        script = f"""
+import sqlite3
+conn = sqlite3.connect('/data/scan_cache.db')
+conn.execute("CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL)")
+conn.execute("INSERT OR REPLACE INTO app_settings (key, value, updated_at) VALUES ('scan_mode', '{_val}', datetime('now'))")
+conn.commit()
+conn.close()
+print('OK: scan_mode =', '{_val}')
+"""
+                        with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False, encoding='utf-8') as f:
+                            f.write(script)
+                            tmp_path = f.name
+
+                        # fly sftp로 업로드 후 실행
+                        r1 = subprocess.run(
+                            ["flyctl", "ssh", "sftp", "put", tmp_path, "/app/_set_strategy.py", "--app", "hot-stock-app"],
+                            capture_output=True, text=True
+                        )
+                        r2 = subprocess.run(
+                            ["flyctl", "ssh", "console", "--app", "hot-stock-app", "-C", "python /app/_set_strategy.py"],
+                            capture_output=True, text=True
+                        )
+                        os.unlink(tmp_path)
+
+                        if "OK:" in r2.stdout:
+                            st.success(f"✅ Fly 전략 저장 완료: {_sel}")
+                        else:
+                            st.warning(f"저장 시도됨 (확인 필요)\n{r2.stdout or r2.stderr}")
+                    except Exception as e:
+                        st.error(f"❌ 실패: {e}")
+        except Exception as e:
+            st.error(f"설정 로드 오류: {e}")
