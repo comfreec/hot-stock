@@ -482,7 +482,6 @@ def send_scan_alert(results: list, send_charts: bool = True):
                 "ORDER BY id DESC LIMIT 1",
                 (r["symbol"], date.today().isoformat())
             ).fetchone()
-            _conn.close()
             if _row and _row[0]:
                 lv = {"entry": _row[0], "target": _row[1], "stop": _row[2], "rr": _row[3],
                       "upside": (_row[1]/_row[0]-1)*100 if _row[0] else 0,
@@ -568,7 +567,6 @@ def send_scan_alert(results: list, send_charts: bool = True):
                     "WHERE symbol=? AND status IN ('pending','active') ORDER BY id DESC LIMIT 1",
                     (r["symbol"],)
                 ).fetchone()
-                _conn.close()
                 if _row and _row[0]:
                     lv = {"entry": _row[0], "target": _row[1], "stop": _row[2], "rr": _row[3],
                           "upside": (_row[1]/_row[0]-1)*100 if _row[0] else 0,
