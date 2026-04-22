@@ -561,7 +561,7 @@ def make_summary_chart(results: list) -> bytes | None:
                  fontsize=36, fontweight="bold", color="#f0f4ff")
         fig.text(0.5, 0.89, f"급등 예고 종목  TOP {n}   |   {today_str}",
                  ha="center", va="top",
-                 fontsize=24, color="#6b7280", style="italic")
+                 fontsize=24, color="#a0b4d0", style="italic")
 
         # ── 하단 워터마크 ────────────────────────────────────────
         fig.text(0.98, 0.01, "SWING RADAR  |  매일 15:40 자동 분석",
