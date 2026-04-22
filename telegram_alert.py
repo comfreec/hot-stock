@@ -556,10 +556,10 @@ def make_summary_chart(results: list) -> bytes | None:
 
         # ── 타이틀 ───────────────────────────────────────────────
         today_str = date.today().strftime("%Y.%m.%d")
-        fig.text(0.5, 0.97, "J.A.R.V.I.S.  SWING RADAR",
+        fig.text(0.5, 0.98, "J.A.R.V.I.S.  SWING RADAR",
                  ha="center", va="top",
                  fontsize=36, fontweight="bold", color="#f0f4ff")
-        fig.text(0.5, 0.925, f"급등 예고 종목  TOP {n}   |   {today_str}",
+        fig.text(0.5, 0.89, f"급등 예고 종목  TOP {n}   |   {today_str}",
                  ha="center", va="top",
                  fontsize=24, color="#6b7280", style="italic")
 
@@ -568,7 +568,7 @@ def make_summary_chart(results: list) -> bytes | None:
                  ha="right", va="bottom",
                  fontsize=7.5, color="#2d3555", style="italic")
 
-        plt.tight_layout(rect=[0.04, 0.02, 1, 0.91])
+        plt.tight_layout(rect=[0.04, 0.02, 1, 0.86])
 
         buf = io.BytesIO()
         plt.savefig(buf, format="png", dpi=200,
