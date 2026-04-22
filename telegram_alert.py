@@ -499,52 +499,54 @@ def make_summary_chart(results: list) -> bytes | None:
         for s in scores:
             ratio = s / max_s
             if ratio >= 0.85:
-                colors.append("#FFD700")   # 골드
+                colors.append("#FFD700")
             elif ratio >= 0.65:
-                colors.append("#4f8ef7")   # 블루
+                colors.append("#4f8ef7")
             elif ratio >= 0.45:
-                colors.append("#00d4aa")   # 민트
+                colors.append("#00d4aa")
             else:
-                colors.append("#6b7280")   # 그레이
+                colors.append("#6b7280")
 
         y_pos = np.arange(n)[::-1]
 
         # ── 배경 그리드 ──────────────────────────────────────────
-        ax.set_xlim(0, max_s * 1.22)
+        ax.set_xlim(0, max_s * 1.18)
         ax.set_ylim(-0.6, n - 0.4)
-        for x in np.linspace(0, max_s * 1.2, 6):
+        for x in np.linspace(0, max_s * 1.15, 6):
             ax.axvline(x, color="#1e2433", linewidth=0.8, zorder=0)
 
         # ── 막대 그래프 ──────────────────────────────────────────
-        bars = ax.barh(y_pos, scores, height=0.55, color=colors,
-                       alpha=0.92, zorder=3,
-                       edgecolor="none")
+        bars = ax.barh(y_pos, scores, height=0.62, color=colors,
+                       alpha=0.88, zorder=3, edgecolor="none")
 
-        # 막대 끝 글로우 효과 (얇은 밝은 선)
-        for bar, c in zip(bars, colors):
-            ax.barh(bar.get_y() + bar.get_height()/2,
-                    bar.get_width(), height=0.08,
-                    color=c, alpha=0.6, zorder=4)
-
-        # ── 점수 텍스트 ──────────────────────────────────────────
-        for i, (s, c) in enumerate(zip(scores, colors)):
-            ax.text(s + max_s * 0.015, y_pos[i], f"{s}점",
+        # ── 막대 안에 종목명 + 점수 텍스트 ──────────────────────
+        for i, (name, s, c, bar) in enumerate(zip(names, scores, colors, bars)):
+            bar_w = bar.get_width()
+            # 종목명 (막대 왼쪽 안쪽)
+            ax.text(bar_w * 0.04, y_pos[i], name,
                     va="center", ha="left",
-                    fontsize=11, fontweight="bold",
+                    fontsize=11.5, fontweight="bold",
+                    color="#0d1117", zorder=5)
+            # 점수 (막대 오른쪽 끝 바깥)
+            ax.text(bar_w + max_s * 0.012, y_pos[i], f"{s}점",
+                    va="center", ha="left",
+                    fontsize=10.5, fontweight="bold",
                     color=c, zorder=5)
 
-        # ── 종목명 ───────────────────────────────────────────────
-        ax.set_yticks(y_pos)
-        ax.set_yticklabels(names, fontsize=12, color="#e0e6f0", fontweight="bold")
-        ax.tick_params(axis="y", length=0, pad=8)
-
-        # ── 순위 뱃지 ────────────────────────────────────────────
-        medals = {0: "1st", 1: "2nd", 2: "3rd"}
-        medal_colors = {0: "#FFD700", 1: "#C0C0C0", 2: "#CD7F32"}
+        # ── 순위 뱃지 (막대 왼쪽) ────────────────────────────────
+        medals = {0: "1", 1: "2", 2: "3"}
+        medal_bg = {0: "#FFD700", 1: "#C0C0C0", 2: "#CD7F32"}
         for i in range(min(3, n)):
-            ax.text(-max_s * 0.04, y_pos[i], medals[i],
-                    va="center", ha="center", fontsize=8,
-                    fontweight="bold", color=medal_colors[i], zorder=5)
+            circle = plt.Circle((-max_s * 0.055, y_pos[i]), 0.22,
+                                 color=medal_bg[i], zorder=6)
+            ax.add_patch(circle)
+            ax.text(-max_s * 0.055, y_pos[i], medals[i],
+                    va="center", ha="center", fontsize=9,
+                    fontweight="bold", color="#0d1117", zorder=7)
+
+        # ── Y축 숨김 ─────────────────────────────────────────────
+        ax.set_yticks([])
+        ax.set_yticklabels([])
 
         # ── X축 스타일 ───────────────────────────────────────────
         ax.set_xlabel("종합 점수", color="#6b7280", fontsize=10, labelpad=8)
