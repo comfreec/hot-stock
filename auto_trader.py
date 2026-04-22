@@ -76,20 +76,54 @@ class KISClient:
         self._token_exp = None
 
     def _get_token(self) -> str:
-        """액세스 토큰 발급 (캐시)"""
+        """액세스 토큰 발급 (파일 캐시 + 메모리 캐시) - 재시작 후에도 유지"""
         now = datetime.now(KST)
+        # 1. 메모리 캐시 확인
         if self._token and self._token_exp and now < self._token_exp:
             return self._token
-        resp = requests.post(f"{self.base}/oauth2/tokenP", json={
-            "grant_type": "client_credentials",
-            "appkey": self.app_key,
-            "appsecret": self.app_secret,
-        }, timeout=10)
-        resp.raise_for_status()
-        data = resp.json()
-        self._token = data["access_token"]
-        self._token_exp = now + timedelta(hours=23)
-        return self._token
+        # 2. 파일 캐시 확인 (재시작 후에도 유효한 토큰 재사용)
+        mode_tag = "mock" if self.mock else "real"
+        token_file = f"/data/.kis_token_{mode_tag}" if os.path.isdir("/data") else f".kis_token_{mode_tag}"
+        try:
+            import json as _json
+            with open(token_file) as f:
+                cached = _json.load(f)
+            exp_dt = datetime.fromisoformat(cached["expires_at"]).replace(tzinfo=KST)
+            if now < exp_dt - timedelta(minutes=30):  # 30분 여유
+                self._token = cached["token"]
+                self._token_exp = exp_dt
+                return self._token
+        except Exception:
+            pass
+        # 3. 새 토큰 발급
+        try:
+            resp = requests.post(f"{self.base}/oauth2/tokenP", json={
+                "grant_type": "client_credentials",
+                "appkey": self.app_key,
+                "appsecret": self.app_secret,
+            }, timeout=10)
+            resp.raise_for_status()
+            data = resp.json()
+            self._token = data["access_token"]
+            self._token_exp = now + timedelta(hours=23)
+            # 파일에 저장
+            try:
+                import json as _json
+                with open(token_file, "w") as f:
+                    _json.dump({"token": self._token, "expires_at": self._token_exp.isoformat()}, f)
+            except Exception:
+                pass
+            return self._token
+        except Exception as e:
+            mode = "모의투자" if self.mock else "실전투자"
+            _send_admin(
+                f"⚠️ <b>KIS 토큰 발급 실패</b>\n"
+                f"모드: {mode}\n"
+                f"오류: {e}\n"
+                f"→ 매수/매도 주문이 실행되지 않습니다.\n"
+                f"APP KEY/SECRET을 확인하거나 재발급하세요."
+            )
+            raise
 
     def _headers(self, tr_id: str, extra: dict = None) -> dict:
         acct = self.account.replace("-", "")
@@ -863,6 +897,15 @@ def monitor_positions():
     for order in orders:
         symbol = order["symbol"]
         cur    = client.get_price(symbol)
+        if cur is None:
+            # KIS API 실패 시 yfinance 폴백
+            try:
+                import yfinance as _yf
+                _d = _yf.Ticker(symbol).history(period="2d")
+                if len(_d) > 0:
+                    cur = float(_d["Close"].iloc[-1])
+            except Exception:
+                pass
         if cur is None:
             continue
 

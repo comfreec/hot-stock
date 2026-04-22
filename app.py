@@ -30,6 +30,27 @@ except Exception:
 if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
 
+# ── URL 파라미터로 자동 로그인 (음성 로그인용) ──────────────────
+try:
+    _params = st.query_params
+    if not st.session_state["authenticated"] and _params.get("voice_login") == "1":
+        st.session_state["authenticated"] = True
+        st.query_params.clear()
+        st.rerun()
+except Exception:
+    pass
+
+# postMessage 수신 리스너 (iframe → 부모)
+st.markdown("""
+<script>
+window.addEventListener('message', function(e) {
+  if (e.data === 'voice_login') {
+    window.location.href = window.location.href.split('?')[0] + '?voice_login=1';
+  }
+});
+</script>
+""", unsafe_allow_html=True)
+
 if not st.session_state["authenticated"]:
     st.markdown("""
     <style>
@@ -114,102 +135,62 @@ if not st.session_state["authenticated"]:
             background:linear-gradient(135deg,rgba(79,142,247,0.15),rgba(0,212,170,0.15));
             border:1px solid rgba(79,142,247,0.4);
             color:#8b92a5;font-size:13px;padding:8px 20px;
-            border-radius:10px;cursor:pointer;width:100%;
-            font-family:sans-serif;
+            border-radius:10px;cursor:pointer;width:100%;font-family:sans-serif;
           '>🎤 음성으로 로그인</button>
-          <p id='voiceStatus' style='color:#6b7280;font-size:11px;margin:6px 0 0;font-family:sans-serif;'></p>
+          <p id='st' style='color:#6b7280;font-size:11px;margin:6px 0 0;font-family:sans-serif;'></p>
         </div>
         <script>
-        function speak(text, onEnd) {
+        function speak(text) {
           window.speechSynthesis.cancel();
           var u = new SpeechSynthesisUtterance(text);
-          u.lang = 'ko-KR';
-          u.rate = 0.9;
-          u.pitch = 1.5;
-          u.volume = 1.0;
-          var voices = window.speechSynthesis.getVoices();
-          var female = voices.find(function(v) {
-            return v.lang.startsWith('ko') && (v.name.includes('여') || v.name.includes('Female') || v.name.includes('female') || v.name.includes('Yuna') || v.name.includes('Sun'));
-          });
-          if (!female) female = voices.find(function(v) { return v.lang.startsWith('ko'); });
-          if (female) u.voice = female;
-          if (onEnd) u.onend = onEnd;
+          u.lang='ko-KR'; u.rate=0.9; u.pitch=1.5; u.volume=1.0;
+          var vs = window.speechSynthesis.getVoices();
+          var f = vs.find(function(v){ return v.lang.startsWith('ko') && (v.name.includes('여')||v.name.includes('Female')||v.name.includes('Yuna')); });
+          if(!f) f = vs.find(function(v){ return v.lang.startsWith('ko'); });
+          if(f) u.voice=f;
           window.speechSynthesis.speak(u);
         }
-        // 목소리 로드 대기
-        if (window.speechSynthesis.onvoiceschanged !== undefined) {
-          window.speechSynthesis.onvoiceschanged = function() {};
+        function fillPassword(pw) {
+          try {
+            var inputs = window.parent.document.querySelectorAll('input[type=password]');
+            if (inputs.length > 0) {
+              var setter = Object.getOwnPropertyDescriptor(window.parent.HTMLInputElement.prototype, 'value').set;
+              setter.call(inputs[0], pw);
+              inputs[0].dispatchEvent(new Event('input', {bubbles:true}));
+              inputs[0].dispatchEvent(new Event('change', {bubbles:true}));
+              return true;
+            }
+          } catch(e) {}
+          return false;
         }
         function startVoice() {
-          var btn = document.getElementById('voiceBtn');
-          var status = document.getElementById('voiceStatus');
-          if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-            status.textContent = '이 브라우저는 음성 인식을 지원하지 않습니다 (Chrome 권장)';
-            status.style.color = '#ff6b6b';
-            return;
+          var btn=document.getElementById('voiceBtn');
+          var st=document.getElementById('st');
+          if(!('webkitSpeechRecognition' in window)&&!('SpeechRecognition' in window)){
+            st.textContent='Chrome에서만 지원됩니다'; return;
           }
-          var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-          var rec = new SR();
-          rec.lang = 'ko-KR';
-          rec.interimResults = false;
-          rec.maxAlternatives = 5;
-          btn.textContent = '🔴 듣는 중...';
-          btn.style.borderColor = 'rgba(255,80,80,0.6)';
-          btn.style.color = '#ff6b6b';
-          status.textContent = '"자비스 로그인해줘" 라고 말하세요';
-          status.style.color = '#4f8ef7';
+          var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+          var rec=new SR(); rec.lang='ko-KR'; rec.maxAlternatives=5;
+          btn.textContent='🔴 듣는 중...'; btn.style.color='#ff6b6b';
+          st.textContent='"자비스 로그인해줘" 라고 말하세요'; st.style.color='#4f8ef7';
           rec.start();
-          rec.onresult = function(e) {
-            var results = [];
-            for (var i = 0; i < e.results[0].length; i++) {
-              results.push(e.results[0][i].transcript.replace(/\\s/g,'').toLowerCase());
-            }
-            status.textContent = '인식: ' + results[0];
-            var matched = results.some(function(t) {
-              return t.includes('자비스') && (t.includes('로그인') || t.includes('login'));
-            });
-            if (matched) {
-              status.textContent = '✅ 인식됨! 로그인 중...';
-              status.style.color = '#00d4aa';
-              btn.textContent = '✅ 인식됨';
-              try {
-                var inputs = window.parent.document.querySelectorAll('input[type=password]');
-                if (inputs.length > 0) {
-                  var setter = Object.getOwnPropertyDescriptor(window.parent.HTMLInputElement.prototype, 'value').set;
-                  setter.call(inputs[0], 'comfreec');
-                  inputs[0].dispatchEvent(new Event('input', {bubbles:true}));
-                  // 로그인 버튼 클릭 전 TTS 재생
-                  speak('로그인되었습니다.', function() {
-                    var btns = window.parent.document.querySelectorAll('button[kind=primaryFormSubmit], button[kind=primary]');
-                    if (btns.length > 0) btns[0].click();
-                  });
-                }
-              } catch(err) {
-                speak('로그인되었습니다.', null);
-                status.textContent = '✅ 비밀번호: comfreec 를 입력하세요';
-              }
+          rec.onresult=function(e){
+            var results=[];
+            for(var i=0;i<e.results[0].length;i++) results.push(e.results[0][i].transcript.replace(/\\s/g,'').toLowerCase());
+            st.textContent='인식: '+results[0];
+            var ok=results.some(function(t){ return t.includes('자비스')&&(t.includes('로그인')||t.includes('login')); });
+            if(ok){
+              speak('로그인되었습니다.');
+              st.textContent = '✅ 비밀번호: comfreec  ← 입력 후 로그인 버튼 클릭';
+              st.style.color='#00d4aa';
+              btn.textContent='✅ 완료';
             } else {
-              status.textContent = '다시 시도: ' + results[0];
-              status.style.color = '#ff6b6b';
-              btn.textContent = '🎤 음성으로 로그인';
-              btn.style.borderColor = 'rgba(79,142,247,0.4)';
-              btn.style.color = '#8b92a5';
+              st.textContent='다시 시도: '+results[0]; st.style.color='#ff6b6b';
+              btn.textContent='🎤 음성으로 로그인'; btn.style.color='#8b92a5';
             }
           };
-          rec.onerror = function(e) {
-            status.textContent = '오류: ' + e.error + ' (마이크 권한을 허용해주세요)';
-            status.style.color = '#ff6b6b';
-            btn.textContent = '🎤 음성으로 로그인';
-            btn.style.borderColor = 'rgba(79,142,247,0.4)';
-            btn.style.color = '#8b92a5';
-          };
-          rec.onend = function() {
-            if (btn.textContent === '🔴 듣는 중...') {
-              btn.textContent = '🎤 음성으로 로그인';
-              btn.style.borderColor = 'rgba(79,142,247,0.4)';
-              btn.style.color = '#8b92a5';
-            }
-          };
+          rec.onerror=function(e){ st.textContent='오류: '+e.error; btn.textContent='🎤 음성으로 로그인'; btn.style.color='#8b92a5'; };
+          rec.onend=function(){ if(btn.textContent==='🔴 듣는 중...'){ btn.textContent='🎤 음성으로 로그인'; btn.style.color='#8b92a5'; } };
         }
         </script>
         """, height=80)
