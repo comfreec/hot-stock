@@ -1034,11 +1034,19 @@ def send_trade_report():
             rid, name, sym, avg_p, target, stop, qty, step, entry, alert_date = row
             avg_p = float(avg_p or entry or 0)
             cur   = client.get_price(sym)
-            # 현재가 조회 실패 시 1회 재시도
+            # 현재가 조회 실패 시 yfinance 폴백
             if cur is None:
                 import time as _time
                 _time.sleep(0.5)
                 cur = client.get_price(sym)
+            if cur is None:
+                try:
+                    import yfinance as _yf
+                    _d = _yf.Ticker(sym).history(period="2d")
+                    if len(_d) > 0:
+                        cur = float(_d["Close"].iloc[-1])
+                except Exception:
+                    pass
             days  = (date.today() - date.fromisoformat(alert_date)).days if alert_date else 0
             invest = avg_p * qty if avg_p and qty else 0
             eval_  = (cur * qty) if cur and qty else invest
