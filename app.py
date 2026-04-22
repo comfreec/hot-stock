@@ -23,9 +23,9 @@ except Exception as e:
 
 # ── 접근 제어 ────────────────────────────────────────────────────
 try:
-    PASSWORDS = list(st.secrets.get("PASSWORDS", ["hotstock2026", "vip1234", "comfreec"]))
+    PASSWORDS = list(st.secrets.get("PASSWORDS", ["comfreec"]))
 except Exception:
-    PASSWORDS = ["hotstock2026", "vip1234", "comfreec"]
+    PASSWORDS = ["comfreec"]
 
 if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
@@ -181,7 +181,7 @@ if not st.session_state["authenticated"]:
             var ok=results.some(function(t){ return t.includes('자비스')&&(t.includes('로그인')||t.includes('login')); });
             if(ok){
               speak('로그인되었습니다.');
-              st.textContent = '✅ 비밀번호: comfreec  ← 입력 후 로그인 버튼 클릭';
+              st.textContent = '✅ 인식됨 - 로그인 버튼을 눌러주세요';
               st.style.color='#00d4aa';
               btn.textContent='✅ 완료';
             } else {
