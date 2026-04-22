@@ -457,12 +457,141 @@ def format_signals(signals: dict) -> str:
     return "  ".join(active[:6]) if active else ""
 
 
+def make_summary_chart(results: list) -> bytes | None:
+    """급등 예고 종목 점수 요약 차트 - 다크 테마 고급 디자인"""
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        import matplotlib.patches as mpatches
+        from matplotlib import font_manager
+        import numpy as np
+
+        # 한글 폰트 설정
+        import os
+        font_paths = [
+            "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",
+            "/usr/share/fonts/truetype/nanum/NanumBarunGothic.ttf",
+            "/System/Library/Fonts/AppleSDGothicNeo.ttc",
+            "C:/Windows/Fonts/malgun.ttf",
+        ]
+        for fp in font_paths:
+            if os.path.exists(fp):
+                font_manager.fontManager.addfont(fp)
+                plt.rcParams["font.family"] = font_manager.FontProperties(fname=fp).get_name()
+                break
+        plt.rcParams["axes.unicode_minus"] = False
+
+        top = sorted(results, key=lambda x: x["total_score"], reverse=True)[:10]
+        names  = [r["name"] for r in top]
+        scores = [r["total_score"] for r in top]
+        n = len(names)
+
+        # ── 캔버스 설정 ──────────────────────────────────────────
+        fig_h = max(5, n * 0.72 + 3.2)
+        fig, ax = plt.subplots(figsize=(10, fig_h))
+        fig.patch.set_facecolor("#0d1117")
+        ax.set_facecolor("#0d1117")
+
+        # ── 그라데이션 색상 (점수 높을수록 밝은 골드) ──────────
+        max_s = max(scores) if scores else 1
+        colors = []
+        for s in scores:
+            ratio = s / max_s
+            if ratio >= 0.85:
+                colors.append("#FFD700")   # 골드
+            elif ratio >= 0.65:
+                colors.append("#4f8ef7")   # 블루
+            elif ratio >= 0.45:
+                colors.append("#00d4aa")   # 민트
+            else:
+                colors.append("#6b7280")   # 그레이
+
+        y_pos = np.arange(n)[::-1]
+
+        # ── 배경 그리드 ──────────────────────────────────────────
+        ax.set_xlim(0, max_s * 1.22)
+        ax.set_ylim(-0.6, n - 0.4)
+        for x in np.linspace(0, max_s * 1.2, 6):
+            ax.axvline(x, color="#1e2433", linewidth=0.8, zorder=0)
+
+        # ── 막대 그래프 ──────────────────────────────────────────
+        bars = ax.barh(y_pos, scores, height=0.55, color=colors,
+                       alpha=0.92, zorder=3,
+                       edgecolor="none")
+
+        # 막대 끝 글로우 효과 (얇은 밝은 선)
+        for bar, c in zip(bars, colors):
+            ax.barh(bar.get_y() + bar.get_height()/2,
+                    bar.get_width(), height=0.08,
+                    color=c, alpha=0.6, zorder=4)
+
+        # ── 점수 텍스트 ──────────────────────────────────────────
+        for i, (s, c) in enumerate(zip(scores, colors)):
+            ax.text(s + max_s * 0.015, y_pos[i], f"{s}점",
+                    va="center", ha="left",
+                    fontsize=11, fontweight="bold",
+                    color=c, zorder=5)
+
+        # ── 종목명 ───────────────────────────────────────────────
+        ax.set_yticks(y_pos)
+        ax.set_yticklabels(names, fontsize=12, color="#e0e6f0", fontweight="bold")
+        ax.tick_params(axis="y", length=0, pad=8)
+
+        # ── 순위 뱃지 ────────────────────────────────────────────
+        medals = {0: "1st", 1: "2nd", 2: "3rd"}
+        medal_colors = {0: "#FFD700", 1: "#C0C0C0", 2: "#CD7F32"}
+        for i in range(min(3, n)):
+            ax.text(-max_s * 0.04, y_pos[i], medals[i],
+                    va="center", ha="center", fontsize=8,
+                    fontweight="bold", color=medal_colors[i], zorder=5)
+
+        # ── X축 스타일 ───────────────────────────────────────────
+        ax.set_xlabel("종합 점수", color="#6b7280", fontsize=10, labelpad=8)
+        ax.tick_params(axis="x", colors="#4a5568", labelsize=9)
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        ax.spines["left"].set_visible(False)
+        ax.spines["bottom"].set_color("#1e2433")
+
+        # ── 타이틀 ───────────────────────────────────────────────
+        today_str = date.today().strftime("%Y.%m.%d")
+        fig.text(0.5, 0.97, "J.A.R.V.I.S.  SWING RADAR",
+                 ha="center", va="top",
+                 fontsize=15, fontweight="bold", color="#f0f4ff")
+        fig.text(0.5, 0.925, f"급등 예고 종목  TOP {n}   |   {today_str}",
+                 ha="center", va="top",
+                 fontsize=10, color="#6b7280", style="italic")
+
+        # ── 하단 워터마크 ────────────────────────────────────────
+        fig.text(0.98, 0.01, "SWING RADAR  |  매일 15:40 자동 분석",
+                 ha="right", va="bottom",
+                 fontsize=7.5, color="#2d3555", style="italic")
+
+        plt.tight_layout(rect=[0.04, 0.02, 1, 0.91])
+
+        buf = io.BytesIO()
+        plt.savefig(buf, format="png", dpi=150,
+                    facecolor=fig.get_facecolor(), bbox_inches="tight")
+        plt.close(fig)
+        buf.seek(0)
+        return buf.read()
+    except Exception as e:
+        print(f"[요약차트] 생성 오류: {e}")
+        return None
+
+
 def send_scan_alert(results: list, send_charts: bool = True):
     """스캔 결과 텔레그램 전송 (차트 이미지 포함)"""
     if not results:
         return
 
     today = date.today().strftime("%Y-%m-%d")
+
+    # ── 요약 차트 먼저 전송 ──────────────────────────────────────
+    summary_img = make_summary_chart(results)
+    if summary_img:
+        send_photo(summary_img, caption=f"📡 {today} 급등 예고 종목 TOP {min(len(results),10)}")
 
     # 요약 메시지 먼저 전송
     # 신규 / 추적 중 분류
