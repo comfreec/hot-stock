@@ -516,7 +516,7 @@ def make_summary_chart(results: list) -> bytes | None:
             ax.axvline(x, color="#1e2433", linewidth=0.8, zorder=0)
 
         # ── 막대 그래프 ──────────────────────────────────────────
-        bars = ax.barh(y_pos, scores, height=0.62, color=colors,
+        bars = ax.barh(y_pos, scores, height=0.72, color=colors,
                        alpha=0.88, zorder=3, edgecolor="none")
 
         # ── 막대 안에 종목명 + 점수 텍스트 ──────────────────────
@@ -525,12 +525,12 @@ def make_summary_chart(results: list) -> bytes | None:
             # 종목명 (막대 왼쪽 안쪽)
             ax.text(bar_w * 0.04, y_pos[i], name,
                     va="center", ha="left",
-                    fontsize=11.5, fontweight="bold",
+                    fontsize=14, fontweight="bold",
                     color="#0d1117", zorder=5)
             # 점수 (막대 오른쪽 끝 바깥)
             ax.text(bar_w + max_s * 0.012, y_pos[i], f"{s}점",
                     va="center", ha="left",
-                    fontsize=10.5, fontweight="bold",
+                    fontsize=13, fontweight="bold",
                     color=c, zorder=5)
 
         # ── 순위 뱃지 (막대 왼쪽) ────────────────────────────────
@@ -560,10 +560,10 @@ def make_summary_chart(results: list) -> bytes | None:
         today_str = date.today().strftime("%Y.%m.%d")
         fig.text(0.5, 0.97, "J.A.R.V.I.S.  SWING RADAR",
                  ha="center", va="top",
-                 fontsize=15, fontweight="bold", color="#f0f4ff")
+                 fontsize=18, fontweight="bold", color="#f0f4ff")
         fig.text(0.5, 0.925, f"급등 예고 종목  TOP {n}   |   {today_str}",
                  ha="center", va="top",
-                 fontsize=10, color="#6b7280", style="italic")
+                 fontsize=12, color="#6b7280", style="italic")
 
         # ── 하단 워터마크 ────────────────────────────────────────
         fig.text(0.98, 0.01, "SWING RADAR  |  매일 15:40 자동 분석",
