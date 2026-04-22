@@ -1243,6 +1243,13 @@ def verify_positions():
         balance = client.get_balance()
         holdings = balance.get("holdings", {})  # {code: {qty, avg_price, ...}}
 
+        # ── 잔고 조회 실패 시 검증 중단 (오탐 방지) ──────────────
+        # holdings가 비어있고 cash도 0이면 API 오류로 판단
+        if not holdings and balance.get("cash", 0) == 0:
+            print("[잔고검증] 잔고 조회 결과 없음 - API 오류 가능성, 검증 중단")
+            _send_admin("⚠️ <b>잔고검증 스킵</b>\n잔고 조회 결과가 없어 검증을 중단했습니다.\n(모의투자 장외시간 또는 API 오류)")
+            return
+
         conn = _get_trade_conn()
         db_orders = conn.execute(
             "SELECT id, symbol, name, status, qty, avg_price, entry_price FROM trade_orders "
