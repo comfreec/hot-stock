@@ -23,7 +23,7 @@ from auto_trader_multi import (
 st.title("🔐 자동매매 관리자")
 
 # ── 인증 ─────────────────────────────────────────────────────────
-ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin123")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "comfreec")
 
 if "admin_auth" not in st.session_state:
     st.session_state["admin_auth"] = False
