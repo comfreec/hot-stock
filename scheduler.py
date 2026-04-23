@@ -107,6 +107,32 @@ def run_scan():
         import traceback
         traceback.print_exc()
 
+def run_db_backup():
+    """매일 새벽 2시 DB 백업 (7일치 보관)"""
+    if not os.path.isdir("/data"):
+        return
+    try:
+        import shutil
+        from datetime import datetime as _dt
+        backup_dir = "/data/backup"
+        os.makedirs(backup_dir, exist_ok=True)
+        today_str = _dt.now(KST).strftime("%Y%m%d")
+        src = "/data/scan_cache.db"
+        dst = f"{backup_dir}/scan_cache_{today_str}.db"
+        if os.path.exists(src):
+            shutil.copy2(src, dst)
+            log(f"[백업] DB 백업 완료: {dst}")
+        # 7일 이상 된 백업 삭제
+        for fname in os.listdir(backup_dir):
+            fpath = os.path.join(backup_dir, fname)
+            import time as _time
+            if _time.time() - os.path.getmtime(fpath) > 86400 * 7:
+                os.remove(fpath)
+                log(f"[백업] 오래된 백업 삭제: {fname}")
+    except Exception as e:
+        log(f"[백업] 오류: {e}")
+
+
 def run_performance():
     log("주간 리포트 전송 시작...")
     try:
@@ -150,12 +176,21 @@ def main():
     last_perf_date   = state.get("last_perf_date")
     last_crypto_hour = state.get("last_crypto_hour", -1)
     last_reorder_date = state.get("last_reorder_date")
+    last_backup_date = state.get("last_backup_date")
 
     while True:
         now_kst = datetime.now(KST)
         now_utc = datetime.now(UTC)
         today   = now_kst.date().isoformat()
         is_weekday = now_kst.weekday() < 5
+
+        # 02:00 KST DB 백업 (매일)
+        if now_kst.hour == 2 and now_kst.minute >= 0 and now_kst.minute < 5 and last_backup_date != today:
+            last_backup_date = today
+            _save_state({"last_scan_date": last_scan_date, "last_perf_date": last_perf_date,
+                         "last_crypto_hour": last_crypto_hour, "last_reorder_date": last_reorder_date,
+                         "last_backup_date": last_backup_date})
+            run_db_backup()
 
         # 09:05 KST 자동매매 주문 (전날 스캔 결과 기반 신규 매수 + 미체결 재주문)
         if is_weekday and now_kst.hour == 9 and now_kst.minute >= 5 and last_reorder_date != today:

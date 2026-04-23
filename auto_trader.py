@@ -560,6 +560,12 @@ def place_orders(results: list):
     total_budget = cfg["max_stocks"] * cfg["budget_per"]
     if cash < cfg["budget_per"]:
         print(f"[자동매매] 예수금 부족 (₩{cash:,.0f}) - 주문 중단")
+        _send_admin(
+            f"⚠️ <b>예수금 부족 - 주문 중단</b>\n"
+            f"현재 예수금: ₩{cash:,.0f}\n"
+            f"종목당 필요 예산: ₩{cfg['budget_per']:,.0f}\n"
+            f"→ 신규 매수 주문이 실행되지 않았습니다."
+        )
         return
 
     slots = cfg["max_stocks"] - active_count
@@ -640,6 +646,7 @@ def place_orders(results: list):
 
         if cash < budget * 0.8:
             print(f"[자동매매] 예수금 부족 ({cash:,.0f}원) - 주문 중단")
+            _send_admin(f"⚠️ <b>예수금 부족</b>\n현재 예수금: ₩{cash:,.0f}\n→ 추가 매수 중단")
             break
 
         qty = max(1, int(budget / entry) // 3)  # 1/3 수량으로 1차 매수
