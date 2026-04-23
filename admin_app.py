@@ -514,3 +514,127 @@ print('OK: scan_mode =', '{_val}')
                         st.error(f"❌ 실패: {e}")
         except Exception as e:
             st.error(f"설정 로드 오류: {e}")
+
+    # ── Fly DB 로컬 백업 ─────────────────────────────────────────
+    st.markdown("---")
+    st.markdown("#### 💾 Fly DB 로컬 백업")
+    st.caption("fly 서버의 DB를 로컬로 다운로드합니다. 만약의 경우를 대비한 수동 백업입니다.")
+
+    col_dl1, col_dl2 = st.columns(2)
+    with col_dl1:
+        if st.button("📥 Fly DB 다운로드", type="primary", key="dl_fly_db"):
+            with st.spinner("fly DB 다운로드 중..."):
+                try:
+                    import subprocess, os
+                    from datetime import datetime as _dt
+                    fname = f"fly_backup_{_dt.now().strftime('%Y%m%d_%H%M%S')}.db"
+                    r = subprocess.run(
+                        ["flyctl", "ssh", "sftp", "get", "/data/scan_cache.db", fname, "--app", "hot-stock-app"],
+                        capture_output=True, text=True, timeout=60
+                    )
+                    if os.path.exists(fname):
+                        size_mb = os.path.getsize(fname) / 1024 / 1024
+                        st.success(f"✅ 다운로드 완료: {fname} ({size_mb:.1f}MB)")
+                        # 다운로드 버튼 제공
+                        with open(fname, "rb") as f:
+                            st.download_button(
+                                label=f"💾 {fname} 저장",
+                                data=f.read(),
+                                file_name=fname,
+                                mime="application/octet-stream"
+                            )
+                    else:
+                        st.error(f"❌ 다운로드 실패: {r.stderr[:200]}")
+                except Exception as e:
+                    st.error(f"❌ 오류: {e}")
+
+    with col_dl2:
+        if st.button("📋 Fly 백업 목록 확인", key="check_fly_backup"):
+            with st.spinner("확인 중..."):
+                try:
+                    import subprocess
+                    r = subprocess.run(
+                        ["flyctl", "ssh", "console", "--app", "hot-stock-app",
+                         "-C", "ls -lh /data/backup/"],
+                        capture_output=True, text=True, timeout=20
+                    )
+                    if r.stdout:
+                        st.code(r.stdout)
+                    else:
+                        st.info("백업 파일 없음")
+                except Exception as e:
+                    st.error(f"❌ 오류: {e}")
+
+    # ── Fly 환경변수 설정 ────────────────────────────────────────
+    st.markdown("---")
+    st.markdown("#### ⚙️ Fly 환경변수 설정")
+    st.caption("KIS 자동매매 관련 환경변수를 직접 변경합니다. 저장 시 fly 서버가 자동 재시작됩니다.")
+
+    with st.expander("📖 모의→실전 전환 방법", expanded=False):
+        st.markdown("""
+1. **실전 KIS APP KEY / APP SECRET** 발급 (apiportal.koreainvestment.com → 실전투자 탭)
+2. **실전 계좌번호** 확인 (8자리-2자리)
+3. 아래 폼에서 KEY/SECRET/계좌번호 입력 + **KIS_MOCK = 0** 으로 변경
+4. 저장 버튼 클릭 → fly 자동 재시작 (~1분)
+> ⚠️ 실전 전환 후에는 실제 돈으로 주문이 실행됩니다!
+        """)
+
+    with st.form("env_form"):
+        st.markdown("**🔑 KIS API 설정**")
+        col1, col2 = st.columns(2)
+        with col1:
+            new_app_key    = st.text_input("KIS APP KEY", type="password",
+                placeholder="변경 시에만 입력 (비워두면 기존 유지)",
+                help="한국투자증권 Open API 앱키")
+            new_account    = st.text_input("계좌번호",
+                value=os.environ.get("KIS_ACCOUNT", ""),
+                placeholder="50123456-01",
+                help="8자리-2자리 형식")
+        with col2:
+            new_app_secret = st.text_input("KIS APP SECRET", type="password",
+                placeholder="변경 시에만 입력 (비워두면 기존 유지)",
+                help="한국투자증권 Open API 시크릿")
+            new_mock       = st.selectbox("투자 모드",
+                ["1 (모의투자)", "0 (실전투자)"],
+                index=0 if os.environ.get("KIS_MOCK", "1") == "1" else 1,
+                help="1=모의투자, 0=실전투자")
+
+        st.markdown("**💰 매매 설정**")
+        col3, col4, col5 = st.columns(3)
+        with col3:
+            new_budget  = st.text_input("종목당 예산 (원)",
+                value=os.environ.get("KIS_BUDGET_PER", "1000000"),
+                help="1차 매수 시 종목당 예산")
+        with col4:
+            new_stocks  = st.text_input("최대 보유 종목",
+                value=os.environ.get("KIS_MAX_STOCKS", "3"))
+        with col5:
+            new_days    = st.text_input("미체결 만료일 (거래일)",
+                value=os.environ.get("KIS_MAX_DAYS", "5"))
+
+        if st.form_submit_button("💾 Fly 환경변수 저장", type="primary"):
+            import subprocess
+            with st.spinner("저장 중... (fly 재시작 약 1분 소요)"):
+                try:
+                    args = ["flyctl", "secrets", "set", "--app", "hot-stock-app"]
+                    if new_app_key.strip():
+                        args.append(f"KIS_APP_KEY={new_app_key.strip()}")
+                    if new_app_secret.strip():
+                        args.append(f"KIS_APP_SECRET={new_app_secret.strip()}")
+                    if new_account.strip():
+                        args.append(f"KIS_ACCOUNT={new_account.strip()}")
+                    args.append(f"KIS_MOCK={new_mock[0]}")
+                    args.append(f"KIS_BUDGET_PER={new_budget.strip()}")
+                    args.append(f"KIS_MAX_STOCKS={new_stocks.strip()}")
+                    args.append(f"KIS_MAX_DAYS={new_days.strip()}")
+
+                    r = subprocess.run(args, capture_output=True, text=True, timeout=90)
+                    if r.returncode == 0:
+                        mode_str = "실전투자" if new_mock[0] == "0" else "모의투자"
+                        st.success(f"✅ 환경변수 저장 완료! [{mode_str}] fly 재시작 중...")
+                        if new_mock[0] == "0":
+                            st.warning("⚠️ 실전투자 모드로 전환됐습니다. 실제 주문이 실행됩니다!")
+                    else:
+                        st.error(f"❌ 실패: {r.stderr[:300]}")
+                except Exception as e:
+                    st.error(f"❌ 오류: {e}")

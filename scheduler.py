@@ -108,7 +108,7 @@ def run_scan():
         traceback.print_exc()
 
 def run_db_backup():
-    """매일 새벽 2시 DB 백업 (7일치 보관)"""
+    """매일 새벽 2시 DB 백업 (7일치 보관) + 개인 알림"""
     if not os.path.isdir("/data"):
         return
     try:
@@ -121,7 +121,19 @@ def run_db_backup():
         dst = f"{backup_dir}/scan_cache_{today_str}.db"
         if os.path.exists(src):
             shutil.copy2(src, dst)
-            log(f"[백업] DB 백업 완료: {dst}")
+            size_mb = os.path.getsize(dst) / 1024 / 1024
+            log(f"[백업] DB 백업 완료: {dst} ({size_mb:.1f}MB)")
+            # 백업 성공 알림
+            try:
+                from auto_trader import _send_admin
+                _send_admin(
+                    f"✅ <b>DB 백업 완료</b>\n"
+                    f"파일: scan_cache_{today_str}.db\n"
+                    f"크기: {size_mb:.1f}MB\n"
+                    f"시각: {_dt.now(KST).strftime('%Y-%m-%d %H:%M KST')}"
+                )
+            except Exception:
+                pass
         # 7일 이상 된 백업 삭제
         for fname in os.listdir(backup_dir):
             fpath = os.path.join(backup_dir, fname)
@@ -131,6 +143,12 @@ def run_db_backup():
                 log(f"[백업] 오래된 백업 삭제: {fname}")
     except Exception as e:
         log(f"[백업] 오류: {e}")
+        # 백업 실패 알림
+        try:
+            from auto_trader import _send_admin
+            _send_admin(f"⚠️ <b>DB 백업 실패</b>\n오류: {e}")
+        except Exception:
+            pass
 
 
 def run_performance():
