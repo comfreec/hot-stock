@@ -1,7 +1,7 @@
 """
-코인 급등 예측 프로그램 v1.0
-핵심 전략: 200일선 아래 조정 → 최근 돌파 → 현재 근처 → 급등 신호 복합
-주식 버전(240일선)과 동일한 로직, 코인 특성에 맞게 조정 (200일선 기준)
+코인 급등 예측 프로그램 v2.0
+핵심 전략: 240일선 아래 조정 → 최근 돌파 → 현재 근처 → 급등 신호 복합
+주식 버전과 동일한 로직, 코인 특성에 맞게 조정 (240일선 기준)
 """
 import ccxt
 import pandas as pd
@@ -39,9 +39,9 @@ def fetch_ohlcv(symbol: str, timeframe: str = "1d", limit: int = 300) -> pd.Data
 
 
 class CryptoSurgeDetector:
-    def __init__(self, max_gap_pct=15.0, min_below_days=60, max_cross_days=45):
+    def __init__(self, max_gap_pct=7.0, min_below_days=0, max_cross_days=180):
         """
-        max_gap_pct    : 200일선 위 최대 이격 (코인은 변동성 크므로 15%)
+        max_gap_pct    : 240일선 위 최대 이격 (코인은 변동성 크므로 15%)
         min_below_days : 최소 조정 기간 (코인은 60일 = 2개월)
         max_cross_days : 돌파 후 최대 경과일 (45일)
         """
@@ -104,54 +104,54 @@ class CryptoSurgeDetector:
             n     = len(close)
 
             # 이동평균
-            ma200 = close.rolling(200).mean()
+            ma240 = close.rolling(240).mean()
             ma50  = close.rolling(50).mean()
             ma20  = close.rolling(20).mean()
             ma5   = close.rolling(5).mean()
 
             current = float(close.iloc[-1])
 
-            # ── 필수 조건 1: 현재가가 200일선 위 0~max_gap_pct% ──
-            ma200_cur = float(ma200.iloc[-1])
-            if pd.isna(ma200_cur):
+            # ── 필수 조건 1: 현재가가 240일선 위 0~max_gap_pct% ──
+            ma240_cur = float(ma240.iloc[-1])
+            if pd.isna(ma240_cur):
                 return None
-            gap_pct = (current - ma200_cur) / ma200_cur * 100
+            gap_pct = (current - ma240_cur) / ma240_cur * 100
             if not (0 <= gap_pct <= self.max_gap_pct):
                 return None
 
-            # ── 필수 조건 2: 최근 max_cross_days 이내 200일선 돌파 ──
+            # ── 필수 조건 2: 최근 max_cross_days 이내 240일선 돌파 ──
             cross_idx = None
             search_start = max(0, n - self.max_cross_days - 1)
             for i in range(n - 1, search_start, -1):
-                if pd.isna(ma200.iloc[i]) or pd.isna(ma200.iloc[i-1]):
+                if pd.isna(ma240.iloc[i]) or pd.isna(ma240.iloc[i-1]):
                     continue
-                prev_below = float(close.iloc[i-1]) < float(ma200.iloc[i-1])
-                curr_above = float(close.iloc[i]) >= float(ma200.iloc[i]) * 1.005
+                prev_below = float(close.iloc[i-1]) < float(ma240.iloc[i-1])
+                curr_above = float(close.iloc[i]) >= float(ma240.iloc[i]) * 1.005
                 if prev_below and curr_above:
                     cross_idx = i
                     break
             if cross_idx is None:
                 return None
 
-            # ── 필수 조건 3: 돌파 전 min_below_days 이상 200일선 아래 ──
+            # ── 필수 조건 3: 돌파 전 min_below_days 이상 240일선 아래 ──
             below_days = sum(
                 1 for i in range(cross_idx)
-                if not pd.isna(ma200.iloc[i]) and float(close.iloc[i]) < float(ma200.iloc[i])
+                if not pd.isna(ma240.iloc[i]) and float(close.iloc[i]) < float(ma240.iloc[i])
             )
             if below_days < self.min_below_days:
                 return None
 
-            # ── 필수 조건 4: 200일선 기울기 (급격한 하락 추세만 제외) ──
-            ma200_at_cross   = float(ma200.iloc[cross_idx])
-            ma200_20d_before = float(ma200.iloc[cross_idx - 20]) if cross_idx >= 20 else ma200_at_cross
-            slope = (ma200_at_cross - ma200_20d_before) / ma200_20d_before * 100
+            # ── 필수 조건 4: 240일선 기울기 (급격한 하락 추세만 제외) ──
+            ma240_at_cross   = float(ma240.iloc[cross_idx])
+            ma240_20d_before = float(ma240.iloc[cross_idx - 20]) if cross_idx >= 20 else ma240_at_cross
+            slope = (ma240_at_cross - ma240_20d_before) / ma240_20d_before * 100
             if slope < -5.0:  # 코인은 변동성 크므로 -5% 기준
                 return None
 
             # ── 필수 조건 5: 돌파 후 3일 연속 이탈 없음 ──
             consecutive = 0
             for i in range(cross_idx + 1, n):
-                if float(close.iloc[i]) < float(ma200.iloc[i]):
+                if float(close.iloc[i]) < float(ma240.iloc[i]):
                     consecutive += 1
                     if consecutive >= 3:
                         return None
@@ -270,7 +270,7 @@ class CryptoSurgeDetector:
                 "symbol":            symbol,
                 "name":              name,
                 "current_price":     round(current, 6),
-                "ma200":             round(ma200_cur, 6),
+                "ma240":             round(ma240_cur, 6),
                 "gap_pct":           round(gap_pct, 2),
                 "days_since_cross":  days_since_cross,
                 "below_days":        below_days,
@@ -284,22 +284,209 @@ class CryptoSurgeDetector:
         except Exception as e:
             return None
 
+    def analyze_coin_rsi_cycle(self, symbol: str) -> dict | None:
+        """
+        RSI 사이클 전략 - 코인 버전
+        1) RSI(14) 30 이하 탈출
+        2) 240일선 상향 돌파
+        3) RSI 70 이상 도달
+        4) RSI 70 이탈 (조정)
+        5) 현재가 240일선 위 0~15% + RSI 55 이하
+        """
+        try:
+            data = fetch_ohlcv(symbol, limit=300)
+            if data is None or len(data) < 200:
+                return None
+
+            close = data["Close"]
+            high  = data["High"]
+            low   = data["Low"]
+            vol   = data["Volume"]
+            n     = len(close)
+
+            ma240 = close.rolling(240).mean()
+            if pd.isna(ma240.iloc[-1]):
+                return None
+
+            current   = float(close.iloc[-1])
+            ma240_cur = float(ma240.iloc[-1])
+            gap_pct   = (current - ma240_cur) / ma240_cur * 100
+
+            # 현재가 240일선 위 0~15% 필터
+            if not (0 <= gap_pct <= 15):
+                return None
+
+            rsi = self._rsi(close, 20).fillna(50)
+            rsi_vals   = rsi.values
+            close_arr  = close.values
+            ma240_arr  = ma240.values
+
+            search_start = max(1, n - 400)
+
+            # Step1: RSI 30 탈출 (가장 강한 바닥)
+            oversold_candidates = []
+            for i in range(search_start, n - 30):
+                if rsi_vals[i-1] <= 30 and rsi_vals[i] > 30:
+                    lb = max(0, i - 20)
+                    min_rsi = float(rsi_vals[lb:i].min()) if i > lb else float(rsi_vals[i-1])
+                    oversold_candidates.append((i, min_rsi))
+            if not oversold_candidates:
+                return None
+            oversold_exit = min(oversold_candidates, key=lambda x: (x[1], -x[0]))[0]
+
+            # Step2: 240일선 상향 돌파 (거래량 가장 강한 것)
+            vol_arr     = vol.values
+            vol_ma20    = vol.rolling(20).mean().values
+            cross_candidates = []
+            for i in range(oversold_exit, n - 10):
+                if pd.isna(ma240_arr[i]) or pd.isna(ma240_arr[i-1]):
+                    continue
+                if close_arr[i] > ma240_arr[i] and close_arr[i-1] <= ma240_arr[i-1]:
+                    vr = float(vol_arr[i] / vol_ma20[i]) if vol_ma20[i] > 0 and not pd.isna(vol_ma20[i]) else 1.0
+                    cross_candidates.append((i, vr))
+            if not cross_candidates:
+                return None
+            cross_idx = max(cross_candidates, key=lambda x: (x[1], x[0]))[0]
+
+            # Step3: RSI 70 도달
+            overbought_idx = None
+            for i in range(cross_idx, n - 5):
+                if rsi_vals[i] >= 70:
+                    overbought_idx = i
+                    break
+            if overbought_idx is None:
+                return None
+
+            # Step4: RSI 70 이탈
+            overbought_exit = None
+            for i in range(overbought_idx, n - 1):
+                if rsi_vals[i-1] >= 70 and rsi_vals[i] < 70:
+                    overbought_exit = i
+                    break
+            if overbought_exit is None:
+                return None
+
+            cur_rsi = float(rsi_vals[-1])
+            if cur_rsi > 55:
+                return None
+
+            # RSI 바닥 깊이 기반 최대 경과일
+            rsi_bottom = float(rsi_vals[oversold_exit - 1])
+            ob_max_days = 240 if rsi_bottom <= 20 else 200 if rsi_bottom <= 25 else 160
+            days_since_ob = n - 1 - overbought_exit
+            if days_since_ob > ob_max_days or days_since_ob < 5:
+                return None
+
+            # 점수 계산
+            score = 0
+            signals = {"rsi_cycle_pullback": True, "rsi_cycle_cur": round(cur_rsi, 1),
+                       "rsi_cycle_days_since": days_since_ob}
+
+            # RSI 바닥 깊이 가산점
+            if rsi_bottom <= 20: score += 3
+            elif rsi_bottom <= 25: score += 2
+            elif rsi_bottom <= 28: score += 1
+
+            # 거래량
+            vol_ma20_s = vol.rolling(20).mean()
+            cross_vr  = float(vol.iloc[cross_idx] / vol_ma20_s.iloc[cross_idx]) if vol_ma20_s.iloc[cross_idx] > 0 else 0
+            recent_vr = float(vol.iloc[-5:].mean() / vol_ma20_s.iloc[-1]) if vol_ma20_s.iloc[-1] > 0 else 0
+            signals["vol_at_cross"]    = cross_vr >= 2.0
+            signals["vol_strong_cross"] = cross_vr >= 3.0
+            signals["recent_vol"]      = recent_vr >= 1.5
+            if signals["vol_strong_cross"]: score += 4
+            elif signals["vol_at_cross"]:   score += 3
+            if signals["recent_vol"]:       score += 2
+
+            # OBV
+            obv = self._obv(data)
+            signals["obv_rising"] = float(obv.iloc[-1]) > float(obv.iloc[cross_idx])
+            if signals["obv_rising"]: score += 2
+
+            # 이평선 정배열
+            ma50 = close.rolling(50).mean()
+            ma20_s = close.rolling(20).mean()
+            ma5_s  = close.rolling(5).mean()
+            signals["ma_align"] = bool(ma5_s.iloc[-1] > ma20_s.iloc[-1] > ma50.iloc[-1])
+            if signals["ma_align"]: score += 3
+
+            # MACD
+            try:
+                macd   = close.ewm(span=12).mean() - close.ewm(span=26).mean()
+                macd_s = macd.ewm(span=9).mean()
+                signals["macd_cross"] = bool(macd.iloc[-1] > macd_s.iloc[-1] and macd.iloc[-2] <= macd_s.iloc[-2])
+                if signals["macd_cross"]: score += 2
+            except:
+                signals["macd_cross"] = False
+
+            # RSI 기울기
+            try:
+                rsi_clean = rsi.dropna()
+                rsi_slope = float(rsi_clean.iloc[-1]) - float(rsi_clean.iloc[-4])
+                signals["rsi_slope_up"] = rsi_slope > 0
+                if signals["rsi_slope_up"]: score += 2
+            except:
+                signals["rsi_slope_up"] = False
+
+            # 4시간봉 확인
+            try:
+                df4h = fetch_ohlcv(symbol, timeframe="4h", limit=50)
+                if df4h is not None and len(df4h) >= 20:
+                    ma20_4h = df4h["Close"].rolling(20).mean()
+                    signals["4h_above_ma20"] = float(df4h["Close"].iloc[-1]) > float(ma20_4h.iloc[-1])
+                    if signals["4h_above_ma20"]: score += 2
+                else:
+                    signals["4h_above_ma20"] = False
+            except:
+                signals["4h_above_ma20"] = False
+
+            if score < 8:
+                return None
+
+            name = COIN_NAMES.get(symbol, symbol.replace("/USDT", ""))
+            return {
+                "symbol":           symbol,
+                "name":             name,
+                "current_price":    round(current, 6),
+                "ma240":            round(ma240_cur, 6),
+                "gap_pct":          round(gap_pct, 2),
+                "days_since_cross": n - 1 - cross_idx,
+                "below_days":       0,
+                "total_score":      score,
+                "signals":          signals,
+                "rsi":              round(cur_rsi, 1),
+                "funding_rate":     0.0,
+                "scan_mode":        "rsi_cycle",
+                "scan_time":        datetime.now(timezone.utc).isoformat(),
+            }
+        except Exception:
+            return None
+
     def analyze_all_coins(self, max_workers: int = 5) -> list:
-        """전체 코인 병렬 스캔 (rate limit 고려해 워커 수 제한)"""
+        """전체 코인 병렬 스캔 - classic + RSI 사이클 통합"""
         results = []
         print(f"[스캔 시작] {len(self.symbols)}개 코인 분석 중...")
+
+        def _scan_both(sym):
+            r1 = self.analyze_coin(sym)
+            r2 = self.analyze_coin_rsi_cycle(sym)
+            # 두 전략 중 점수 높은 것 선택
+            if r1 and r2:
+                return r1 if r1["total_score"] >= r2["total_score"] else r2
+            return r1 or r2
+
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = {executor.submit(self.analyze_coin, sym): sym for sym in self.symbols}
+            futures = {executor.submit(_scan_both, sym): sym for sym in self.symbols}
             for i, future in enumerate(as_completed(futures)):
                 sym = futures[future]
                 try:
                     r = future.result(timeout=30)
                     if r:
                         results.append(r)
-                        print(f"  ✓ {sym} → 점수 {r['total_score']}")
-                except Exception as e:
+                        mode = r.get("scan_mode", "classic")
+                        print(f"  ✓ {sym} → 점수 {r['total_score']} [{mode}]")
+                except Exception:
                     pass
-                # rate limit 방지
                 if i % 10 == 9:
                     time.sleep(1)
         results.sort(key=lambda x: x["total_score"], reverse=True)
