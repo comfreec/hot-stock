@@ -158,12 +158,12 @@ def save_alert_history(results: list, price_levels_map: dict = None):
     conn = _get_conn()
     for r in results:
         sym = r.get("symbol", "")
-        # 오늘 이미 저장된 종목이면 스킵
-        existing_today = conn.execute(
-            "SELECT id FROM alert_history WHERE alert_date=? AND symbol=?",
-            (today, sym)
+        # 오늘 이미 저장됐거나 현재 active/pending 상태인 종목이면 스킵
+        existing = conn.execute(
+            "SELECT id FROM alert_history WHERE symbol=? AND (alert_date=? OR status IN ('pending','active'))",
+            (sym, today)
         ).fetchone()
-        if existing_today:
+        if existing:
             continue
         lv  = (price_levels_map or {}).get(sym, {})
         # 레벨 없으면 yfinance로 직접 계산 재시도

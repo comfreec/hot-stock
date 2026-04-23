@@ -776,8 +776,17 @@ def send_performance_update():
 
         hit_target_today = [h for h in history if h["status"] == "hit_target" and h.get("exit_date") == today]
         hit_stop_today   = [h for h in history if h["status"] == "hit_stop"   and h.get("exit_date") == today]
-        active_list      = [h for h in history if h["status"] == "active"]
-        still_pending    = [h for h in history if h["status"] == "pending"]
+        # symbol 기준 중복 제거
+        _seen_a = set()
+        active_list = []
+        for h in history:
+            if h["status"] == "active" and h["symbol"] not in _seen_a:
+                active_list.append(h); _seen_a.add(h["symbol"])
+        _seen_p = set()
+        still_pending = []
+        for h in history:
+            if h["status"] == "pending" and h["symbol"] not in _seen_a and h["symbol"] not in _seen_p:
+                still_pending.append(h); _seen_p.add(h["symbol"])
 
         if not hit_target_today and not hit_stop_today and not active_list and not still_pending:
             print("[성과추적] 오늘 상태 변경 없음 - 알림 생략")
@@ -897,9 +906,19 @@ def send_weekly_summary(force: bool = False):
 
         # 이번 주 신규 알림 종목
         this_week    = [h for h in history if h["alert_date"] >= week_start_str]
-        # 현재 진행 중인 종목 (전체 기간, active/pending)
-        active_list  = [h for h in history if h["status"] == "active"]
-        pending_list = [h for h in history if h["status"] == "pending"]
+        # 현재 진행 중인 종목 (전체 기간, active/pending) - symbol 기준 중복 제거
+        _seen = set()
+        active_list = []
+        for h in history:
+            if h["status"] == "active" and h["symbol"] not in _seen:
+                active_list.append(h)
+                _seen.add(h["symbol"])
+        _seen2 = set()
+        pending_list = []
+        for h in history:
+            if h["status"] == "pending" and h["symbol"] not in _seen and h["symbol"] not in _seen2:
+                pending_list.append(h)
+                _seen2.add(h["symbol"])
         # 이번 주 청산된 종목
         closed_this_week = [h for h in this_week if h["status"] in ("hit_target", "hit_stop", "expired")]
 
