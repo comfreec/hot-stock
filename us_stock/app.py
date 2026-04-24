@@ -6,11 +6,23 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 import sys, os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from us_stock.symbols import ALL_SYMBOLS, get_symbols_by_category
-from us_stock.us_stock_detector import USStockDetector
-from us_stock.telegram_alert import calc_us_levels, send_us_scan_alert
+# _run_app이 us_stock/ 디렉토리에서 실행하므로 직접 import
+_us_dir = os.path.dirname(os.path.abspath(__file__))
+if _us_dir not in sys.path:
+    sys.path.insert(0, _us_dir)
+_root_dir = os.path.dirname(_us_dir)
+if _root_dir not in sys.path:
+    sys.path.insert(0, _root_dir)
+
+try:
+    from symbols import ALL_SYMBOLS, get_symbols_by_category
+    from us_stock_detector import USStockDetector
+    from telegram_alert import calc_us_levels, send_us_scan_alert
+except ImportError:
+    from us_stock.symbols import ALL_SYMBOLS, get_symbols_by_category
+    from us_stock.us_stock_detector import USStockDetector
+    from us_stock.telegram_alert import calc_us_levels, send_us_scan_alert
 
 # ── 스타일 (국내 앱과 동일한 다크 테마) ─────────────────────────
 st.markdown("""<style>
