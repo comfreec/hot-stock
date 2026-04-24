@@ -9,6 +9,11 @@ _service_init = st.session_state.get("service_select", "📡 주식")
 _icon = "🚀"
 _title = "코인 급등 예측" if "코인" in _service_init else "주식 급등 예측"
 
+# 라우팅용 service 변수 (사이드바 블록 밖에서도 접근 가능)
+if "service_select" not in st.session_state:
+    st.session_state["service_select"] = "📡 주식"
+service = st.session_state["service_select"]
+
 st.set_page_config(
     page_title=_title,
     page_icon=_icon,
@@ -87,11 +92,11 @@ with st.sidebar:
     if "service_select" not in st.session_state:
         st.session_state["service_select"] = "📡 주식"
 
-    service = st.session_state["service_select"]
-    is_stock = service == "📡 주식"
-    is_coin = service == "₿ 코인"
-    is_admin = service == "🔐 관리자"
-    is_us = service == "🇺🇸 미국"
+    _service_local = st.session_state["service_select"]
+    is_stock = _service_local == "📡 주식"
+    is_coin = _service_local == "₿ 코인"
+    is_admin = _service_local == "🔐 관리자"
+    is_us = _service_local == "🇺🇸 미국"
 
     col_s, col_c, col_u, col_a = st.columns(4)
     with col_s:
