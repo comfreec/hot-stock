@@ -858,7 +858,7 @@ def send_performance_update():
 
                 lines.append(
                     f"📌 <b>{h['name']}</b>  {split_icons}  <i>{days}일째</i>\n"
-                    f"   평균단가 {avg_str}{split_tag}  →  목표 {target_str}  /  손절 {stop_str}"
+                    f"   평균단가 {avg_str}  →  목표 {target_str}  /  손절 {stop_str}"
                     + cur_line
                 )
 
@@ -972,7 +972,7 @@ def send_weekly_summary(force: bool = False):
                     pass
                 lines.append(
                     f"📌 <b>{h['name']}</b>  {split_icons}\n"
-                    f"   평균단가 {avg_str}{split_tag}  🎯{target_str}  🛑{stop_str}"
+                    f"   평균단가 {avg_str}  🎯{target_str}  🛑{stop_str}"
                     + cur_line
                 )
 
