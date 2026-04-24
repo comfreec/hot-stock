@@ -906,19 +906,16 @@ def send_weekly_summary(force: bool = False):
 
         # 이번 주 신규 알림 종목
         this_week    = [h for h in history if h["alert_date"] >= week_start_str]
-        # 현재 진행 중인 종목 (전체 기간, active/pending) - symbol 기준 중복 제거
+        # 현재 진행 중인 종목 (전체 기간, active/pending 모두 매수 중으로 표시)
         _seen = set()
         active_list = []
         for h in history:
-            if h["status"] == "active" and h["symbol"] not in _seen:
+            if h["status"] in ("active", "pending") and h["symbol"] not in _seen:
                 active_list.append(h)
                 _seen.add(h["symbol"])
         _seen2 = set()
         pending_list = []
-        for h in history:
-            if h["status"] == "pending" and h["symbol"] not in _seen and h["symbol"] not in _seen2:
-                pending_list.append(h)
-                _seen2.add(h["symbol"])
+        # pending은 active_list에 이미 포함됨 - 별도 표시 안 함
         # 이번 주 청산된 종목
         closed_this_week = [h for h in this_week if h["status"] in ("hit_target", "hit_stop", "expired")]
 
