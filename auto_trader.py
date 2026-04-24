@@ -615,15 +615,14 @@ def place_orders(results: list):
         entry  = int(lv["entry"])
         target = int(lv["target"])
 
-        # ── 자동매매 전용 손절가: RSI(20) 30 돌파 직전 5일 저가 ──
-        # 채널 알림 손절가(240선 -5%)와 별도로 계산 (whipsaw 방지)
+        # ── 자동매매 전용 손절가: telegram_alert._calc_levels_core와 동일 로직 ──
         try:
             import yfinance as _yf
-            _df = _yf.Ticker(symbol).history(period="2y", auto_adjust=False).dropna(subset=["Close","Low"])
+            _df = _yf.Ticker(symbol).history(period="5y", auto_adjust=False).dropna(subset=["Close","Low"])
             _close = _df["Close"]
             _low   = _df["Low"]
             _n     = len(_close)
-            # RSI 계산
+            # RSI(20) 계산
             _d = _close.diff()
             _gain = _d.where(_d > 0, 0.0).ewm(alpha=1/20, min_periods=20, adjust=False).mean()
             _loss = (-_d.where(_d < 0, 0.0)).ewm(alpha=1/20, min_periods=20, adjust=False).mean()
