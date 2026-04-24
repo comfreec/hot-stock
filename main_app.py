@@ -193,13 +193,18 @@ if service == "📡 주식":
     _run_app("app.py")
 elif service == "₿ 코인":
     crypto_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "crypto_surge")
-    for mod_name in ["cache_db", "telegram_alert"]:
-        sys.modules.pop(mod_name, None)
+    us_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "us_stock")
+    # us_stock 경로 제거 (symbols 충돌 방지)
+    while us_dir in sys.path:
+        sys.path.remove(us_dir)
+    for mod_name in list(sys.modules.keys()):
+        if mod_name in ("symbols", "cache_db", "telegram_alert", "us_stock_detector") or "us_stock" in mod_name:
+            sys.modules.pop(mod_name, None)
     _run_app(os.path.join(crypto_dir, "app.py"), extra_syspath=crypto_dir)
 elif service == "🇺🇸 미국":
     us_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "us_stock")
     for mod_name in list(sys.modules.keys()):
-        if "us_stock" in mod_name:
+        if "us_stock" in mod_name or mod_name in ("symbols", "us_stock_detector", "telegram_alert"):
             sys.modules.pop(mod_name, None)
     _run_app(os.path.join(us_dir, "app.py"), extra_syspath=us_dir)
 else:  # 🔐 관리자

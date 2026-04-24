@@ -24,6 +24,59 @@ except ImportError:
     from us_stock.us_stock_detector import USStockDetector
     from us_stock.telegram_alert import calc_us_levels, send_us_scan_alert
 
+# ── 로그인 체크 (main_app.py의 인증 세션 공유) ───────────────────
+if not st.session_state.get("authenticated", False):
+    try:
+        PASSWORDS = list(st.secrets.get("PASSWORDS", ["comfreec"]))
+    except Exception:
+        PASSWORDS = ["comfreec"]
+
+    st.markdown("""
+    <style>
+    @keyframes fadein { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
+    @keyframes radar_spin { 0%{transform:rotate(0deg)} 100%{transform:rotate(360deg)} }
+    @keyframes radar_pulse {
+        0%,100%{box-shadow:0 0 0 0 rgba(0,212,170,0.4),0 0 20px rgba(79,142,247,0.3);}
+        50%{box-shadow:0 0 0 16px rgba(0,212,170,0),0 0 40px rgba(79,142,247,0.6);}
+    }
+    .login-box{animation:fadein 0.6s ease;}
+    .radar-wrap{width:96px;height:96px;border-radius:50%;background:linear-gradient(135deg,#0d1528,#1a2540);
+        border:2px solid #4f8ef7;display:flex;align-items:center;justify-content:center;
+        margin:0 auto 16px;animation:radar_pulse 2s ease-in-out infinite;position:relative;overflow:hidden;}
+    .radar-sweep{position:absolute;width:50%;height:50%;top:0;left:50%;transform-origin:bottom left;
+        background:linear-gradient(135deg,rgba(0,212,170,0.6),transparent);
+        animation:radar_spin 2s linear infinite;border-radius:100% 0 0 0;}
+    .radar-icon{font-size:44px;z-index:1;position:relative;}
+    </style>
+    <div class='login-box' style='max-width:420px;margin:30px auto;'>
+      <div style='background:linear-gradient(135deg,#1a1f35,#0e1117);
+           padding:48px 40px;border-radius:20px;border:1px solid #2d3555;
+           box-shadow:0 20px 60px rgba(0,0,0,0.5);text-align:center;'>
+        <div class='radar-wrap'><div class='radar-sweep'></div><div class='radar-icon'>🇺🇸</div></div>
+        <div style='display:inline-block;padding:8px 20px;border-radius:10px;
+            background:linear-gradient(135deg,rgba(79,142,247,0.12),rgba(0,212,170,0.12));
+            box-shadow:0 0 24px rgba(0,212,170,0.25),0 0 48px rgba(79,142,247,0.15);margin:8px auto 2px;'>
+          <h2 style='margin:0;font-size:32px;font-weight:900;letter-spacing:8px;
+              background:linear-gradient(90deg,#4f8ef7 0%,#00d4aa 50%,#4f8ef7 100%);
+              -webkit-background-clip:text;-webkit-text-fill-color:transparent;'>J.A.R.V.I.S.</h2>
+        </div>
+        <p style='color:#6b7280;font-size:11px;margin:4px 0 4px;letter-spacing:5px;text-transform:uppercase;'>US SWING RADAR</p>
+        <div style='width:40px;height:2px;background:linear-gradient(90deg,#4f8ef7,#00d4aa);margin:0 auto 28px;border-radius:2px;'></div>
+        <p style='color:#8b92a5;font-size:13px;margin:0 0 24px;'>허가된 사용자만 접근 가능합니다</p>
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        pw = st.text_input("", type="password", placeholder="🔑  비밀번호 입력", label_visibility="collapsed")
+        if st.button("로그인", type="primary", use_container_width=True):
+            if pw in PASSWORDS:
+                st.session_state["authenticated"] = True
+                st.rerun()
+            else:
+                st.error("비밀번호가 올바르지 않습니다")
+    st.stop()
+
 # ── 스타일 (국내 앱과 동일한 다크 테마) ─────────────────────────
 st.markdown("""<style>
 @viewport { width: device-width; }
@@ -144,13 +197,13 @@ with st.sidebar:
         st.session_state["us_max_gap"]   = 7
         st.session_state["us_ob_days"]   = 180
         st.session_state["us_min_below"] = 0
-        st.session_state["us_min_score"] = 30
+        st.session_state["us_min_score"] = 25
         st.rerun()
 
     if "us_max_gap"   not in st.session_state: st.session_state["us_max_gap"]   = 7
     if "us_ob_days"   not in st.session_state: st.session_state["us_ob_days"]   = 180
     if "us_min_below" not in st.session_state: st.session_state["us_min_below"] = 0
-    if "us_min_score" not in st.session_state: st.session_state["us_min_score"] = 30
+    if "us_min_score" not in st.session_state: st.session_state["us_min_score"] = 25
 
     max_gap   = st.slider("📏 장기선 근처 범위 (%)", 1, 15, key="us_max_gap")
     ob_days   = st.slider("📅 R-사이클 70 이탈 후 경과일", 30, 365, key="us_ob_days")
