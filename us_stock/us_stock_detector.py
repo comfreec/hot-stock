@@ -26,7 +26,12 @@ class USStockDetector:
         self.min_score = min_score
 
     def analyze_stock(self, symbol: str, name: str = None) -> dict | None:
-        """단일 종목 분석 - 국내와 동일한 R-사이클 전략 (강화 점수 체계)"""
+        """단일 종목 분석 - 국내와 동일한 R-사이클 4단계 전략
+        1) RSI(20) 30 이하 과매도
+        2) RSI 30 돌파 (과매도 탈출)
+        3) RSI 70 이상 도달 (과매수)
+        4) RSI 70 이탈 (조정 시작) → 이 시점부터 경과일 카운트
+        """
         try:
             df = yf.Ticker(symbol).history(period="5y", auto_adjust=False)
             df = df.dropna(subset=["Open", "High", "Low", "Close", "Volume"])
@@ -47,35 +52,64 @@ class USStockDetector:
 
             ma240_gap = (current / ma240_v - 1) * 100
 
-            # 장기선 위 7% 이내인지 확인
+            # 장기선 위 max_gap% 이내인지 확인
             if not (0 <= ma240_gap <= self.max_gap_pct):
                 return None
 
-            # R-사이클(RSI 20) 계산
+            # RSI(20) 계산
             rsi_s = _rsi(close, 20)
-            cur_rsi = float(rsi_s.iloc[-1])
+            rsi_vals = rsi_s.values
+            n = len(rsi_vals)
+            cur_rsi = float(rsi_vals[-1])
 
-            # 장기선 아래 충분히 눌렸는지 확인
+            # ── 4단계 R-사이클 패턴 탐지 ─────────────────────────
+            # Step 1+2: 과매도 탈출 시점 (RSI 30 이하 → 30 돌파)
+            search_start = max(0, n - 500)
+            oversold_candidates = []
+            for i in range(search_start + 1, n - 20):
+                if rsi_vals[i-1] <= 30 and rsi_vals[i] > 30:
+                    lb = max(0, i - 20)
+                    min_rsi = float(rsi_vals[lb:i].min())
+                    oversold_candidates.append((i, min_rsi))
+
+            if not oversold_candidates:
+                return None
+
+            # 가장 강한 바닥(최저 RSI) 사이클 선택
+            oversold_exit_idx = min(oversold_candidates, key=lambda x: (x[1], -x[0]))[0]
+            rsi_bottom_val = min(oversold_candidates, key=lambda x: (x[1], -x[0]))[1]
+
+            # Step 3: 과매도 탈출 이후 RSI 70 이상 도달
+            overbought_idx = None
+            for i in range(oversold_exit_idx, n - 5):
+                if rsi_vals[i] >= 70:
+                    overbought_idx = i
+                    break
+            if overbought_idx is None:
+                return None
+
+            # Step 4: RSI 70 이탈 시점
+            overbought_exit_idx = None
+            for i in range(overbought_idx, n - 1):
+                if rsi_vals[i-1] >= 70 and rsi_vals[i] < 70:
+                    overbought_exit_idx = i
+                    break
+            if overbought_exit_idx is None:
+                return None
+
+            # 70 이탈 후 경과일 (국내와 동일하게 ob_days 기준)
+            days_since = n - 1 - overbought_exit_idx
+            if days_since > self.ob_days:
+                return None
+
+            # 현재 RSI 55 이하 (눌림목 충분히 진행)
+            if cur_rsi > 55:
+                return None
+
+            # 장기선 아래 체류 기간
             below_mask = close < ma240
             below_days = int(below_mask.tail(self.ob_days).sum())
             if below_days < self.min_below_days:
-                return None
-
-            # RSI 30 이하 → 30 돌파 시점 찾기 (R-사이클 패턴)
-            rsi_vals = rsi_s.values
-            oversold_exit = None
-            rsi_bottom_val = 50.0
-            for i in range(1, len(rsi_vals)):
-                if rsi_vals[i-1] <= 30 and rsi_vals[i] > 30:
-                    oversold_exit = i
-                    # 해당 구간 RSI 최저값
-                    lb = max(0, i - 20)
-                    rsi_bottom_val = float(rsi_s.iloc[lb:i].min())
-            if oversold_exit is None:
-                return None
-
-            days_since = len(rsi_vals) - 1 - oversold_exit
-            if days_since > self.ob_days:
                 return None
 
             # ── 점수 계산 ─────────────────────────────────────────
@@ -104,7 +138,7 @@ class USStockDetector:
 
             # OBV 상승
             obv = (volume * np.sign(close.diff().fillna(0))).cumsum()
-            obv_after = obv.iloc[oversold_exit:]
+            obv_after = obv.iloc[oversold_exit_idx:]
             signals["obv_rising"] = len(obv_after) > 1 and float(obv_after.iloc[-1]) > float(obv_after.iloc[0])
             if signals["obv_rising"]: score += 2
 
@@ -266,10 +300,10 @@ class USStockDetector:
             elif below_days >= 180: score += 2
             elif below_days >= 120: score += 1
 
-            # 손절가: RSI 저점 기준
+            # 손절가: RSI 저점 기준 (과매도 탈출 직전 5일 저가)
             try:
-                _lb = max(0, oversold_exit - 5)
-                stop_price = float(low.iloc[_lb:oversold_exit].min())
+                _lb = max(0, oversold_exit_idx - 5)
+                stop_price = float(low.iloc[_lb:oversold_exit_idx].min())
                 signals["stop_price"] = round(stop_price, 2)
             except Exception:
                 signals["stop_price"] = round(ma240_v * 0.95, 2)

@@ -128,7 +128,7 @@ with st.sidebar:
     category = st.selectbox("📂 종목 카테고리", ["전체", "나스닥100", "S&P500 대형주", "ETF"],
                             key="us_category")
     max_gap   = st.slider("📏 장기선 근처 범위 (%)", 1, 15, 7, key="us_max_gap")
-    ob_days   = st.slider("📅 R-사이클 이탈 후 경과일", 30, 365, 180, key="us_ob_days")
+    ob_days   = st.slider("📅 R-사이클 70 이탈 후 경과일", 30, 365, 180, key="us_ob_days")
     min_below = st.slider("📉 최소 조정 기간 (일)", 0, 60, 0, key="us_min_below")
     min_score = st.slider("⭐ 최소 종합점수", 5, 50, 30, key="us_min_score")
 
@@ -291,7 +291,7 @@ else:
 
         mc(m1, "R-사이클(20)", f"{r['rsi']:.1f}")
         mc(m2, "240선 이격", f"+{r['ma240_gap']:.1f}%")
-        mc(m3, "R-사이클 이탈", f"{s.get('rsi_cycle_days_since', '-')}일 전")
+        mc(m3, "R-사이클 70이탈", f"{s.get('rsi_cycle_days_since', '-')}일 전")
         mc(m4, "240일선", f"${r['ma240']:,.2f}")
         stop_v = s.get("stop_price", r["ma240"] * 0.95)
         mc(m5, "손절가", f"${stop_v:,.2f}" if stop_v else "-")
