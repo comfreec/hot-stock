@@ -331,10 +331,12 @@ class USStockDetector:
             print(f"[US스캔] {symbol} 오류: {e}")
             return None
 
-    def analyze_all(self, symbols: dict, max_workers: int = 8) -> list:
+    def analyze_all(self, symbols: dict, max_workers: int = 8, progress_callback=None) -> list:
         """전체 종목 스캔"""
         from concurrent.futures import ThreadPoolExecutor, as_completed
         results = []
+        total = len(symbols)
+        done = 0
 
         def _scan(sym, nm):
             r = self.analyze_stock(sym, nm)
@@ -346,5 +348,8 @@ class USStockDetector:
                 r = fut.result()
                 if r:
                     results.append(r)
+                done += 1
+                if progress_callback:
+                    progress_callback(done, total)
 
         return sorted(results, key=lambda x: x["total_score"], reverse=True)

@@ -211,10 +211,6 @@ with st.sidebar:
     min_score = st.slider("⭐ 최소 종합점수", 5, 50, key="us_min_score")
 
     st.markdown("---")
-    scan_btn  = st.button("🔍 스캔 시작", type="primary", use_container_width=True, key="us_scan")
-    alert_btn = st.button("📡 텔레그램 전송", use_container_width=True, key="us_alert")
-
-    st.markdown("---")
     st.markdown("""**📋 탐지 전략**
 > R-사이클 4단계 사이클 + 240일선 눌림목 진입
 
@@ -297,17 +293,37 @@ st.markdown(f"""<div class='cond-box'>
   최소 <b style='color:#ffd700;'>{min_score}점</b>
 </div>""", unsafe_allow_html=True)
 
-# ── 스캔 실행 ─────────────────────────────────────────────────────
+# ── 스캔 버튼 + 진행 게이지 (오른쪽 화면) ───────────────────────
+btn_col1, btn_col2, btn_col3 = st.columns([2, 1, 1])
+with btn_col1:
+    scan_btn = st.button("🔍 스캔 시작", type="primary", use_container_width=True, key="us_scan")
+with btn_col2:
+    alert_btn = st.button("📡 텔레그램 전송", use_container_width=True, key="us_alert")
+with btn_col3:
+    if st.button("🗑️ 초기화", use_container_width=True, key="us_clear"):
+        st.session_state.pop("us_results", None)
+        st.rerun()
+
 if scan_btn:
     det = USStockDetector(max_gap_pct=max_gap, ob_days=ob_days,
                           min_below_days=min_below, min_score=min_score)
-    with st.spinner(f"🇺🇸 {len(symbols)}개 종목 스캔 중..."):
-        results = det.analyze_all(symbols)
+    total_syms = len(symbols)
+    progress_bar = st.progress(0, text=f"🇺🇸 0 / {total_syms}개 스캔 중...")
+    status_text  = st.empty()
+    _done_count  = [0]
+
+    def _on_progress(done, total):
+        _done_count[0] = done
+        pct = done / total
+        progress_bar.progress(pct, text=f"🇺🇸 {done} / {total}개 스캔 중... ({int(pct*100)}%)")
+
+    results = det.analyze_all(symbols, progress_callback=_on_progress)
+    progress_bar.progress(1.0, text=f"✅ 스캔 완료 — {total_syms}개 분석")
     st.session_state["us_results"] = results
     if results:
-        st.success(f"✅ {len(results)}개 종목 발견")
+        status_text.success(f"✅ {len(results)}개 종목 발견")
     else:
-        st.info("조건에 맞는 종목이 없습니다.")
+        status_text.info("조건에 맞는 종목이 없습니다.")
 
 if alert_btn:
     results = st.session_state.get("us_results", [])
@@ -325,7 +341,7 @@ if not results:
     st.markdown("""
     <div style='text-align:center;padding:80px 20px;'>
       <div style='font-size:64px;margin-bottom:16px;opacity:0.4;'>🇺🇸</div>
-      <div style='color:#4a5568;font-size:16px;'>사이드바에서 스캔을 시작하세요</div>
+      <div style='color:#4a5568;font-size:16px;'>스캔 시작 버튼을 눌러주세요</div>
       <div style='color:#374151;font-size:13px;margin-top:8px;'>매일 새벽 6:30 KST 자동 스캔됩니다</div>
     </div>
     """, unsafe_allow_html=True)
