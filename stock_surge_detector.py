@@ -1286,6 +1286,7 @@ class KoreanStockSurgeDetector:
                 look_back_start = max(0, ob_exit_idx - 5)
                 stop_f = float(low.iloc[look_back_start:ob_exit_idx].min())
                 risk_f = max(entry_f - stop_f, entry_f * 0.01)
+                signals["stop_price"] = round(stop_f, 0)  # 반환값에 포함
 
                 # 목표가: 피보나치 확장 + ATR 복합 (앱과 동일 방식)
                 recent_high_f = float(high.tail(120).max())

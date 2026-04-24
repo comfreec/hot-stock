@@ -1531,7 +1531,8 @@ if mode == "🔍 급등 예고 종목 탐지":
                     m2.metric("240선 이격", f"+{r['ma240_gap']:.1f}%" if r.get('ma240_gap') is not None else "-")
                     m3.metric("R-cycle 70이탈", f"{r.get('signals',{}).get('rsi_cycle_days_since','-')}일 전")
                     m4.metric("240일선", f"₩{r['ma240']:,.0f}" if r.get('ma240') else "-")
-                    m5.metric("손절가", f"₩{int(r['ma240']*0.95):,.0f}" if r.get('ma240') else "-")
+                    _stop_disp = r.get('signals',{}).get('stop_price') or (r['ma240']*0.95 if r.get('ma240') else 0)
+                    m5.metric("손절가", f"₩{int(_stop_disp):,.0f}" if _stop_disp else "-")
                     # 수급 정보
                     supply_label = "🔥 기관+외국인" if r.get("both_buying") else ("✅ 수급있음" if r.get("smart_money_in") else "❌ 수급없음")
                     st.caption(f"수급: {supply_label}  |  핵심신호: {r.get('core_signal_count',0)}개  |  거래량배수: {r.get('vol_ratio',0):.1f}배")
