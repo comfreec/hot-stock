@@ -29,24 +29,44 @@ def is_enabled() -> bool:
     return bool(os.environ.get("KIS_APP_KEY"))
 
 
-def is_market_open() -> bool:
-    """한국 주식 시장 개장 시간 확인 (09:00~15:30 KST, 평일)"""
-    now = datetime.now(KST)
-    if now.weekday() >= 5:  # 토/일
+# ── 한국 공휴일 (5번: 공휴일 처리) ──────────────────────────────
+def _build_kr_holidays() -> set:
+    year = date.today().year
+    fixed = {
+        f"{year}-01-01", f"{year}-03-01", f"{year}-05-05",
+        f"{year}-06-06", f"{year}-08-15", f"{year}-10-03",
+        f"{year}-10-09", f"{year}-12-25",
+    }
+    extra = os.environ.get("KR_HOLIDAYS_EXTRA", "")  # "2026-01-28,2026-01-29"
+    if extra:
+        for d in extra.split(","):
+            fixed.add(d.strip())
+    return fixed
+
+_KR_HOLIDAYS = _build_kr_holidays()
+
+
+def is_trading_day() -> bool:
+    """오늘이 거래일인지 확인 (평일 + 공휴일 아님)"""
+    if date.today().weekday() >= 5:
         return False
-    market_open  = now.replace(hour=9,  minute=0,  second=0, microsecond=0)
-    market_close = now.replace(hour=15, minute=30, second=0, microsecond=0)
-    return market_open <= now <= market_close
+    return date.today().isoformat() not in _KR_HOLIDAYS
+
+
+def is_market_open() -> bool:
+    """한국 주식 시장 개장 시간 확인 (09:00~15:30 KST, 거래일)"""
+    if not is_trading_day():
+        return False
+    now = datetime.now(KST)
+    return now.replace(hour=9, minute=0, second=0, microsecond=0) <= now <= now.replace(hour=15, minute=30, second=0, microsecond=0)
 
 
 def is_order_time() -> bool:
-    """매수 주문 가능 시간 (09:05~15:20 KST - 시초가/종가 혼잡 제외)"""
-    now = datetime.now(KST)
-    if now.weekday() >= 5:
+    """매수 주문 가능 시간 (09:05~15:20 KST, 거래일)"""
+    if not is_trading_day():
         return False
-    order_open  = now.replace(hour=9,  minute=5,  second=0, microsecond=0)
-    order_close = now.replace(hour=15, minute=20, second=0, microsecond=0)
-    return order_open <= now <= order_close
+    now = datetime.now(KST)
+    return now.replace(hour=9, minute=5, second=0, microsecond=0) <= now <= now.replace(hour=15, minute=20, second=0, microsecond=0)
 
 
 def round_to_tick(price: float) -> int:
@@ -297,9 +317,29 @@ class KISClient:
                 kind = "시장가" if market else f"@{price:,}원"
                 print(f"[KIS] 매수 주문 {code} {qty}주 {kind} → 주문번호 {order_no}")
                 return {"success": True, "order_no": order_no}
+            except requests.exceptions.Timeout:
+                # 4번: 타임아웃 - 주문이 실제로 들어갔는지 불명확
+                if attempt == 0:
+                    print(f"[KIS] 매수 주문 타임아웃 {code} - 잔고 확인 후 재시도")
+                    time.sleep(3)
+                    try:
+                        bal = self.get_balance()
+                        if code in bal.get("holdings", {}):
+                            print(f"[KIS] {code} 타임아웃 후 잔고 확인 → 이미 체결됨")
+                            return {"success": True, "order_no": "", "note": "timeout_but_filled"}
+                    except Exception:
+                        pass
+                    self._token = None
+                    continue
+                _send_admin(
+                    f"⚠️ <b>매수 주문 타임아웃</b>\n"
+                    f"{code} {qty}주 주문 응답 없음\n"
+                    f"실제 체결 여부 수동 확인 필요"
+                )
+                return {"success": False, "error": "timeout"}
             except Exception as e:
                 if attempt == 0:
-                    self._token = None  # 토큰 문제일 수 있으므로 재시도
+                    self._token = None
                     time.sleep(1)
                     continue
                 print(f"[KIS] 매수 주문 오류 {code}: {e}")
@@ -339,6 +379,27 @@ class KISClient:
                 kind = "시장가" if market else f"@{price:,}원"
                 print(f"[KIS] 매도 주문 {code} {qty}주 {kind} → 주문번호 {order_no}")
                 return {"success": True, "order_no": order_no}
+            except requests.exceptions.Timeout:
+                # 4번: 타임아웃 - 매도는 특히 위험하므로 잔고 확인
+                if attempt == 0:
+                    print(f"[KIS] 매도 주문 타임아웃 {code} - 잔고 확인")
+                    time.sleep(3)
+                    try:
+                        bal = self.get_balance()
+                        remaining = bal.get("holdings", {}).get(code, {}).get("qty", 0)
+                        if remaining == 0:
+                            print(f"[KIS] {code} 타임아웃 후 잔고 0 → 매도 체결됨")
+                            return {"success": True, "order_no": "", "note": "timeout_but_sold"}
+                    except Exception:
+                        pass
+                    self._token = None
+                    continue
+                _send_admin(
+                    f"🚨 <b>매도 주문 타임아웃</b>\n"
+                    f"{code} {qty}주 매도 응답 없음\n"
+                    f"⚠️ 실제 체결 여부 즉시 수동 확인 필요"
+                )
+                return {"success": False, "error": "timeout"}
             except Exception as e:
                 if attempt == 0:
                     self._token = None
@@ -653,6 +714,11 @@ def place_orders(results: list):
             print(f"[자동매매] {name} 이미 주문 진행 중 (pending/active) - 스킵")
             continue
 
+        # 최근 3일 내 손절/목표가 도달 종목 재매수 방지 (6번)
+        if _is_recently_sold(symbol, days=3):
+            print(f"[자동매매] {name} 최근 3일 내 매도된 종목 - 재매수 방지 스킵")
+            continue
+
         # 가격 레벨 - alert_history에서 조회 (전날 스캔 기준)
         from cache_db import _get_conn as _db_conn
         lv = {}
@@ -715,7 +781,9 @@ def place_orders(results: list):
 
         if actual_cost > cash:
             print(f"[자동매매] {name} 예수금 부족 - 스킵")
-            continue        result = client.buy_order(symbol, entry, qty, market=True)  # 1차는 시장가
+            continue
+
+        result = client.buy_order(symbol, entry, qty, market=True)  # 1차는 시장가
         if result["success"]:
             order_no = result.get("order_no", "")
             # 240선 조회해서 분할매수 트리거 계산
@@ -767,6 +835,30 @@ def place_orders(results: list):
 
             cash -= actual_entry * qty
             ordered += 1
+
+            # 3번: 매수 직후 손절가 도달 여부 즉시 확인
+            cur_price = client.get_price(symbol)
+            if cur_price and cur_price <= stop:
+                print(f"[자동매매] {name} 매수 직후 손절가 도달 감지 → 즉시 매도")
+                sell_result = client.sell_order(symbol, stop, qty, market=True)
+                if sell_result["success"]:
+                    ret = (cur_price - actual_entry) / actual_entry * 100
+                    conn3 = _get_trade_conn()
+                    conn3.execute(
+                        "UPDATE trade_orders SET status='hit_stop', exit_price=?, exit_date=?, return_pct=? WHERE symbol=? AND alert_date=?",
+                        (int(cur_price), today, round(ret, 2), symbol, today)
+                    )
+                    conn3.commit()
+                    conn3.close()
+                    _send_admin(
+                        f"🛑 <b>매수 직후 손절</b>\n"
+                        f"<b>{name}</b>\n"
+                        f"매수 ₩{actual_entry:,} → 즉시 손절 ₩{cur_price:,.0f}\n"
+                        f"손실 <b>{ret:.1f}%</b>"
+                    )
+                    cash += cur_price * qty  # 예수금 복구
+                    ordered -= 1
+                    continue
 
             # 텔레그램 알림 (실제 체결가 기준)
             try:
@@ -1098,10 +1190,48 @@ def monitor_positions():
                 f"<b>{order['name']}</b> ({symbol})\n"
                 f"DB {order['qty']}주 → 실제 {actual_qty}주로 업데이트\n"
                 f"(일부 수동 매도 감지)"
-            )        # ── 분할매수 2/3차 트리거 ──────────────────────────────────
+            )
+
+        # ── 손절가 도달 시 분할매수 트리거보다 우선 처리 ────────────
         cfg = _cfg()
         split_budget = cfg["budget_per"] // 3
 
+        if cur <= stop:
+            result = client.sell_order(symbol, stop, qty, market=True)
+            if result["success"]:
+                ret = (cur - avg_price) / avg_price * 100
+                _update_order(order["id"],
+                    status="hit_stop", exit_price=int(cur),
+                    exit_date=today, return_pct=round(ret, 2)
+                )
+                print(f"[자동매매] {order['name']} 손절가 도달 (분할매수 중단) → 전량 매도 {ret:.1f}%")
+                _send_admin(
+                    f"🛑 <b>손절 실행</b> (분할매수 중단)\n"
+                    f"<b>{order['name']}</b>\n"
+                    f"평균단가 ₩{avg_price:,.0f} → 손절 ₩{cur:,.0f}\n"
+                    f"손실 <b>{ret:.1f}%</b>"
+                )
+                time.sleep(1)
+            else:
+                err = result.get("error", "")
+                time.sleep(3)
+                result2 = client.sell_order(symbol, stop, qty, market=True)
+                if result2["success"]:
+                    ret = (cur - avg_price) / avg_price * 100
+                    _update_order(order["id"],
+                        status="hit_stop", exit_price=int(cur),
+                        exit_date=today, return_pct=round(ret, 2)
+                    )
+                    _send_admin(f"🛑 <b>손절 실행 (재시도 성공)</b>\n<b>{order['name']}</b> {ret:.1f}%")
+                else:
+                    _send_admin(
+                        f"🚨 <b>손절 매도 실패!</b>\n"
+                        f"<b>{order['name']}</b> 손절가 도달했으나 매도 실패\n"
+                        f"오류: {err}\n⚠️ 즉시 수동 매도 필요!"
+                    )
+            continue  # 손절 처리 후 분할매수 트리거 체크 건너뜀
+
+        # ── 분할매수 2/3차 트리거 ──────────────────────────────────
         if split_step == 1 and cur <= trigger2:
             add_qty = max(1, int(split_budget / cur))
             result  = client.buy_order(order["symbol"], int(cur), add_qty, market=True)
@@ -1158,6 +1288,9 @@ def monitor_positions():
                     exit_date=today, return_pct=round(ret, 2)
                 )
                 print(f"[자동매매] {order['name']} 목표가 도달 → 매도 +{ret:.1f}%")
+                # ── 매도 체결 확인 ──────────────────────────────
+                time.sleep(2)
+                _verify_sell_filled(client, order, code, cur, avg_price)
                 _send_admin(
                     f"🎯 <b>목표가 달성!</b>\n"
                     f"<b>{order['name']}</b>\n"
@@ -1196,6 +1329,9 @@ def monitor_positions():
                     exit_date=today, return_pct=round(ret, 2)
                 )
                 print(f"[자동매매] {order['name']} 손절가 도달 → 시장가 매도 {ret:.1f}%")
+                # ── 매도 체결 확인 ──────────────────────────────
+                time.sleep(2)
+                _verify_sell_filled(client, order, code, cur, avg_price)
                 _send_admin(
                     f"🛑 <b>손절 실행</b>\n"
                     f"<b>{order['name']}</b>\n"
@@ -1222,6 +1358,65 @@ def monitor_positions():
                         f"<b>{order['name']}</b> 손절가 도달했으나 매도 실패\n"
                         f"오류: {err}\n⚠️ 즉시 수동 매도 필요!"
                     )
+
+
+# ── 안전장치 헬퍼 함수들 ─────────────────────────────────────────
+
+def _verify_sell_filled(client, order: dict, code: str, cur: float, avg_price: float):
+    """1번: 매도 주문 후 실제 체결 여부 확인 - 잔고에 아직 남아있으면 경고"""
+    try:
+        bal = client.get_balance()
+        remaining = bal.get("holdings", {}).get(code, {}).get("qty", 0)
+        if remaining > 0:
+            _send_admin(
+                f"⚠️ <b>매도 미체결 의심</b>\n"
+                f"<b>{order['name']}</b> ({order['symbol']})\n"
+                f"매도 주문 후 잔고 {remaining}주 남아있음\n"
+                f"실제 체결 여부 확인 필요"
+            )
+            print(f"[자동매매] {order['name']} 매도 후 잔고 {remaining}주 남음 - 미체결 의심")
+    except Exception as e:
+        print(f"[자동매매] 매도 체결 확인 오류: {e}")
+
+
+def _is_recently_sold(symbol: str, days: int = 3) -> bool:
+    """6번: 최근 N일 내 손절/목표가 도달로 매도된 종목인지 확인 (재매수 방지)"""
+    try:
+        conn = _get_trade_conn()
+        cutoff = (date.today() - timedelta(days=days)).isoformat()
+        row = conn.execute(
+            "SELECT id FROM trade_orders WHERE symbol=? AND status IN ('hit_target','hit_stop') AND exit_date >= ?",
+            (symbol, cutoff)
+        ).fetchone()
+        conn.close()
+        return row is not None
+    except Exception:
+        return False
+
+
+def scheduler_heartbeat():
+    """7번: 스케줄러 heartbeat 기록 - scheduler.py에서 매 루프마다 호출"""
+    try:
+        hb_file = "/data/.scheduler_heartbeat" if os.path.isdir("/data") else ".scheduler_heartbeat"
+        with open(hb_file, "w") as f:
+            f.write(datetime.now(KST).isoformat())
+    except Exception:
+        pass
+
+
+def check_scheduler_alive(max_minutes: int = 10) -> bool:
+    """스케줄러가 살아있는지 확인"""
+    try:
+        hb_file = "/data/.scheduler_heartbeat" if os.path.isdir("/data") else ".scheduler_heartbeat"
+        if not os.path.exists(hb_file):
+            return False
+        with open(hb_file) as f:
+            last_hb = datetime.fromisoformat(f.read().strip())
+        if last_hb.tzinfo is None:
+            last_hb = last_hb.replace(tzinfo=KST)
+        return (datetime.now(KST) - last_hb).total_seconds() / 60 <= max_minutes
+    except Exception:
+        return False
 
 
 def send_trade_report():

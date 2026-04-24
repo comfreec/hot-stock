@@ -323,5 +323,12 @@ def main():
 
         time.sleep(30)
 
+        # 7번: 스케줄러 heartbeat 기록 (매 루프마다)
+        try:
+            from auto_trader import scheduler_heartbeat
+            scheduler_heartbeat()
+        except Exception:
+            pass
+
 if __name__ == "__main__":
     main()
