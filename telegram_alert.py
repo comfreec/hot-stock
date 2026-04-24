@@ -322,7 +322,23 @@ def _calc_levels_core(close, high, low) -> dict:
     entry  = round_to_tick(entry)
     stop   = round_to_tick(stop)
     target = round_to_tick(target)
-    rr     = (target - entry) / (max(entry - stop, 1) + 1e-9)
+
+    # ── 손익비 2:1 최소 보장 ──────────────────────────────────────
+    # 계산된 목표가로 손익비가 2:1 미만이면 근거 있는 최소 목표가로 보정
+    _risk = max(entry - stop, 1)
+    if (target - entry) < _risk * 2.0:
+        # 후보 중 손익비 2:1 이상인 가장 가까운 값 재탐색 (상한 제거)
+        _min_t = entry + _risk * 2.0
+        _cands_no_cap = sorted([x for x in [fib_1272, fib_1618, fib_2000,
+                                             recent_high, prev_high_ext,
+                                             atr_x3, atr_x5, bb_upper]
+                                if x >= _min_t])
+        if _cands_no_cap:
+            target = round_to_tick(_cands_no_cap[0])  # 가장 가까운 근거 있는 목표가
+        else:
+            target = round_to_tick(entry + _risk * 2.0)  # 최후 수단: 정확히 2:1
+
+    rr = (target - entry) / (max(entry - stop, 1) + 1e-9)
 
     return {
         "current":     current,

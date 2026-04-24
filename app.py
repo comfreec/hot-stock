@@ -1237,6 +1237,19 @@ def make_candle(data, title, ma240_series=None, cross_date=None, show_levels=Tru
         stop   = round_to_tick(stop)
         target = round_to_tick(target)
 
+        # ── 손익비 2:1 최소 보장 ──────────────────────────────────
+        _risk = max(entry - stop, 1)
+        if (target - entry) < _risk * 2.0:
+            _min_t = entry + _risk * 2.0
+            _cands_no_cap = sorted([x for x in [fib_1272, fib_1618, fib_2000,
+                                                 prev_high, prev_high_ext,
+                                                 atr_x3, atr_x5, bb_upper]
+                                    if x >= _min_t])
+            if _cands_no_cap:
+                target = round_to_tick(_cands_no_cap[0])
+            else:
+                target = round_to_tick(entry + _risk * 2.0)
+
         rr_ratio = (target - entry) / (entry - stop + 1e-9)
         upside   = (target / entry - 1) * 100
         downside = (stop / entry - 1) * 100
