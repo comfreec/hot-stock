@@ -195,7 +195,7 @@ st.markdown("""
     </div>
     <div style='text-align:right;'>
       <div style='color:#8b92a5;font-size:11px;margin-bottom:4px;'>스캔 대상</div>
-      <div style='color:#00d4aa;font-size:28px;font-weight:900;'>130+</div>
+      <div style='color:#00d4aa;font-size:28px;font-weight:900;'>177+</div>
       <div style='color:#6b7280;font-size:11px;'>종목</div>
     </div>
   </div>
