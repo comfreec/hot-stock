@@ -91,8 +91,9 @@ with st.sidebar:
     is_stock = service == "📡 주식"
     is_coin = service == "₿ 코인"
     is_admin = service == "🔐 관리자"
+    is_us = service == "🇺🇸 미국"
 
-    col_s, col_c, col_a = st.columns(3)
+    col_s, col_c, col_u, col_a = st.columns(4)
     with col_s:
         if st.button("📡", key="btn_stock", use_container_width=True,
                      type="primary" if is_stock else "secondary"):
@@ -103,6 +104,12 @@ with st.sidebar:
         if st.button("₿", key="btn_coin", use_container_width=True,
                      type="primary" if is_coin else "secondary"):
             st.session_state["service_select"] = "₿ 코인"
+            st.session_state["close_sidebar"] = True
+            st.rerun()
+    with col_u:
+        if st.button("🇺🇸", key="btn_us", use_container_width=True,
+                     type="primary" if is_us else "secondary"):
+            st.session_state["service_select"] = "🇺🇸 미국"
             st.session_state["close_sidebar"] = True
             st.rerun()
     with col_a:
@@ -184,5 +191,11 @@ elif service == "₿ 코인":
     for mod_name in ["cache_db", "telegram_alert"]:
         sys.modules.pop(mod_name, None)
     _run_app(os.path.join(crypto_dir, "app.py"), extra_syspath=crypto_dir)
+elif service == "🇺🇸 미국":
+    us_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "us_stock")
+    for mod_name in list(sys.modules.keys()):
+        if "us_stock" in mod_name:
+            sys.modules.pop(mod_name, None)
+    _run_app(os.path.join(us_dir, "app.py"), extra_syspath=us_dir)
 else:  # 🔐 관리자
     _run_app("admin_app.py")
