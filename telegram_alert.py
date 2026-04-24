@@ -934,12 +934,12 @@ def send_weekly_summary(force: bool = False):
             lines.append(f"\n🟢 <b>매수 중</b>  ({len(active_list)}종목)")
             lines.append("─" * 16)
             for h in active_list:
-                base_price = h.get("entry_price")  # 채널 제시 매수가 기준 (avg_price 사용 안 함)
+                base_price = h.get("avg_price") or h.get("entry_price")  # 자동매매 평단가 우선
                 avg_str    = f"₩{base_price:,.0f}" if base_price else "미정"
                 target_str = f"₩{h['target_price']:,.0f}" if h.get("target_price") else "?"
                 stop_str   = f"₩{h['stop_price']:,.0f}"   if h.get("stop_price")   else "?"
-                split_step = 1  # 채널은 분할매수 없음
-                split_tag  = ""
+                split_step = h.get("split_step", 1) or 1
+                split_tag  = f" <i>({split_step}차 평균)</i>" if split_step > 1 else ""
                 cur_line = ""
                 try:
                     if base_price:
