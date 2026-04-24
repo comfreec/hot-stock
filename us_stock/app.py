@@ -147,10 +147,15 @@ with st.sidebar:
         st.session_state["us_min_score"] = 30
         st.rerun()
 
-    max_gap   = st.slider("📏 장기선 근처 범위 (%)", 1, 15, 7, key="us_max_gap")
-    ob_days   = st.slider("📅 R-사이클 70 이탈 후 경과일", 30, 365, 180, key="us_ob_days")
-    min_below = st.slider("📉 최소 조정 기간 (일)", 0, 60, 0, key="us_min_below")
-    min_score = st.slider("⭐ 최소 종합점수", 5, 50, 30, key="us_min_score")
+    if "us_max_gap"   not in st.session_state: st.session_state["us_max_gap"]   = 7
+    if "us_ob_days"   not in st.session_state: st.session_state["us_ob_days"]   = 180
+    if "us_min_below" not in st.session_state: st.session_state["us_min_below"] = 0
+    if "us_min_score" not in st.session_state: st.session_state["us_min_score"] = 30
+
+    max_gap   = st.slider("📏 장기선 근처 범위 (%)", 1, 15, key="us_max_gap")
+    ob_days   = st.slider("📅 R-사이클 70 이탈 후 경과일", 30, 365, key="us_ob_days")
+    min_below = st.slider("📉 최소 조정 기간 (일)", 0, 60, key="us_min_below")
+    min_score = st.slider("⭐ 최소 종합점수", 5, 50, key="us_min_score")
 
     st.markdown("---")
     scan_btn  = st.button("🔍 스캔 시작", type="primary", use_container_width=True, key="us_scan")
