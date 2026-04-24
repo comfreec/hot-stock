@@ -315,28 +315,11 @@ def main():
                          "last_crypto_hour": last_crypto_hour, "last_reorder_date": last_reorder_date})
             run_scan()
 
-        # 06:30 KST 미국 주식 스캔 (미국 장마감 후 - 서머타임 06:00, 비서머타임 07:00 중간)
-        us_scan_hour = now_kst.hour == 6 and now_kst.minute >= 30
-        us_scan_hour_alt = now_kst.hour == 7 and now_kst.minute >= 30  # 비서머타임
-        if is_weekday and (us_scan_hour or us_scan_hour_alt) and last_us_scan_date != today:
-            last_us_scan_date = today
-            _save_state({"last_scan_date": last_scan_date, "last_perf_date": last_perf_date,
-                         "last_crypto_hour": last_crypto_hour, "last_reorder_date": last_reorder_date,
-                         "last_us_scan_date": last_us_scan_date})
-            try:
-                from us_stock.us_stock_detector import USStockDetector
-                from us_stock.symbols import ALL_SYMBOLS
-                from us_stock.telegram_alert import send_us_scan_alert
-                log("미국 주식 스캔 시작...")
-                det = USStockDetector(max_gap_pct=7, ob_days=180, min_below_days=0, min_score=30)
-                results = det.analyze_all(ALL_SYMBOLS)
-                if results:
-                    send_us_scan_alert(results)
-                    log(f"미국 주식 스캔 완료: {len(results)}개 → 텔레그램 전송")
-                else:
-                    log("미국 주식 스캔: 조건 충족 종목 없음")
-            except Exception as e:
-                log(f"미국 주식 스캔 오류: {e}")        # 4시간 간격 코인 스캔 비활성화
+        # 06:30 KST 미국 주식 스캔 (일시 비활성화)
+        # us_scan_hour = now_kst.hour == 6 and now_kst.minute >= 30
+        # us_scan_hour_alt = now_kst.hour == 7 and now_kst.minute >= 30
+        # if is_weekday and (us_scan_hour or us_scan_hour_alt) and last_us_scan_date != today:
+        #     ... (미국 주식 스캔 비활성화)        # 4시간 간격 코인 스캔 비활성화
         # utc_hour = now_utc.hour
         # if utc_hour in CRYPTO_SCAN_HOURS_UTC and utc_hour != last_crypto_hour:
         #     last_crypto_hour = utc_hour
