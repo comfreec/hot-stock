@@ -1187,7 +1187,7 @@ def make_candle(data, title, ma240_series=None, cross_date=None, show_levels=Tru
         # ── 목표가: 다중 기법 합산 ───────────────────────────────
         recent_high = float(high.tail(120).max())
         recent_low  = float(low.tail(120).min())
-        swing_range = max(recent_high - recent_low, current * 0.01)
+        swing_range = max(recent_high - recent_low, entry * 0.01)
 
         # 1) 피보나치 확장 (스윙 저점 기준)
         fib_1272 = recent_low + swing_range * 1.272   # 보수적 목표
@@ -1199,8 +1199,8 @@ def make_candle(data, title, ma240_series=None, cross_date=None, show_levels=Tru
         prev_high_ext  = recent_high * 1.05  # 고점 돌파 후 +5% 저항
 
         # 3) ATR 멀티플 (변동성 기반)
-        atr_x3 = current + atr * 3.0
-        atr_x5 = current + atr * 5.0
+        atr_x3 = entry + atr * 3.0
+        atr_x5 = entry + atr * 5.0
 
         # 4) 볼린저밴드 상단 (2σ) - 과열 저항선
         ma20_s  = close.rolling(20).mean()

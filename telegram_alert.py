@@ -232,109 +232,121 @@ def get_financial_data(symbol: str) -> dict:
         return {}
 
 
+def _calc_levels_core(close, high, low) -> dict:
+    """
+    공통 가격 레벨 계산 코어 (app.py make_candle과 완전 동일 로직)
+    close/high/low: pd.Series
+    반환: entry, entry_label, stop, target, rr, upside, downside, ma240_v, ma1000_v
+    """
+    current = float(close.iloc[-1])
+
+    # ATR(14)
+    tr = pd.concat([
+        high - low,
+        (high - close.shift(1)).abs(),
+        (low  - close.shift(1)).abs()
+    ], axis=1).max(axis=1)
+    atr_s = tr.rolling(14).mean().dropna()
+    atr = float(atr_s.iloc[-1]) if len(atr_s) > 0 else float((high - low).mean())
+
+    # 매수가: 240일선
+    ma240_s  = close.rolling(240).mean()
+    ma1000_s = close.rolling(1000).mean()
+    ma240_v  = float(ma240_s.iloc[-1])  if not pd.isna(ma240_s.iloc[-1])  else None
+    ma1000_v = float(ma1000_s.iloc[-1]) if not pd.isna(ma1000_s.iloc[-1]) else None
+
+    if ma240_v and ma240_v < current:
+        entry_label, entry = "장기선", ma240_v
+    else:
+        entry_label, entry = "현재가", current
+
+    # 손절가: RSI(20) 30 돌파 직전 5일 저가
+    try:
+        _d = close.diff()
+        _gain = _d.where(_d > 0, 0.0).ewm(alpha=1/20, min_periods=20, adjust=False).mean()
+        _loss = (-_d.where(_d < 0, 0.0)).ewm(alpha=1/20, min_periods=20, adjust=False).mean()
+        _rsi = (100 - 100 / (1 + _gain / _loss.replace(0, float('nan')))).fillna(50)
+        _rsi_vals = _rsi.values
+        _oversold_exit = None
+        for _i in range(1, len(_rsi_vals)):
+            if _rsi_vals[_i-1] <= 30 and _rsi_vals[_i] > 30:
+                _oversold_exit = _i
+        if _oversold_exit is not None:
+            _lb = max(0, _oversold_exit - 5)
+            stop = float(low.iloc[_lb:_oversold_exit].min())
+        else:
+            stop = ma240_v * 0.95 if (ma240_v and ma240_v < entry) else entry * 0.95
+    except Exception:
+        stop = ma240_v * 0.95 if (ma240_v and ma240_v < entry) else entry * 0.95
+    risk = max(entry - stop, entry * 0.01)
+
+    # 목표가: 다중 기법 (Fib × ATR × BB 가중평균)
+    n = len(high)
+    recent_high = float(high.tail(120).max()) if n >= 120 else float(high.max())
+    recent_low  = float(low.tail(120).min())  if n >= 120 else float(low.min())
+    swing_range = max(recent_high - recent_low, entry * 0.01)
+
+    fib_1272 = recent_low + swing_range * 1.272
+    fib_1618 = recent_low + swing_range * 1.618
+    fib_2000 = recent_low + swing_range * 2.000
+    prev_high_ext = recent_high * 1.05
+    atr_x3 = entry + atr * 3.0
+    atr_x5 = entry + atr * 5.0
+
+    ma20_s  = close.rolling(20).mean()
+    std20   = close.rolling(20).std()
+    bb_upper = float((ma20_s + std20 * 2.0).dropna().iloc[-1])
+
+    min_rr3 = entry + risk * 3.0
+    min_rr2 = entry + risk * 2.0
+    all_cands = sorted([x for x in [fib_1272, fib_1618, fib_2000,
+                                     recent_high, prev_high_ext,
+                                     atr_x3, atr_x5, bb_upper]
+                        if x > entry * 1.03])
+    valid_3 = [x for x in all_cands if x >= min_rr3]
+    valid_2 = [x for x in all_cands if x >= min_rr2]
+
+    if valid_3:
+        weights = [1 / (x - entry) for x in valid_3]
+        target = sum(x * w for x, w in zip(valid_3, weights)) / sum(weights)
+    elif valid_2:
+        target = valid_2[-1]
+    elif all_cands:
+        target = all_cands[-1]
+    else:
+        target = entry + risk * 3.0
+
+    target = min(target, entry * 2.0)
+
+    # 호가 단위
+    entry  = round_to_tick(entry)
+    stop   = round_to_tick(stop)
+    target = round_to_tick(target)
+    rr     = (target - entry) / (max(entry - stop, 1) + 1e-9)
+
+    return {
+        "current":     current,
+        "entry":       entry,
+        "entry_label": entry_label,
+        "target":      target,
+        "stop":        stop,
+        "rr":          rr,
+        "upside":      (target / entry - 1) * 100,
+        "downside":    (stop / entry - 1) * 100,
+        "ma240":       round_to_tick(ma240_v)  if ma240_v  else entry,
+        "ma1000":      round_to_tick(ma1000_v) if ma1000_v else None,
+    }
+
+
 def calc_price_levels(symbol: str) -> dict:
-    """목표가/손절가/손익비 + 근거 있는 매수가 계산"""
+    """목표가/손절가/손익비 계산 (yfinance 재호출)"""
     try:
         import yfinance as yf
         df = yf.Ticker(symbol).history(period="5y", auto_adjust=False)
         df = df.dropna(subset=["Open","High","Low","Close"])
         if len(df) < 30:
             return {}
-
-        close = df["Close"]
-        high  = df["High"]
-        low   = df["Low"]
-        current = float(close.iloc[-1])
-
-        # ATR
-        tr = pd.concat([
-            high - low,
-            (high - close.shift(1)).abs(),
-            (low  - close.shift(1)).abs()
-        ], axis=1).max(axis=1)
-        atr_s = tr.rolling(14).mean().dropna()
-        atr = float(atr_s.iloc[-1]) if len(atr_s) > 0 else current * 0.02
-
-        # ── 매수가: 240일선 가격 고정 ────────────────────────────
-        ma240  = close.rolling(240).mean()
-        ma1000 = close.rolling(1000).mean()
-        ma240_v  = float(ma240.iloc[-1])  if not pd.isna(ma240.iloc[-1])  else None
-        ma1000_v = float(ma1000.iloc[-1]) if not pd.isna(ma1000.iloc[-1]) else None
-
-        if ma240_v and ma240_v < current:
-            entry_label = "장기선"
-            entry = ma240_v
-        else:
-            entry_label, entry = "현재가", current
-
-        # ── 손절가: RSI(20) 30 돌파 직전 5일 저가 ──────────────────
-        try:
-            _d = close.diff()
-            _gain = _d.where(_d > 0, 0.0).ewm(alpha=1/20, min_periods=20, adjust=False).mean()
-            _loss = (-_d.where(_d < 0, 0.0)).ewm(alpha=1/20, min_periods=20, adjust=False).mean()
-            _rsi = (100 - 100 / (1 + _gain / _loss.replace(0, float('nan')))).fillna(50)
-            _rsi_vals = _rsi.values
-            _n = len(_rsi_vals)
-            _oversold_exit = None
-            for _i in range(1, _n):
-                if _rsi_vals[_i-1] <= 30 and _rsi_vals[_i] > 30:
-                    _oversold_exit = _i
-            if _oversold_exit is not None:
-                _lb = max(0, _oversold_exit - 5)
-                stop = float(low.iloc[_lb:_oversold_exit].min())
-            else:
-                stop = ma240_v * 0.95 if ma240_v and ma240_v < entry else entry * 0.95
-        except Exception:
-            stop = ma240_v * 0.95 if ma240_v and ma240_v < entry else entry * 0.95
-        risk = max(entry - stop, entry * 0.01)
-
-        # 목표가: 피보나치 되돌림 기반
-        recent_high = float(high.tail(120).max())
-        recent_low  = float(low.tail(120).min())
-        swing_range = max(recent_high - recent_low, entry * 0.01)
-
-        candidates = sorted([
-            x for x in [
-                recent_low + swing_range * 1.272,
-                recent_low + swing_range * 1.618,
-                recent_low + swing_range * 2.0,
-                recent_high * 1.05,
-                entry + atr * 3.0,
-                entry + atr * 5.0,
-            ] if x > entry * 1.03
-        ])
-
-        min_rr3 = entry + risk * 3.0
-        valid_t = [x for x in candidates if x >= min_rr3]
-        if valid_t:
-            weights = [1 / (x - entry) for x in valid_t]
-            target = sum(x * w for x, w in zip(valid_t, weights)) / sum(weights)
-        elif candidates:
-            target = candidates[-1]
-        else:
-            target = entry + risk * 3.0
-
-        target = min(target, entry * 2.0)
-        rr = (target - entry) / (entry - stop + 1e-9)
-
-        # 호가 단위 적용
-        entry  = round_to_tick(entry)
-        target = round_to_tick(target)
-        stop   = round_to_tick(stop)
-        rr     = (target - entry) / (entry - stop + 1e-9)
-        ma240_tick = round_to_tick(ma240_v) if ma240_v else entry
-
-        return {
-            "current":     current,
-            "entry":       entry,
-            "entry_label": entry_label,
-            "ma240":       ma240_tick,
-            "target":      target,
-            "stop":        stop,
-            "rr":          rr,
-            "upside":      (target / entry - 1) * 100,
-            "downside":    (stop / entry - 1) * 100,
-        }
+        return _calc_levels_core(df["Close"], df["High"], df["Low"])
     except Exception as e:
         print(f"[calc_price_levels] {symbol} 오류: {e}")
         import traceback; traceback.print_exc()
@@ -342,124 +354,24 @@ def calc_price_levels(symbol: str) -> dict:
 
 
 def _calc_levels_from_result(r: dict) -> dict:
-    """스캔 결과에서 직접 가격 레벨 계산 - app.py make_candle과 동일한 로직"""
+    """스캔 결과에서 직접 가격 레벨 계산 (yfinance 재호출 없음)"""
     try:
-        current = float(r["current_price"])
-        close_s = r.get("close_series")
-        high_s  = r.get("high_series")
-        low_s   = r.get("low_series")
-
-        # list → Series 변환
         def to_s(v):
             if v is None: return None
             if hasattr(v, 'rolling'): return v
             return pd.Series(list(v))
 
-        close_s = to_s(close_s)
-        high_s  = to_s(high_s)
-        low_s   = to_s(low_s)
+        close_s = to_s(r.get("close_series"))
+        high_s  = to_s(r.get("high_series"))
+        low_s   = to_s(r.get("low_series"))
 
         if close_s is None or len(close_s) < 20:
             return {}
 
-        high_s  = high_s  if high_s  is not None else close_s
-        low_s   = low_s   if low_s   is not None else close_s
+        high_s = high_s if high_s is not None else close_s
+        low_s  = low_s  if low_s  is not None else close_s
 
-        # ATR
-        tr = pd.concat([high_s - low_s,
-                        (high_s - close_s.shift(1)).abs(),
-                        (low_s  - close_s.shift(1)).abs()], axis=1).max(axis=1)
-        atr_s = tr.rolling(14).mean().dropna()
-        atr = float(atr_s.iloc[-1]) if len(atr_s) > 0 else float((high_s - low_s).mean())
-
-        # 매수가: 240일선 가격 고정
-        ma240_s  = close_s.rolling(240).mean()
-        ma1000_s = close_s.rolling(1000).mean()
-        ma240_v  = float(ma240_s.iloc[-1]) if not pd.isna(ma240_s.iloc[-1]) else None
-        ma1000_v = float(ma1000_s.iloc[-1]) if not pd.isna(ma1000_s.iloc[-1]) else None
-
-        if ma240_v and ma240_v < current:
-            entry_label = "장기선"
-            entry = ma240_v
-        else:
-            entry_label, entry = "현재가", current
-
-        # 손절가: RSI(20) 30 돌파 직전 5일 저가
-        try:
-            _d = close_s.diff()
-            _gain = _d.where(_d > 0, 0.0).ewm(alpha=1/20, min_periods=20, adjust=False).mean()
-            _loss = (-_d.where(_d < 0, 0.0)).ewm(alpha=1/20, min_periods=20, adjust=False).mean()
-            _rsi = (100 - 100 / (1 + _gain / _loss.replace(0, float('nan')))).fillna(50)
-            _rsi_vals = _rsi.values
-            _n = len(_rsi_vals)
-            _oversold_exit = None
-            for _i in range(1, _n):
-                if _rsi_vals[_i-1] <= 30 and _rsi_vals[_i] > 30:
-                    _oversold_exit = _i
-            if _oversold_exit is not None:
-                _lb = max(0, _oversold_exit - 5)
-                stop = float(low_s.iloc[_lb:_oversold_exit].min())
-            else:
-                stop = ma240_v * 0.95 if ma240_v and ma240_v < entry else entry * 0.95
-        except Exception:
-            stop = ma240_v * 0.95 if ma240_v and ma240_v < entry else entry * 0.95
-        risk = max(entry - stop, entry * 0.01)
-
-        # 목표가: app.py와 동일한 다중 기법
-        recent_high = float(high_s.tail(120).max()) if len(high_s) >= 120 else float(high_s.max())
-        recent_low  = float(low_s.tail(120).min())  if len(low_s)  >= 120 else float(low_s.min())
-        swing_range = max(recent_high - recent_low, current * 0.01)
-
-        fib_1272 = recent_low + swing_range * 1.272
-        fib_1618 = recent_low + swing_range * 1.618
-        fib_2000 = recent_low + swing_range * 2.000
-        prev_high_ext = recent_high * 1.05
-        atr_x3 = current + atr * 3.0
-        atr_x5 = current + atr * 5.0
-
-        ma20_s = close_s.rolling(20).mean()
-        std20  = close_s.rolling(20).std()
-        bb_upper = float((ma20_s + std20 * 2.0).dropna().iloc[-1])
-
-        min_rr3 = entry + risk * 3.0
-        min_rr2 = entry + risk * 2.0
-        all_cands = sorted([x for x in [fib_1272, fib_1618, fib_2000,
-                                         recent_high, prev_high_ext,
-                                         atr_x3, atr_x5, bb_upper]
-                            if x > entry * 1.03])
-        valid_3 = [x for x in all_cands if x >= min_rr3]
-        valid_2 = [x for x in all_cands if x >= min_rr2]
-
-        if valid_3:
-            weights = [1 / (x - entry) for x in valid_3]
-            target = sum(x * w for x, w in zip(valid_3, weights)) / sum(weights)
-        elif valid_2:
-            target = valid_2[-1]
-        elif all_cands:
-            target = all_cands[-1]
-        else:
-            target = entry + risk * 3.0
-
-        target = min(target, entry * 2.0)
-
-        # 호가 단위 적용
-        entry  = round_to_tick(entry)
-        stop   = round_to_tick(stop)
-        target = round_to_tick(target)
-
-        rr = (target - entry) / (max(entry - stop, 1) + 1e-9)
-
-        return {
-            "current":  current,
-            "entry":    round(entry),
-            "target":   round(target),
-            "stop":     round(stop),
-            "rr":       rr,
-            "upside":   (target / entry - 1) * 100,
-            "downside": (stop / entry - 1) * 100,
-            "ma240":    round(ma240_v)  if ma240_v  else round(entry),
-            "ma1000":   round(ma1000_v) if ma1000_v else None,
-        }
+        return _calc_levels_core(close_s, high_s, low_s)
     except Exception as e:
         print(f"[_calc_levels_from_result] {r.get('symbol')} 오류: {e}")
         import traceback; traceback.print_exc()
