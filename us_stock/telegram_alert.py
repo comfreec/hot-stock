@@ -277,6 +277,13 @@ def calc_us_levels(close: pd.Series, high: pd.Series, low: pd.Series) -> dict:
         return {}
 
 
+def _to_series(v):
+    """list/array → pd.Series 변환 헬퍼"""
+    if v is None: return None
+    if hasattr(v, 'rolling'): return v
+    return pd.Series(list(v))
+
+
 def send_us_scan_alert(results: list):
     """미국 주식 스캔 결과 텔레그램 전송 (차트 이미지 포함)"""
     if not results:
@@ -286,17 +293,14 @@ def send_us_scan_alert(results: list):
     lines = [f"🇺🇸 <b>미국 스윙 레이더</b> ({today} 장마감) — {len(results[:10])}개\n{'━'*20}"]
 
     for i, r in enumerate(results[:10], 1):
-        close_s = r.get("close_series")
-        high_s  = r.get("high_series")
-        low_s   = r.get("low_series")
+        close_s = _to_series(r.get("close_series"))
+        high_s  = _to_series(r.get("high_series"))
+        low_s   = _to_series(r.get("low_series"))
 
         lv = {}
         if close_s is not None and len(close_s) > 20:
-            def to_s(v):
-                if v is None: return None
-                if hasattr(v, 'rolling'): return v
-                return pd.Series(list(v))
-            lv = calc_us_levels(to_s(close_s), to_s(high_s), to_s(low_s))
+            lv = calc_us_levels(close_s, high_s if high_s is not None else close_s,
+                                low_s  if low_s  is not None else close_s)
 
         cur = r["current_price"]
         entry_str  = f"${lv['entry']:,.2f}" if lv else f"${cur:,.2f}"
@@ -310,7 +314,7 @@ def send_us_scan_alert(results: list):
             f"🎯 목표가:  {target_str}\n"
             f"🛑 손절가:  {stop_str}\n"
             f"⚖️ 손익비:  {rr_str}\n"
-            f"━" * 20
+            f"{'━'*20}"
         )
         lines.append(block)
 
@@ -323,16 +327,13 @@ def send_us_scan_alert(results: list):
 
     # 상위 5개 차트 이미지 전송
     for r in results[:5]:
+        close_s = _to_series(r.get("close_series"))
+        high_s  = _to_series(r.get("high_series"))
+        low_s   = _to_series(r.get("low_series"))
         lv = {}
-        close_s = r.get("close_series")
-        high_s  = r.get("high_series")
-        low_s   = r.get("low_series")
         if close_s is not None and len(close_s) > 20:
-            def to_s(v):
-                if v is None: return None
-                if hasattr(v, 'rolling'): return v
-                return pd.Series(list(v))
-            lv = calc_us_levels(to_s(close_s), to_s(high_s), to_s(low_s))
+            lv = calc_us_levels(close_s, high_s if high_s is not None else close_s,
+                                low_s  if low_s  is not None else close_s)
 
         img = make_us_chart_image(r["symbol"], r["name"], lv if lv else None)
         if img:
