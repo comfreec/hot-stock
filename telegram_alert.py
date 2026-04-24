@@ -421,26 +421,26 @@ def _calc_levels_from_result(r: dict) -> dict:
         std20  = close_s.rolling(20).std()
         bb_upper = float((ma20_s + std20 * 2.0).dropna().iloc[-1])
 
-        min_rr3 = current + risk * 3.0
-        min_rr2 = current + risk * 2.0
+        min_rr3 = entry + risk * 3.0
+        min_rr2 = entry + risk * 2.0
         all_cands = sorted([x for x in [fib_1272, fib_1618, fib_2000,
                                          recent_high, prev_high_ext,
                                          atr_x3, atr_x5, bb_upper]
-                            if x > current * 1.03])
+                            if x > entry * 1.03])
         valid_3 = [x for x in all_cands if x >= min_rr3]
         valid_2 = [x for x in all_cands if x >= min_rr2]
 
         if valid_3:
-            weights = [1 / (x - current) for x in valid_3]
+            weights = [1 / (x - entry) for x in valid_3]
             target = sum(x * w for x, w in zip(valid_3, weights)) / sum(weights)
         elif valid_2:
             target = valid_2[-1]
         elif all_cands:
             target = all_cands[-1]
         else:
-            target = current + risk * 3.0
+            target = entry + risk * 3.0
 
-        target = min(target, current * 2.0)
+        target = min(target, entry * 2.0)
 
         # 호가 단위 적용
         entry  = round_to_tick(entry)

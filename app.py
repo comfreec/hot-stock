@@ -1014,7 +1014,7 @@ def show_price_levels(fig):
       </div>
       <div style='flex:1;background:rgba(255,51,85,0.08);border:1px solid #ff3355;
            border-radius:10px;padding:12px;text-align:center;'>
-        <div style='color:#8b92a5;font-size:10px;letter-spacing:1px;'>🛑 손절가</div>
+        <div style='color:#8b92a5;font-size:10px;letter-spacing:1px;'>🛑 추세이탈</div>
         <div style='color:#ff3355;font-size:18px;font-weight:700;margin:4px 0;'>₩{lv["stop"]:,.0f}</div>
         <div style='color:#ff3355;font-size:12px;'>{lv["downside"]:.1f}%</div>
         <div style='color:#4a5568;font-size:10px;margin-top:4px;'>RSI 저점 기준</div>
