@@ -1144,11 +1144,25 @@ def make_candle(data, title, ma240_series=None, cross_date=None, show_levels=Tru
         else:
             entry_label, entry = "현재가", current
 
-        # ── 손절가: 240일선 -5% 고정 ────────────────────────────
-        if ma240_v and ma240_v < entry:
-            stop = ma240_v * 0.95
-        else:
-            stop = entry * 0.95
+        # ── 손절가: RSI(20) 30 돌파 직전 5일 저가 ────────────────
+        try:
+            _d = close.diff()
+            _gain = _d.where(_d > 0, 0.0).ewm(alpha=1/20, min_periods=20, adjust=False).mean()
+            _loss = (-_d.where(_d < 0, 0.0)).ewm(alpha=1/20, min_periods=20, adjust=False).mean()
+            _rsi = (100 - 100 / (1 + _gain / _loss.replace(0, float('nan')))).fillna(50)
+            _rsi_vals = _rsi.values
+            _n = len(_rsi_vals)
+            _oversold_exit = None
+            for _i in range(1, _n):
+                if _rsi_vals[_i-1] <= 30 and _rsi_vals[_i] > 30:
+                    _oversold_exit = _i
+            if _oversold_exit is not None:
+                _lb = max(0, _oversold_exit - 5)
+                stop = float(low.iloc[_lb:_oversold_exit].min())
+            else:
+                stop = ma240_v * 0.95 if ma240_v and ma240_v < entry else entry * 0.95
+        except Exception:
+            stop = ma240_v * 0.95 if ma240_v and ma240_v < entry else entry * 0.95
         risk = max(entry - stop, entry * 0.01)
 
         # ── 목표가: 다중 기법 합산 ───────────────────────────────
@@ -1487,7 +1501,7 @@ if mode == "🔍 급등 예고 종목 탐지":
                     </div>
                   </div>
                   <div style="margin-top:6px;color:#8b92a5;font-size:12px;">
-                    {'240일선 ₩{:,.0f} | 이격 +{:.1f}% | 손절가 ₩{:,.0f} (240선-5%) |'.format(r['ma240'], r['ma240_gap'], int(r['ma240']*0.95)) if r.get('ma240') else ''}
+                    {'240일선 ₩{:,.0f} | 이격 +{:.1f}% |'.format(r['ma240'], r['ma240_gap']) if r.get('ma240') else ''}
                     수급 {supply_str} | 핵심신호 {r.get("core_signal_count",0)}개
                   </div>
                 </div>""", unsafe_allow_html=True)
@@ -1660,7 +1674,7 @@ elif mode == "📈 개별 종목 분석":
             metric_card(c1,"R-cycle(20)",f"{result['rsi']:.1f}")
             metric_card(c2,"240선 이격",f"+{result['ma240_gap']:.1f}%")
             metric_card(c3,"240일선",f"₩{result['ma240']:,.0f}")
-            metric_card(c4,"손절가",f"₩{int(result['ma240']*0.95):,.0f}")
+            metric_card(c4,"손절가", f"₩{int(result.get('stop_price', result['ma240']*0.95)):,.0f}" if result.get('ma240') else "-")
 
             st.markdown("<div class='sec-title'>📊 신호 분석</div>", unsafe_allow_html=True)
             s = result["signals"]
