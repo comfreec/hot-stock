@@ -4,6 +4,7 @@
 - 달러 단위 표시
 """
 import os
+import io
 import requests
 import pandas as pd
 from datetime import date
@@ -33,6 +34,136 @@ def send_telegram(message: str) -> bool:
         return resp.ok
     except Exception:
         return False
+
+
+def send_photo(image_bytes: bytes, caption: str = "") -> bool:
+    token, chat_id = _get_config()
+    try:
+        resp = requests.post(
+            f"https://api.telegram.org/bot{token}/sendPhoto",
+            data={"chat_id": chat_id, "caption": caption, "parse_mode": "HTML"},
+            files={"photo": ("chart.png", image_bytes, "image/png")},
+            timeout=30
+        )
+        return resp.ok
+    except Exception:
+        return False
+
+
+def make_us_chart_image(symbol: str, name: str, price_levels: dict = None) -> bytes | None:
+    """미국 주식 캔들차트 이미지 생성 (달러 단위)"""
+    try:
+        import yfinance as yf
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+
+        df = yf.Ticker(symbol).history(period="6mo", auto_adjust=False)
+        df = df.dropna(subset=["Open", "High", "Low", "Close"])
+        if len(df) < 20:
+            return None
+
+        # MA240 계산용 2년 데이터
+        try:
+            df2y = yf.Ticker(symbol).history(period="2y", auto_adjust=False).dropna(subset=["Close"])
+            ma240_full = df2y["Close"].rolling(240).mean()
+        except Exception:
+            ma240_full = df["Close"].rolling(240).mean()
+        ma240 = ma240_full.reindex(df.index)
+
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 7),
+                                        gridspec_kw={"height_ratios": [3, 1]},
+                                        facecolor="#0e1117")
+        ax1.set_facecolor("#0e1117")
+        ax2.set_facecolor("#0e1117")
+
+        # Heikin-Ashi
+        ha_close = (df["Open"] + df["High"] + df["Low"] + df["Close"]) / 4
+        ha_open = ha_close.copy()
+        for i in range(1, len(ha_open)):
+            ha_open.iloc[i] = (ha_open.iloc[i-1] + ha_close.iloc[i-1]) / 2
+        ha_high = pd.concat([df["High"], ha_open, ha_close], axis=1).max(axis=1)
+        ha_low  = pd.concat([df["Low"],  ha_open, ha_close], axis=1).min(axis=1)
+
+        for i in range(len(df)):
+            color = "#ff3355" if ha_close.iloc[i] >= ha_open.iloc[i] else "#4f8ef7"
+            ax1.plot([i, i], [ha_low.iloc[i], ha_high.iloc[i]], color=color, linewidth=0.8)
+            ax1.bar(i, abs(ha_close.iloc[i] - ha_open.iloc[i]),
+                    bottom=min(ha_open.iloc[i], ha_close.iloc[i]),
+                    color=color, width=0.6, alpha=0.9)
+
+        close = df["Close"]
+        x = range(len(df))
+        ax1.plot(x, close.rolling(20).mean().values, color="#ffd700", linewidth=1.2, label="MA20")
+        ax1.plot(x, close.rolling(60).mean().values, color="#ff8c42", linewidth=1.2, label="MA60")
+        if ma240.notna().any():
+            ax1.plot(x, ma240.values, color="#ff4b6e", linewidth=2.0, label="MA240")
+
+        current = float(close.iloc[-1])
+
+        if price_levels:
+            target   = price_levels.get("target")
+            stop     = price_levels.get("stop")
+            entry    = price_levels.get("entry", current)
+            upside   = price_levels.get("upside", 0)
+            downside = price_levels.get("downside", 0)
+
+            if target:
+                ax1.axhline(y=target, color="#00ff88", linewidth=1.5, linestyle="--", alpha=0.9)
+                ax1.text(len(df)-1, target, f" Target ${target:,.2f} (+{upside:.1f}%)",
+                         color="#00ff88", fontsize=7, va="bottom", ha="right")
+                ax1.axhspan(entry, target, alpha=0.05, color="#00ff88")
+            if entry < current:
+                ax1.axhline(y=entry, color="#ffd700", linewidth=1.5, linestyle="-.", alpha=0.9)
+                ax1.text(len(df)-1, entry, f" Buy ${entry:,.2f}",
+                         color="#ffd700", fontsize=7, va="bottom", ha="right")
+            ax1.axhline(y=current, color="#ffffff", linewidth=1.0, linestyle="--", alpha=0.6)
+            ax1.text(len(df)-1, current, f" ${current:,.2f}",
+                     color="#ffffff", fontsize=7, va="bottom", ha="right")
+            if stop:
+                ax1.axhline(y=stop, color="#ff3355", linewidth=1.5, linestyle="--", alpha=0.9)
+                ax1.text(len(df)-1, stop, f" Stop ${stop:,.2f} ({downside:.1f}%)",
+                         color="#ff3355", fontsize=7, va="top", ha="right")
+                ax1.axhspan(stop, entry, alpha=0.05, color="#ff3355")
+        else:
+            ax1.axhline(y=current, color="#ffffff", linewidth=0.8, linestyle="--", alpha=0.5)
+
+        ax1.set_title(f"{name} ({symbol})", color="#e0e6f0", fontsize=12, pad=8)
+        ax1.tick_params(colors="#8b92a5", labelsize=8)
+        ax1.spines[:].set_color("#2d3555")
+        ax1.yaxis.set_label_position("right")
+        ax1.yaxis.tick_right()
+        ax1.legend(loc="upper left", fontsize=7, facecolor="#1a1f35",
+                   labelcolor="#8b92a5", edgecolor="#2d3555")
+
+        vol = df["Volume"]
+        vol_colors = ["#ff3355" if df["Close"].iloc[i] >= df["Open"].iloc[i]
+                      else "#4f8ef7" for i in range(len(df))]
+        ax2.bar(x, vol.values, color=vol_colors, alpha=0.7, width=0.6)
+        ax2.plot(x, vol.rolling(20).mean().values, color="#ffd700", linewidth=1.0)
+        ax2.tick_params(colors="#8b92a5", labelsize=7)
+        ax2.spines[:].set_color("#2d3555")
+        ax2.yaxis.set_label_position("right")
+        ax2.yaxis.tick_right()
+        ax2.set_ylabel("Vol", color="#8b92a5", fontsize=7)
+
+        step = max(1, len(df) // 6)
+        ax1.set_xticks([])
+        ax2.set_xticks(range(0, len(df), step))
+        ax2.set_xticklabels(
+            [df.index[i].strftime("%m/%d") for i in range(0, len(df), step)],
+            color="#8b92a5", fontsize=7
+        )
+
+        plt.tight_layout(pad=0.5)
+        buf = io.BytesIO()
+        plt.savefig(buf, format="png", dpi=120, bbox_inches="tight", facecolor="#0e1117")
+        plt.close(fig)
+        buf.seek(0)
+        return buf.read()
+    except Exception as e:
+        print(f"[US차트] {symbol} 생성 실패: {e}")
+        return None
 
 
 def round_to_cent(price: float) -> float:
@@ -147,7 +278,7 @@ def calc_us_levels(close: pd.Series, high: pd.Series, low: pd.Series) -> dict:
 
 
 def send_us_scan_alert(results: list):
-    """미국 주식 스캔 결과 텔레그램 전송"""
+    """미국 주식 스캔 결과 텔레그램 전송 (차트 이미지 포함)"""
     if not results:
         return
 
@@ -189,3 +320,22 @@ def send_us_scan_alert(results: list):
         send_telegram("\n".join(lines[len(lines)//2:]))
     else:
         send_telegram(msg)
+
+    # 상위 5개 차트 이미지 전송
+    for r in results[:5]:
+        lv = {}
+        close_s = r.get("close_series")
+        high_s  = r.get("high_series")
+        low_s   = r.get("low_series")
+        if close_s is not None and len(close_s) > 20:
+            def to_s(v):
+                if v is None: return None
+                if hasattr(v, 'rolling'): return v
+                return pd.Series(list(v))
+            lv = calc_us_levels(to_s(close_s), to_s(high_s), to_s(low_s))
+
+        img = make_us_chart_image(r["symbol"], r["name"], lv if lv else None)
+        if img:
+            caption = (f"🇺🇸 {r['name']} ({r['symbol']}) ⭐{r['total_score']}점\n"
+                      f"${r['current_price']:,.2f} | 240선 +{r['ma240_gap']:.1f}%")
+            send_photo(img, caption=caption)
