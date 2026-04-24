@@ -29,6 +29,26 @@ def is_enabled() -> bool:
     return bool(os.environ.get("KIS_APP_KEY"))
 
 
+def is_market_open() -> bool:
+    """한국 주식 시장 개장 시간 확인 (09:00~15:30 KST, 평일)"""
+    now = datetime.now(KST)
+    if now.weekday() >= 5:  # 토/일
+        return False
+    market_open  = now.replace(hour=9,  minute=0,  second=0, microsecond=0)
+    market_close = now.replace(hour=15, minute=30, second=0, microsecond=0)
+    return market_open <= now <= market_close
+
+
+def is_order_time() -> bool:
+    """매수 주문 가능 시간 (09:05~15:20 KST - 시초가/종가 혼잡 제외)"""
+    now = datetime.now(KST)
+    if now.weekday() >= 5:
+        return False
+    order_open  = now.replace(hour=9,  minute=5,  second=0, microsecond=0)
+    order_close = now.replace(hour=15, minute=20, second=0, microsecond=0)
+    return order_open <= now <= order_close
+
+
 def round_to_tick(price: float) -> int:
     """한국 주식 호가 단위로 반올림"""
     if price < 2000:      tick = 1
@@ -127,6 +147,10 @@ class KISClient:
 
     def _headers(self, tr_id: str, extra: dict = None) -> dict:
         acct = self.account.replace("-", "")
+        # 토큰 만료 임박 시 강제 재발급
+        now = datetime.now(KST)
+        if self._token_exp and now >= self._token_exp - timedelta(minutes=60):
+            self._token = None  # 캐시 무효화 → _get_token()에서 재발급
         h = {
             "content-type":  "application/json",
             "authorization": f"Bearer {self._get_token()}",
@@ -240,61 +264,88 @@ class KISClient:
 
     def buy_order(self, symbol: str, price: int, qty: int, market: bool = False) -> dict:
         """매수 주문 (지정가 or 시장가)"""
+        # ── 안전 검증 ──────────────────────────────────────────────
+        if qty <= 0:
+            return {"success": False, "error": f"수량 오류: qty={qty}"}
+        price = round_to_tick(price)  # 호가 단위 보정
         code  = symbol.replace(".KS", "").replace(".KQ", "")
         acct_no = self.account.split("-")[0]
         acct_cd = self.account.split("-")[1] if "-" in self.account else "01"
         tr_id = "VTTC0802U" if self.mock else "TTTC0802U"
         ord_dvsn  = "01" if market else "00"
         ord_price = "0"  if market else str(price)
-        try:
-            resp = requests.post(
-                f"{self.base}/uapi/domestic-stock/v1/trading/order-cash",
-                headers=self._headers(tr_id),
-                json={
-                    "CANO": acct_no, "ACNT_PRDT_CD": acct_cd,
-                    "PDNO": code, "ORD_DVSN": ord_dvsn,
-                    "ORD_QTY": str(qty), "ORD_UNPR": ord_price,
-                },
-                timeout=10
-            )
-            resp.raise_for_status()
-            result = resp.json()
-            order_no = result.get("output", {}).get("ODNO", "")
-            kind = "시장가" if market else f"@{price:,}원"
-            print(f"[KIS] 매수 주문 {code} {qty}주 {kind} → 주문번호 {order_no}")
-            return {"success": True, "order_no": order_no}
-        except Exception as e:
-            print(f"[KIS] 매수 주문 오류 {code}: {e}")
-            return {"success": False, "error": str(e)}
+        for attempt in range(2):  # 토큰 만료 시 1회 재시도
+            try:
+                resp = requests.post(
+                    f"{self.base}/uapi/domestic-stock/v1/trading/order-cash",
+                    headers=self._headers(tr_id),
+                    json={
+                        "CANO": acct_no, "ACNT_PRDT_CD": acct_cd,
+                        "PDNO": code, "ORD_DVSN": ord_dvsn,
+                        "ORD_QTY": str(qty), "ORD_UNPR": ord_price,
+                    },
+                    timeout=10
+                )
+                resp.raise_for_status()
+                result = resp.json()
+                # 토큰 만료 오류 감지
+                if result.get("rt_cd") == "1" and "token" in result.get("msg1", "").lower():
+                    if attempt == 0:
+                        self._token = None  # 토큰 무효화 후 재시도
+                        continue
+                order_no = result.get("output", {}).get("ODNO", "")
+                kind = "시장가" if market else f"@{price:,}원"
+                print(f"[KIS] 매수 주문 {code} {qty}주 {kind} → 주문번호 {order_no}")
+                return {"success": True, "order_no": order_no}
+            except Exception as e:
+                if attempt == 0:
+                    self._token = None  # 토큰 문제일 수 있으므로 재시도
+                    time.sleep(1)
+                    continue
+                print(f"[KIS] 매수 주문 오류 {code}: {e}")
+                return {"success": False, "error": str(e)}
 
     def sell_order(self, symbol: str, price: int, qty: int, market: bool = False) -> dict:
         """매도 주문 (지정가 or 시장가)"""
+        # ── 안전 검증 ──────────────────────────────────────────────
+        if qty <= 0:
+            return {"success": False, "error": f"수량 오류: qty={qty}"}
+        price = round_to_tick(price)  # 호가 단위 보정
         code  = symbol.replace(".KS", "").replace(".KQ", "")
         acct_no = self.account.split("-")[0]
         acct_cd = self.account.split("-")[1] if "-" in self.account else "01"
         tr_id = "VTTC0801U" if self.mock else "TTTC0801U"
-        ord_dvsn = "01" if market else "00"  # 01=시장가, 00=지정가
+        ord_dvsn = "01" if market else "00"
         ord_price = "0" if market else str(price)
-        try:
-            resp = requests.post(
-                f"{self.base}/uapi/domestic-stock/v1/trading/order-cash",
-                headers=self._headers(tr_id),
-                json={
-                    "CANO": acct_no, "ACNT_PRDT_CD": acct_cd,
-                    "PDNO": code, "ORD_DVSN": ord_dvsn,
-                    "ORD_QTY": str(qty), "ORD_UNPR": ord_price,
-                },
-                timeout=10
-            )
-            resp.raise_for_status()
-            result = resp.json()
-            order_no = result.get("output", {}).get("ODNO", "")
-            kind = "시장가" if market else f"@{price:,}원"
-            print(f"[KIS] 매도 주문 {code} {qty}주 {kind} → 주문번호 {order_no}")
-            return {"success": True, "order_no": order_no}
-        except Exception as e:
-            print(f"[KIS] 매도 주문 오류 {code}: {e}")
-            return {"success": False, "error": str(e)}
+        for attempt in range(2):  # 토큰 만료 시 1회 재시도
+            try:
+                resp = requests.post(
+                    f"{self.base}/uapi/domestic-stock/v1/trading/order-cash",
+                    headers=self._headers(tr_id),
+                    json={
+                        "CANO": acct_no, "ACNT_PRDT_CD": acct_cd,
+                        "PDNO": code, "ORD_DVSN": ord_dvsn,
+                        "ORD_QTY": str(qty), "ORD_UNPR": ord_price,
+                    },
+                    timeout=10
+                )
+                resp.raise_for_status()
+                result = resp.json()
+                if result.get("rt_cd") == "1" and "token" in result.get("msg1", "").lower():
+                    if attempt == 0:
+                        self._token = None
+                        continue
+                order_no = result.get("output", {}).get("ODNO", "")
+                kind = "시장가" if market else f"@{price:,}원"
+                print(f"[KIS] 매도 주문 {code} {qty}주 {kind} → 주문번호 {order_no}")
+                return {"success": True, "order_no": order_no}
+            except Exception as e:
+                if attempt == 0:
+                    self._token = None
+                    time.sleep(1)
+                    continue
+                print(f"[KIS] 매도 주문 오류 {code}: {e}")
+                return {"success": False, "error": str(e)}
 
     def get_order_status(self, order_no: str, symbol: str) -> str:
         """주문 체결 상태 조회 - filled / partial / pending / cancelled"""
@@ -404,7 +455,10 @@ def _get_trade_conn():
     db_path = _os.environ.get("DB_PATH",
         "/data/scan_cache.db" if _os.path.isdir("/data") else "scan_cache.db"
     )
-    conn = sqlite3.connect(db_path, check_same_thread=False)
+    conn = sqlite3.connect(db_path, check_same_thread=False, timeout=30)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
+    conn.execute("PRAGMA busy_timeout=10000")  # DB 락 시 10초 대기
     conn.execute("""
         CREATE TABLE IF NOT EXISTS trade_orders (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -541,6 +595,12 @@ def place_orders(results: list):
     if not is_enabled():
         return
 
+    # ── 장 시간 체크 ──────────────────────────────────────────────
+    if not is_order_time():
+        now = datetime.now(KST)
+        print(f"[자동매매] 주문 가능 시간 외 ({now.strftime('%H:%M')}) - 매수 주문 스킵")
+        return
+
     cfg    = _cfg()
     client = KISClient()
     today  = date.today().isoformat()
@@ -655,9 +715,7 @@ def place_orders(results: list):
 
         if actual_cost > cash:
             print(f"[자동매매] {name} 예수금 부족 - 스킵")
-            continue
-
-        result = client.buy_order(symbol, entry, qty, market=True)  # 1차는 시장가
+            continue        result = client.buy_order(symbol, entry, qty, market=True)  # 1차는 시장가
         if result["success"]:
             order_no = result.get("order_no", "")
             # 240선 조회해서 분할매수 트리거 계산
@@ -741,6 +799,25 @@ def morning_reorder():
     """
     if not is_enabled():
         return
+
+    # ── 재시작 중복 실행 방지 (오늘 이미 실행됐으면 스킵) ─────────
+    import os as _os
+    lock_file = "/data/.morning_reorder_lock" if _os.path.isdir("/data") else ".morning_reorder_lock"
+    today_str = date.today().isoformat()
+    try:
+        if _os.path.exists(lock_file):
+            with open(lock_file) as f:
+                last_run = f.read().strip()
+            if last_run == today_str:
+                print(f"[자동매매] morning_reorder 오늘 이미 실행됨 ({today_str}) - 스킵")
+                return
+    except Exception:
+        pass
+    try:
+        with open(lock_file, "w") as f:
+            f.write(today_str)
+    except Exception:
+        pass
 
     cfg    = _cfg()
     client = KISClient()
@@ -917,6 +994,10 @@ def monitor_positions():
     if not is_enabled():
         return
 
+    # ── 장 시간 체크 ──────────────────────────────────────────────
+    if not is_market_open():
+        return
+
     client  = KISClient()
     today   = date.today().isoformat()
     orders  = _get_pending_orders()
@@ -1083,6 +1164,7 @@ def monitor_positions():
                     f"평균단가 ₩{avg_price:,.0f} → 매도 ₩{cur:,.0f}\n"
                     f"수익률 <b>+{ret:.1f}%</b> 🎉"
                 )
+                time.sleep(1)  # 동시 주문 몰림 방지
             else:
                 # ── 매도 실패 처리 ──────────────────────────────
                 err = result.get("error", "")
@@ -1120,6 +1202,7 @@ def monitor_positions():
                     f"평균단가 ₩{avg_price:,.0f} → 손절 ₩{cur:,.0f}\n"
                     f"손실 <b>{ret:.1f}%</b>"
                 )
+                time.sleep(1)  # 동시 손절 몰림 방지
             else:
                 # ── 손절 매도 실패 → 즉시 알림 (손실 확대 방지) ──
                 err = result.get("error", "")
