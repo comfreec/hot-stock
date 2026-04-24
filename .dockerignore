@@ -18,3 +18,8 @@ _build_*.py
 _check_*.py
 !_check_trades.py
 !_fix_trade_status.py
+!_fly_fix_stops.py
+!_fly_fix_targets.py
+!_fly_fix_stops.py
+!_fly_sync_now.py
+!_fly_fix_hs.py
