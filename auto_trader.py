@@ -806,7 +806,31 @@ def morning_reorder():
                     print(f"[자동매매] {order['name']} 체결 확인 → active (체결가 ₩{actual_price:,.0f})")
                     _send_admin(f"✅ <b>매수 체결 확인</b>\n<b>{order['name']}</b> ₩{actual_price:,.0f} × {order['qty']}주")
                 elif status == "partial":
-                    print(f"[자동매매] {order['name']} 부분 체결 - 대기 유지")
+                    # 부분 체결 → 실제 체결 수량으로 DB 업데이트
+                    try:
+                        bal = client.get_balance()
+                        code = order["symbol"].replace(".KS","").replace(".KQ","")
+                        h = bal.get("holdings",{}).get(code)
+                        if h and h.get("qty", 0) > 0:
+                            actual_qty = h["qty"]
+                            actual_price = int(h.get("avg_price", order["entry_price"]))
+                            _update_order(order["id"],
+                                status="active", qty=actual_qty,
+                                entry_price=actual_price, avg_price=float(actual_price),
+                                base_price=actual_price
+                            )
+                            _send_admin(
+                                f"⚠️ <b>부분 체결</b>\n"
+                                f"<b>{order['name']}</b>\n"
+                                f"주문 {order['qty']}주 → 체결 {actual_qty}주\n"
+                                f"체결가 ₩{actual_price:,.0f}"
+                            )
+                            print(f"[자동매매] {order['name']} 부분 체결 {actual_qty}주 → active")
+                    except Exception as _e:
+                        print(f"[자동매매] {order['name']} 부분 체결 처리 오류: {_e}")
+                elif status in ("cancelled", "expired"):
+                    _update_order(order["id"], status="expired", exit_date=today)
+                    _send_admin(f"⚠️ <b>주문 취소됨</b>\n<b>{order['name']}</b> 주문이 취소/만료됨")
             continue
 
         # 전날 주문 체결 여부 먼저 확인
@@ -900,8 +924,13 @@ def monitor_positions():
     if not orders:
         return
 
+    # ── 실제 잔고 조회 (유저 임의 매도 감지용) ──────────────────
+    balance = client.get_balance()
+    actual_holdings = balance.get("holdings", {})  # {code: {qty, avg_price, ...}}
+
     for order in orders:
         symbol = order["symbol"]
+        code   = symbol.replace(".KS", "").replace(".KQ", "")
         cur    = client.get_price(symbol)
         if cur is None:
             # KIS API 실패 시 yfinance 폴백
@@ -913,6 +942,14 @@ def monitor_positions():
             except Exception:
                 pass
         if cur is None:
+            # 가격 조회 완전 실패 → 거래정지/상장폐지 가능성 알림
+            print(f"[자동매매] {order['name']} 가격 조회 실패 - 거래정지 가능성")
+            _send_admin(
+                f"⚠️ <b>가격 조회 실패</b>\n"
+                f"<b>{order['name']}</b> ({symbol})\n"
+                f"KIS/yfinance 모두 가격 조회 불가\n"
+                f"거래정지 또는 상장폐지 여부 확인 필요"
+            )
             continue
 
         # pending 종목은 morning_reorder()에서 체결 확인 처리
@@ -930,7 +967,57 @@ def monitor_positions():
         trigger2   = order.get("trigger2") or int(base_price * 0.98)
         trigger3   = order.get("trigger3") or int(base_price * 0.96)
 
-        # ── 분할매수 2/3차 트리거 ──────────────────────────────────
+        # ── 실제 보유 수량 확인 (유저 임의 매도 대비) ────────────
+        actual_qty = actual_holdings.get(code, {}).get("qty", 0)
+
+        if actual_qty == 0 and cur is not None:
+            # 가격은 조회되는데 잔고가 0 → 전량 수동 매도된 경우
+            ret = (cur - avg_price) / avg_price * 100 if avg_price else 0
+            _update_order(order["id"],
+                status="expired", exit_price=int(cur),
+                exit_date=today, return_pct=round(ret, 2)
+            )
+            print(f"[자동매매] {order['name']} 실제 잔고 0 감지 → expired 처리")
+            _send_admin(
+                f"⚠️ <b>수동 매도 감지</b>\n"
+                f"<b>{order['name']}</b> ({symbol})\n"
+                f"실제 잔고 0주 → 자동매매 종료 처리\n"
+                f"현재가 ₩{cur:,.0f} / 평균단가 ₩{avg_price:,.0f}\n"
+                f"수익률 {ret:+.1f}%"
+            )
+            continue
+
+        if actual_qty < qty:
+            # 일부 매도된 경우 → DB qty를 실제 수량으로 업데이트
+            print(f"[자동매매] {order['name']} 수량 불일치 DB:{qty}주 → 실제:{actual_qty}주 보정")
+            _update_order(order["id"], qty=actual_qty)
+            qty = actual_qty
+            _send_admin(
+                f"⚠️ <b>수량 불일치 보정</b>\n"
+                f"<b>{order['name']}</b> ({symbol})\n"
+                f"DB {order['qty']}주 → 실제 {actual_qty}주로 업데이트\n"
+                f"(일부 수동 매도 감지)"
+            )
+        elif actual_qty > qty:
+            # 유저가 직접 추가 매수한 경우 → 실제 수량/평균단가로 업데이트
+            actual_avg = actual_holdings.get(code, {}).get("avg_price", avg_price)
+            print(f"[자동매매] {order['name']} 추가 매수 감지 DB:{qty}주 → 실제:{actual_qty}주 보정")
+            _update_order(order["id"], qty=actual_qty, avg_price=round(actual_avg, 2))
+            qty = actual_qty
+            avg_price = actual_avg
+            _send_admin(
+                f"ℹ️ <b>추가 매수 감지</b>\n"
+                f"<b>{order['name']}</b> ({symbol})\n"
+                f"DB {order['qty']}주 → 실제 {actual_qty}주로 업데이트\n"
+                f"평균단가 ₩{actual_avg:,.0f}"
+            )
+            qty = actual_qty  # 이후 로직에 실제 수량 반영
+            _send_admin(
+                f"⚠️ <b>수량 불일치 보정</b>\n"
+                f"<b>{order['name']}</b> ({symbol})\n"
+                f"DB {order['qty']}주 → 실제 {actual_qty}주로 업데이트\n"
+                f"(일부 수동 매도 감지)"
+            )        # ── 분할매수 2/3차 트리거 ──────────────────────────────────
         cfg = _cfg()
         split_budget = cfg["budget_per"] // 3
 
@@ -984,7 +1071,7 @@ def monitor_positions():
         if cur >= target:
             result = client.sell_order(symbol, target, qty, market=True)
             if result["success"]:
-                ret = (cur - avg_price) / avg_price * 100  # 평균단가 기준 수익률
+                ret = (cur - avg_price) / avg_price * 100
                 _update_order(order["id"],
                     status="hit_target", exit_price=int(cur),
                     exit_date=today, return_pct=round(ret, 2)
@@ -996,12 +1083,32 @@ def monitor_positions():
                     f"평균단가 ₩{avg_price:,.0f} → 매도 ₩{cur:,.0f}\n"
                     f"수익률 <b>+{ret:.1f}%</b> 🎉"
                 )
+            else:
+                # ── 매도 실패 처리 ──────────────────────────────
+                err = result.get("error", "")
+                # 거래정지/상한가 등으로 시장가 불가 → 재시도 1회
+                print(f"[자동매매] {order['name']} 목표가 매도 실패: {err}")
+                time.sleep(3)
+                result2 = client.sell_order(symbol, target, qty, market=True)
+                if result2["success"]:
+                    ret = (cur - avg_price) / avg_price * 100
+                    _update_order(order["id"],
+                        status="hit_target", exit_price=int(cur),
+                        exit_date=today, return_pct=round(ret, 2)
+                    )
+                    _send_admin(f"🎯 <b>목표가 달성 (재시도 성공)</b>\n<b>{order['name']}</b> +{ret:.1f}%")
+                else:
+                    _send_admin(
+                        f"⚠️ <b>매도 주문 실패</b>\n"
+                        f"<b>{order['name']}</b> 목표가 도달했으나 매도 실패\n"
+                        f"오류: {err}\n수동 매도 필요"
+                    )
 
         # 손절가 도달
         elif cur <= stop:
             result = client.sell_order(symbol, stop, qty, market=True)
             if result["success"]:
-                ret = (cur - avg_price) / avg_price * 100  # 평균단가 기준 손실률
+                ret = (cur - avg_price) / avg_price * 100
                 _update_order(order["id"],
                     status="hit_stop", exit_price=int(cur),
                     exit_date=today, return_pct=round(ret, 2)
@@ -1013,6 +1120,25 @@ def monitor_positions():
                     f"평균단가 ₩{avg_price:,.0f} → 손절 ₩{cur:,.0f}\n"
                     f"손실 <b>{ret:.1f}%</b>"
                 )
+            else:
+                # ── 손절 매도 실패 → 즉시 알림 (손실 확대 방지) ──
+                err = result.get("error", "")
+                print(f"[자동매매] {order['name']} 손절 매도 실패: {err}")
+                time.sleep(3)
+                result2 = client.sell_order(symbol, stop, qty, market=True)
+                if result2["success"]:
+                    ret = (cur - avg_price) / avg_price * 100
+                    _update_order(order["id"],
+                        status="hit_stop", exit_price=int(cur),
+                        exit_date=today, return_pct=round(ret, 2)
+                    )
+                    _send_admin(f"🛑 <b>손절 실행 (재시도 성공)</b>\n<b>{order['name']}</b> {ret:.1f}%")
+                else:
+                    _send_admin(
+                        f"🚨 <b>손절 매도 실패!</b>\n"
+                        f"<b>{order['name']}</b> 손절가 도달했으나 매도 실패\n"
+                        f"오류: {err}\n⚠️ 즉시 수동 매도 필요!"
+                    )
 
 
 def send_trade_report():
