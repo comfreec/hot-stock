@@ -983,6 +983,25 @@ def calc_rsi_wilder(close, period=20):
     rs = avg_gain / avg_loss.replace(0, float('nan'))
     return 100 - (100 / (1 + rs))
 
+def calc_stop_from_series(close_s, low_s, ma240_v, entry):
+    """RSI(20) 30 돌파 직전 5일 저가 기준 손절가 계산 (make_candle과 동일 로직)"""
+    try:
+        _d = close_s.diff()
+        _gain = _d.where(_d > 0, 0.0).ewm(alpha=1/20, min_periods=20, adjust=False).mean()
+        _loss = (-_d.where(_d < 0, 0.0)).ewm(alpha=1/20, min_periods=20, adjust=False).mean()
+        _rsi = (100 - 100 / (1 + _gain / _loss.replace(0, float('nan')))).fillna(50)
+        _rsi_vals = _rsi.values
+        _oversold_exit = None
+        for _i in range(1, len(_rsi_vals)):
+            if _rsi_vals[_i-1] <= 30 and _rsi_vals[_i] > 30:
+                _oversold_exit = _i
+        if _oversold_exit is not None:
+            _lb = max(0, _oversold_exit - 5)
+            return float(low_s.iloc[_lb:_oversold_exit].min())
+    except Exception:
+        pass
+    return ma240_v * 0.95 if (ma240_v and ma240_v < entry) else entry * 0.95
+
 def show_price_levels(fig):
     """차트 아래에 목표가/매수가/손절가 박스 표시"""
     if not hasattr(fig, '_price_levels') or fig._price_levels is None:
@@ -1014,10 +1033,10 @@ def show_price_levels(fig):
       </div>
       <div style='flex:1;background:rgba(255,51,85,0.08);border:1px solid #ff3355;
            border-radius:10px;padding:12px;text-align:center;'>
-        <div style='color:#8b92a5;font-size:10px;letter-spacing:1px;'>🛑 추세이탈</div>
+        <div style='color:#8b92a5;font-size:10px;letter-spacing:1px;'>🛑 손절가</div>
         <div style='color:#ff3355;font-size:18px;font-weight:700;margin:4px 0;'>₩{lv["stop"]:,.0f}</div>
         <div style='color:#ff3355;font-size:12px;'>{lv["downside"]:.1f}%</div>
-        <div style='color:#4a5568;font-size:10px;margin-top:4px;'>RSI 저점 기준</div>
+        <div style='color:#4a5568;font-size:10px;margin-top:4px;'>추세이탈 기준</div>
       </div>
       <div style='flex:0.8;background:rgba(255,215,0,0.08);border:1px solid {rr_color};
            border-radius:10px;padding:12px;text-align:center;'>
@@ -1531,7 +1550,13 @@ if mode == "🔍 급등 예고 종목 탐지":
                     m2.metric("240선 이격", f"+{r['ma240_gap']:.1f}%" if r.get('ma240_gap') is not None else "-")
                     m3.metric("R-cycle 70이탈", f"{r.get('signals',{}).get('rsi_cycle_days_since','-')}일 전")
                     m4.metric("240일선", f"₩{r['ma240']:,.0f}" if r.get('ma240') else "-")
-                    _stop_disp = r.get('signals',{}).get('stop_price') or (r['ma240']*0.95 if r.get('ma240') else 0)
+                    _cs = r.get("close_series"); _ls = r.get("low_series")
+                    if _cs is not None and _ls is not None and len(_cs) > 20:
+                        _ma240_v = r.get('ma240'); _cur = float(_cs.iloc[-1])
+                        _entry = _ma240_v if (_ma240_v and _ma240_v < _cur) else _cur
+                        _stop_disp = round_to_tick(calc_stop_from_series(pd.Series(list(_cs)), pd.Series(list(_ls)), _ma240_v, _entry))
+                    else:
+                        _stop_disp = r.get('signals',{}).get('stop_price') or (r['ma240']*0.95 if r.get('ma240') else 0)
                     m5.metric("손절가", f"₩{int(_stop_disp):,.0f}" if _stop_disp else "-")
                     # 수급 정보
                     supply_label = "🔥 기관+외국인" if r.get("both_buying") else ("✅ 수급있음" if r.get("smart_money_in") else "❌ 수급없음")
@@ -1675,7 +1700,19 @@ elif mode == "📈 개별 종목 분석":
             metric_card(c1,"R-cycle(20)",f"{result['rsi']:.1f}")
             metric_card(c2,"240선 이격",f"+{result['ma240_gap']:.1f}%")
             metric_card(c3,"240일선",f"₩{result['ma240']:,.0f}")
-            metric_card(c4,"손절가", f"₩{int(result.get('stop_price', result['ma240']*0.95)):,.0f}" if result.get('ma240') else "-")
+            _r_cs = result.get("close_series") or (data["Close"] if data is not None else None)
+            _r_ls = result.get("low_series") or (data["Low"] if data is not None else None)
+            _r_ma240 = result.get('ma240')
+            if _r_cs is not None and _r_ls is not None and len(_r_cs) > 20:
+                _r_cur = float(pd.Series(list(_r_cs)).iloc[-1]) if not hasattr(_r_cs, 'iloc') else float(_r_cs.iloc[-1])
+                _r_entry = _r_ma240 if (_r_ma240 and _r_ma240 < _r_cur) else _r_cur
+                _r_stop = round_to_tick(calc_stop_from_series(
+                    pd.Series(list(_r_cs)) if not hasattr(_r_cs, 'iloc') else _r_cs,
+                    pd.Series(list(_r_ls)) if not hasattr(_r_ls, 'iloc') else _r_ls,
+                    _r_ma240, _r_entry))
+            else:
+                _r_stop = int(result.get('stop_price', _r_ma240*0.95)) if _r_ma240 else 0
+            metric_card(c4,"손절가", f"₩{int(_r_stop):,.0f}" if _r_stop else "-")
 
             st.markdown("<div class='sec-title'>📊 신호 분석</div>", unsafe_allow_html=True)
             s = result["signals"]
