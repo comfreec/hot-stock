@@ -862,19 +862,6 @@ def send_performance_update():
                     + cur_line
                 )
 
-        # ── 매수 대기 ──────────────────────────────
-        if still_pending:
-            lines.append(f"\n⏳ <b>매수 대기</b>  ({len(still_pending)}종목)")
-            lines.append("─" * 16)
-            for h in still_pending:
-                days      = (date.today() - date.fromisoformat(h["alert_date"])).days
-                entry_str = f"₩{h['entry_price']:,.0f}"  if h.get("entry_price")  else "미정"
-                target_str= f"₩{h['target_price']:,.0f}" if h.get("target_price") else "?"
-                lines.append(
-                    f"🔵 <b>{h['name']}</b>  <i>{days}일째 대기</i>\n"
-                    f"   진입가 {entry_str}  →  목표 {target_str}"
-                )
-
         lines.append("\n─" * 8)
         lines.append("⚠️ <i>투자 참고용 정보입니다</i>")
 
@@ -1009,30 +996,8 @@ def send_weekly_summary(force: bool = False):
         except Exception:
             pass
 
-        # ── 3. 매수 대기 ───────────────────────────
-        if pending_list:
-            lines.append(f"\n⏳ <b>매수 대기</b>  ({len(pending_list)}종목)")
-            lines.append("─" * 16)
-            for h in pending_list:
-                # 거래일 기준 경과일 계산
-                try:
-                    from datetime import timedelta
-                    alert_dt = date.fromisoformat(h["alert_date"])
-                    trading_days = 0
-                    cur_day = alert_dt
-                    while cur_day < today:
-                        cur_day += timedelta(days=1)
-                        if cur_day.weekday() < 5:
-                            trading_days += 1
-                    days_str = f"{trading_days}거래일째"
-                except:
-                    days_str = f"{(today - date.fromisoformat(h['alert_date'])).days}일째"
-                entry_str  = f"₩{h['entry_price']:,.0f}"  if h.get("entry_price")  else "미정"
-                target_str = f"₩{h['target_price']:,.0f}" if h.get("target_price") else "?"
-                lines.append(f"🔵 <b>{h['name']}</b>  <i>{days_str}</i>\n   진입가 {entry_str}  →  목표 {target_str}")
-
         # ── 푸터 ───────────────────────────────────
-        lines.append(f"\n🟢 매수 중 {len(active_list)}종목  ·  ⏳ 대기 {len(pending_list)}종목")
+        lines.append(f"\n🟢 매수 중 {len(active_list)}종목")
         lines.append("─" * 16)
         lines.append("⚠️ <i>투자 참고용 정보입니다</i>")
 

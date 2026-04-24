@@ -216,15 +216,15 @@ def update_alert_status():
         # ── trade_orders에서 avg_price / split_step 동기화 ──────────
         try:
             trade_rows = conn.execute("""
-                SELECT symbol, avg_price, split_step FROM trade_orders
+                SELECT symbol, avg_price, split_step, stop_price FROM trade_orders
                 WHERE status IN ('active','hit_target','hit_stop')
                   AND avg_price > 0
             """).fetchall()
-            for sym, avg_p, step in trade_rows:
+            for sym, avg_p, step, stop_p in trade_rows:
                 conn.execute("""
-                    UPDATE alert_history SET avg_price=?, split_step=?
+                    UPDATE alert_history SET avg_price=?, split_step=?, stop_price=?
                     WHERE symbol=? AND status IN ('pending','active')
-                """, (avg_p, step or 1, sym))
+                """, (avg_p, step or 1, stop_p, sym))
             conn.commit()
         except Exception:
             pass  # trade_orders 없는 환경(스캔 전용)이면 스킵
