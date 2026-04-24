@@ -267,11 +267,25 @@ def calc_price_levels(symbol: str) -> dict:
         else:
             entry_label, entry = "현재가", current
 
-        # ── 손절가: 240일선 -5% 고정 ──────────────────────────────
-        if ma240_v and ma240_v < entry:
-            stop = ma240_v * 0.95
-        else:
-            stop = entry * 0.95
+        # ── 손절가: RSI(20) 30 돌파 직전 5일 저가 ──────────────────
+        try:
+            _d = close.diff()
+            _gain = _d.where(_d > 0, 0.0).ewm(alpha=1/20, min_periods=20, adjust=False).mean()
+            _loss = (-_d.where(_d < 0, 0.0)).ewm(alpha=1/20, min_periods=20, adjust=False).mean()
+            _rsi = (100 - 100 / (1 + _gain / _loss.replace(0, float('nan')))).fillna(50)
+            _rsi_vals = _rsi.values
+            _n = len(_rsi_vals)
+            _oversold_exit = None
+            for _i in range(1, _n):
+                if _rsi_vals[_i-1] <= 30 and _rsi_vals[_i] > 30:
+                    _oversold_exit = _i
+            if _oversold_exit is not None:
+                _lb = max(0, _oversold_exit - 5)
+                stop = float(low.iloc[_lb:_oversold_exit].min())
+            else:
+                stop = ma240_v * 0.95 if ma240_v and ma240_v < entry else entry * 0.95
+        except Exception:
+            stop = ma240_v * 0.95 if ma240_v and ma240_v < entry else entry * 0.95
         risk = max(entry - stop, entry * 0.01)
 
         # 목표가: 피보나치 되돌림 기반
@@ -370,11 +384,25 @@ def _calc_levels_from_result(r: dict) -> dict:
         else:
             entry_label, entry = "현재가", current
 
-        # 손절가: 240일선 -5% 고정
-        if ma240_v and ma240_v < entry:
-            stop = ma240_v * 0.95
-        else:
-            stop = entry * 0.95
+        # 손절가: RSI(20) 30 돌파 직전 5일 저가
+        try:
+            _d = close_s.diff()
+            _gain = _d.where(_d > 0, 0.0).ewm(alpha=1/20, min_periods=20, adjust=False).mean()
+            _loss = (-_d.where(_d < 0, 0.0)).ewm(alpha=1/20, min_periods=20, adjust=False).mean()
+            _rsi = (100 - 100 / (1 + _gain / _loss.replace(0, float('nan')))).fillna(50)
+            _rsi_vals = _rsi.values
+            _n = len(_rsi_vals)
+            _oversold_exit = None
+            for _i in range(1, _n):
+                if _rsi_vals[_i-1] <= 30 and _rsi_vals[_i] > 30:
+                    _oversold_exit = _i
+            if _oversold_exit is not None:
+                _lb = max(0, _oversold_exit - 5)
+                stop = float(low_s.iloc[_lb:_oversold_exit].min())
+            else:
+                stop = ma240_v * 0.95 if ma240_v and ma240_v < entry else entry * 0.95
+        except Exception:
+            stop = ma240_v * 0.95 if ma240_v and ma240_v < entry else entry * 0.95
         risk = max(entry - stop, entry * 0.01)
 
         # 목표가: app.py와 동일한 다중 기법

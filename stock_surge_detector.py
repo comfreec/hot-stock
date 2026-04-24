@@ -1281,14 +1281,10 @@ class KoreanStockSurgeDetector:
                 valid_e = [p for p in entry_cands if p < current]
                 entry_f = max(valid_e) if valid_e else current
 
-                # 손절가: RSI(20) 30 돌파 시점 직전 5일 저가 최솟값
+                # 손절가: RSI(20) 30 돌파 시점 직전 5일 저가 최솟값 (클램핑 없음)
                 ob_exit_idx = oversold_exit
                 look_back_start = max(0, ob_exit_idx - 5)
                 stop_f = float(low.iloc[look_back_start:ob_exit_idx].min())
-
-                # 안전 범위: 매수가 대비 -12% ~ -5% (채널 알림용)
-                stop_f = max(stop_f, entry_f * 0.88)
-                stop_f = min(stop_f, entry_f * 0.95)
                 risk_f = max(entry_f - stop_f, entry_f * 0.01)
 
                 # 목표가: 피보나치 확장 + ATR 복합 (앱과 동일 방식)
