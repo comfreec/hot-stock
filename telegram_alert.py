@@ -857,7 +857,7 @@ def send_performance_update():
                     pass
 
                 lines.append(
-                    f"📌 <b>{h['name']}</b>  <i>{days}일째</i>\n"
+                    f"📌 <b>{h['name']}</b>  {split_icons}  <i>{days}일째</i>\n"
                     f"   평균단가 {avg_str}{split_tag}  →  목표 {target_str}  /  손절 {stop_str}"
                     + cur_line
                 )
@@ -940,6 +940,8 @@ def send_weekly_summary(force: bool = False):
                 stop_str   = f"₩{h['stop_price']:,.0f}"   if h.get("stop_price")   else "?"
                 split_step = h.get("split_step", 1) or 1
                 split_tag  = f" <i>({split_step}차 평균)</i>" if split_step > 1 else ""
+                # 분할매수 이모지 (🔵=매수완료, ⚪=대기)
+                split_icons = "".join(["🔵" if i <= split_step else "⚪" for i in range(1, 4)])
                 cur_line = ""
                 try:
                     if base_price:
@@ -969,7 +971,7 @@ def send_weekly_summary(force: bool = False):
                 except:
                     pass
                 lines.append(
-                    f"📌 <b>{h['name']}</b>\n"
+                    f"📌 <b>{h['name']}</b>  {split_icons}\n"
                     f"   평균단가 {avg_str}{split_tag}  🎯{target_str}  🛑{stop_str}"
                     + cur_line
                 )
