@@ -34,7 +34,7 @@ with st.sidebar:
     max_gap  = st.slider("장기선 근처 범위 (%)", 1, 15, 7)
     ob_days  = st.slider("R-사이클 이탈 후 경과일", 30, 365, 180)
     min_below = st.slider("최소 조정 기간 (일)", 0, 60, 0)
-    min_score = st.slider("최소 종합점수", 5, 30, 15)
+    min_score = st.slider("최소 종합점수", 5, 50, 30)
 
     st.markdown("---")
     scan_btn = st.button("🔍 스캔 시작", type="primary", use_container_width=True)

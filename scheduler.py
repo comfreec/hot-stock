@@ -328,7 +328,7 @@ def main():
                 from us_stock.symbols import ALL_SYMBOLS
                 from us_stock.telegram_alert import send_us_scan_alert
                 log("미국 주식 스캔 시작...")
-                det = USStockDetector(max_gap_pct=7, ob_days=180, min_below_days=0, min_score=15)
+                det = USStockDetector(max_gap_pct=7, ob_days=180, min_below_days=0, min_score=30)
                 results = det.analyze_all(ALL_SYMBOLS)
                 if results:
                     send_us_scan_alert(results)
