@@ -139,6 +139,14 @@ with st.sidebar:
 
     category = st.selectbox("📂 종목 카테고리", ["전체", "나스닥100", "S&P500 대형주", "ETF"],
                             key="us_category")
+
+    if st.button("⚡ 기본 셋팅", use_container_width=True, key="us_default"):
+        st.session_state["us_max_gap"]   = 7
+        st.session_state["us_ob_days"]   = 180
+        st.session_state["us_min_below"] = 0
+        st.session_state["us_min_score"] = 30
+        st.rerun()
+
     max_gap   = st.slider("📏 장기선 근처 범위 (%)", 1, 15, 7, key="us_max_gap")
     ob_days   = st.slider("📅 R-사이클 70 이탈 후 경과일", 30, 365, 180, key="us_ob_days")
     min_below = st.slider("📉 최소 조정 기간 (일)", 0, 60, 0, key="us_min_below")
@@ -150,13 +158,17 @@ with st.sidebar:
 
     st.markdown("---")
     st.markdown("""**📋 탐지 전략**
-> R-사이클 과매도 탈출 → 240일선 근처 복귀 → 눌림목 진입
+> R-사이클 4단계 사이클 + 240일선 눌림목 진입
 
-| 조건 | 기준 |
+| 단계 | 조건 |
 |------|------|
-| 📉 R-사이클 30 이하 탈출 | 과매도 구간 탈출 |
-| 📍 현재가 240선 위 | 0~N% 이내 |
-| 🛑 손절가 | RSI 저점 기준 |
+| 1️⃣ | RSI(20) 30 이하 과매도 |
+| 2️⃣ | RSI 30 돌파 (과매도 탈출) |
+| 3️⃣ | RSI 70 이상 도달 (과매수) |
+| 4️⃣ | RSI 70 이탈 → 조정 시작 |
+| 📍 | 현재가 240선 위 0~N% 이내 |
+| 📉 | 현재 RSI 55 이하 (눌림목) |
+| 🛑 | 손절가: RSI 저점 기준 |
 
 **📊 가산점 신호**
 | 신호 | 점수 |
@@ -223,7 +235,7 @@ st.markdown(f"""<div class='cond-box'>
   <b style='color:#e0e6f0;'>스캔 조건</b><br>
   카테고리: <b style='color:#ffd700;'>{category}</b> ({len(symbols)}개) &nbsp;|&nbsp;
   장기선 근처 <b style='color:#ffd700;'>{max_gap}%</b> 이내 &nbsp;|&nbsp;
-  R-사이클 이탈 후 <b style='color:#ffd700;'>{ob_days}일</b> 이내 &nbsp;|&nbsp;
+  R-사이클 70 이탈 후 <b style='color:#ffd700;'>{ob_days}일</b> 이내 &nbsp;|&nbsp;
   최소 <b style='color:#ffd700;'>{min_score}점</b>
 </div>""", unsafe_allow_html=True)
 
