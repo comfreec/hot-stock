@@ -50,7 +50,7 @@ def send_photo(image_bytes: bytes, caption: str = "") -> bool:
         return False
 
 
-def make_us_chart_image(symbol: str, name: str, price_levels: dict = None) -> bytes | None:
+def make_us_chart_image(symbol: str, name: str, price_levels: dict = None, df=None) -> bytes | None:
     """미국 주식 캔들차트 이미지 생성 (달러 단위)"""
     try:
         import yfinance as yf
@@ -58,10 +58,15 @@ def make_us_chart_image(symbol: str, name: str, price_levels: dict = None) -> by
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
 
-        df = yf.Ticker(symbol).history(period="6mo", auto_adjust=False)
-        df = df.dropna(subset=["Open", "High", "Low", "Close"])
-        if len(df) < 20:
-            return None
+        if df is None:
+            df = yf.Ticker(symbol).history(period="6mo", auto_adjust=False)
+            df = df.dropna(subset=["Open", "High", "Low", "Close"])
+            if len(df) < 20:
+                return None
+        else:
+            df = df.dropna(subset=["Open", "High", "Low", "Close"]).tail(120)
+            if len(df) < 20:
+                return None
 
         # MA240 계산용 2년 데이터
         try:
@@ -330,12 +335,28 @@ def send_us_scan_alert(results: list):
         close_s = _to_series(r.get("close_series"))
         high_s  = _to_series(r.get("high_series"))
         low_s   = _to_series(r.get("low_series"))
+        open_s  = _to_series(r.get("open_series"))
         lv = {}
         if close_s is not None and len(close_s) > 20:
             lv = calc_us_levels(close_s, high_s if high_s is not None else close_s,
                                 low_s  if low_s  is not None else close_s)
 
-        img = make_us_chart_image(r["symbol"], r["name"], lv if lv else None)
+        # 스캔 시 받아둔 데이터로 차트 생성 (yfinance 재호출 없음)
+        df_chart = None
+        if close_s is not None and len(close_s) > 20:
+            try:
+                import pandas as _pd
+                df_chart = _pd.DataFrame({
+                    "Open":   open_s  if open_s  is not None else close_s,
+                    "High":   high_s  if high_s  is not None else close_s,
+                    "Low":    low_s   if low_s   is not None else close_s,
+                    "Close":  close_s,
+                    "Volume": _to_series(r.get("volume_series")) or _pd.Series(0, index=close_s.index),
+                })
+            except Exception:
+                df_chart = None
+
+        img = make_us_chart_image(r["symbol"], r["name"], lv if lv else None, df=df_chart)
         if img:
             caption = (f"🇺🇸 {r['name']} ({r['symbol']}) ⭐{r['total_score']}점\n"
                       f"${r['current_price']:,.2f} | 240선 +{r['ma240_gap']:.1f}%")
