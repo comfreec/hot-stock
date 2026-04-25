@@ -197,18 +197,18 @@ with st.sidebar:
         st.session_state["us_max_gap"]   = 7
         st.session_state["us_ob_days"]   = 180
         st.session_state["us_min_below"] = 0
-        st.session_state["us_min_score"] = 20
+        st.session_state["us_min_score"] = 25
         st.rerun()
 
     if "us_max_gap"   not in st.session_state: st.session_state["us_max_gap"]   = 7
     if "us_ob_days"   not in st.session_state: st.session_state["us_ob_days"]   = 180
     if "us_min_below" not in st.session_state: st.session_state["us_min_below"] = 0
-    if "us_min_score" not in st.session_state: st.session_state["us_min_score"] = 20
+    if "us_min_score" not in st.session_state: st.session_state["us_min_score"] = 25
 
     max_gap   = st.slider("📏 장기선 근처 범위 (%)", 1, 15, key="us_max_gap")
     ob_days   = st.slider("📅 R-사이클 70 이탈 후 경과일", 30, 365, key="us_ob_days")
     min_below = st.slider("📉 최소 조정 기간 (일)", 0, 60, key="us_min_below")
-    min_score = st.slider("⭐ 최소 종합점수", 5, 50, key="us_min_score")
+    min_score = st.slider("⭐ 최소 종합점수", 5, 60, key="us_min_score")
 
     st.markdown("---")
     st.markdown("""**📋 탐지 전략**
