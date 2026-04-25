@@ -1,31 +1,49 @@
 """
 미국 주요 종목 목록
-- S&P500 대형주 + 나스닥100 주요 종목
+- S&P500 전체 (동적 로드) + 나스닥 추가 성장주 + ETF
 - yfinance 심볼 기준
 """
+import requests
 
-# 나스닥 100 주요 종목
-NASDAQ_100 = {
-    "AAPL": "애플", "MSFT": "마이크로소프트", "NVDA": "엔비디아", "AMZN": "아마존",
-    "META": "메타", "GOOGL": "알파벳A", "GOOG": "알파벳C", "TSLA": "테슬라",
-    "AVGO": "브로드컴", "COST": "코스트코", "NFLX": "넷플릭스", "AMD": "AMD",
-    "ADBE": "어도비", "QCOM": "퀄컴", "INTC": "인텔", "TXN": "텍사스인스트루먼트",
+
+def _fetch_sp500() -> dict:
+    """S&P500 종목 목록 가져오기"""
+    try:
+        import pandas as pd
+        from io import StringIO
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+        resp = requests.get("https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
+                            headers=headers, timeout=15)
+        tables = pd.read_html(StringIO(resp.text))
+        df = tables[0]
+        result = {}
+        for _, row in df.iterrows():
+            sym = str(row["Symbol"]).replace(".", "-")
+            name = str(row["Security"])
+            result[sym] = name
+        if len(result) > 400:
+            return result
+    except Exception:
+        pass
+    return {}
+
+
+# S&P500 전체 동적 로드
+_SP500_DYNAMIC = _fetch_sp500()
+
+# 나스닥 추가 성장주 (S&P500에 없는 것)
+NASDAQ_EXTRA = {
+    "NVDA": "엔비디아", "AMD": "AMD", "ADBE": "어도비", "QCOM": "퀄컴",
     "AMAT": "어플라이드머티리얼즈", "MU": "마이크론", "LRCX": "램리서치",
     "KLAC": "KLA코퍼레이션", "MRVL": "마벨테크놀로지", "ASML": "ASML",
     "PANW": "팔로알토네트웍스", "CRWD": "크라우드스트라이크", "SNPS": "시놉시스",
     "CDNS": "케이던스", "FTNT": "포티넷", "MCHP": "마이크로칩테크놀로지",
     "ON": "온세미컨덕터", "NXPI": "NXP세미컨덕터",
-    "PYPL": "페이팔", "INTU": "인튜이트", "ISRG": "인튜이티브서지컬",
-    "REGN": "리제네론", "VRTX": "버텍스파마슈티컬", "GILD": "길리어드",
-    "AMGN": "암젠", "BIIB": "바이오젠", "IDXX": "아이덱스",
-    "DXCM": "덱스콤", "ILMN": "일루미나",
-    "SBUX": "스타벅스", "MDLZ": "몬델리즈", "PEP": "펩시코",
     "ABNB": "에어비앤비", "BKNG": "부킹홀딩스", "EXPE": "익스피디아",
     "ZM": "줌", "TEAM": "아틀라시안", "WDAY": "워크데이",
     "OKTA": "옥타", "DDOG": "데이터독", "SNOW": "스노우플레이크",
     "PLTR": "팔란티어", "RBLX": "로블록스", "UBER": "우버",
     "LYFT": "리프트", "DASH": "도어대시", "COIN": "코인베이스",
-    # 추가
     "ORCL": "오라클", "CRM": "세일즈포스", "NOW": "서비스나우",
     "SHOP": "쇼피파이", "SQ": "블록", "TWLO": "트윌리오",
     "ZS": "지스케일러", "NET": "클라우드플레어", "HUBS": "허브스팟",
@@ -33,33 +51,6 @@ NASDAQ_100 = {
     "ESTC": "엘라스틱", "CFLT": "컨플루언트", "U": "유니티",
     "APP": "앱러빈", "TTD": "더트레이드데스크", "ROKU": "로쿠",
     "SPOT": "스포티파이", "PINS": "핀터레스트", "SNAP": "스냅",
-}
-
-# S&P500 대형주 (금융/에너지/헬스케어/소비재/산업재)
-SP500_LARGE = {
-    "JPM": "JP모건", "BAC": "뱅크오브아메리카", "WFC": "웰스파고",
-    "GS": "골드만삭스", "MS": "모건스탠리", "BLK": "블랙록",
-    "V": "비자", "MA": "마스터카드", "AXP": "아메리칸익스프레스",
-    "C": "씨티그룹", "USB": "US뱅코프", "PNC": "PNC파이낸셜",
-    "XOM": "엑슨모빌", "CVX": "쉐브론", "COP": "코노코필립스",
-    "SLB": "슐럼버거", "EOG": "EOG리소시스", "PSX": "필립스66",
-    "JNJ": "존슨앤존슨", "UNH": "유나이티드헬스", "PFE": "화이자",
-    "MRK": "머크", "ABT": "애보트", "TMO": "써모피셔",
-    "LLY": "일라이릴리", "BMY": "브리스톨마이어스", "CVS": "CVS헬스",
-    "CI": "시그나", "HUM": "휴마나", "MDT": "메드트로닉",
-    "WMT": "월마트", "HD": "홈디포", "NKE": "나이키",
-    "MCD": "맥도날드", "DIS": "디즈니", "CMCSA": "컴캐스트",
-    "T": "AT&T", "VZ": "버라이즌", "TMUS": "T모바일",
-    "BA": "보잉", "CAT": "캐터필러", "GE": "GE", "MMM": "3M",
-    "HON": "허니웰", "RTX": "레이시온", "LMT": "록히드마틴",
-    "NOC": "노스롭그루먼", "GD": "제너럴다이나믹스",
-    "BRK-B": "버크셔해서웨이B", "SPGI": "S&P글로벌",
-    "NEE": "넥스트에라에너지", "DUK": "듀크에너지",
-    "UPS": "UPS", "FDX": "페덱스", "DE": "디어앤컴퍼니",
-    "EMR": "에머슨일렉트릭", "ETN": "이튼", "PH": "파커해니핀",
-    "TGT": "타겟", "LOW": "로우스", "YUM": "얌브랜즈", "CMG": "치폴레",
-    "PG": "P&G", "KO": "코카콜라", "PM": "필립모리스",
-    "MO": "알트리아", "CL": "콜게이트", "KMB": "킴벌리클라크",
 }
 
 # ETF
@@ -76,12 +67,29 @@ ETFS = {
     "VNQ": "부동산 ETF", "IEMG": "신흥국 ETF", "EFA": "선진국 ETF",
 }
 
-# 전체 합산
-ALL_SYMBOLS = {**NASDAQ_100, **SP500_LARGE, **ETFS}
+# S&P500 폴백 (동적 로드 실패 시)
+_SP500_FALLBACK = {
+    "AAPL": "애플", "MSFT": "마이크로소프트", "AMZN": "아마존", "META": "메타",
+    "GOOGL": "알파벳A", "TSLA": "테슬라", "AVGO": "브로드컴", "NFLX": "넷플릭스",
+    "COST": "코스트코", "INTC": "인텔", "TXN": "텍사스인스트루먼트",
+    "JPM": "JP모건", "BAC": "뱅크오브아메리카", "WFC": "웰스파고",
+    "GS": "골드만삭스", "MS": "모건스탠리", "V": "비자", "MA": "마스터카드",
+    "XOM": "엑슨모빌", "CVX": "쉐브론", "JNJ": "존슨앤존슨", "UNH": "유나이티드헬스",
+    "PFE": "화이자", "MRK": "머크", "LLY": "일라이릴리", "WMT": "월마트",
+    "HD": "홈디포", "MCD": "맥도날드", "BA": "보잉", "CAT": "캐터필러",
+}
+
+# 최종 S&P500 (동적 로드 성공 시 503개, 실패 시 폴백)
+SP500_LARGE = _SP500_DYNAMIC if len(_SP500_DYNAMIC) > 400 else _SP500_FALLBACK
+
+# 전체 합산 (중복 제거)
+NASDAQ_100 = {**SP500_LARGE, **NASDAQ_EXTRA}  # 카테고리 호환용
+ALL_SYMBOLS = {**SP500_LARGE, **NASDAQ_EXTRA, **ETFS}
+
 
 def get_symbols_by_category():
     return {
-        "나스닥100": NASDAQ_100,
-        "S&P500 대형주": SP500_LARGE,
+        "S&P500 전체": SP500_LARGE,
+        "나스닥 추가": NASDAQ_EXTRA,
         "ETF": ETFS,
     }

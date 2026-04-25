@@ -190,7 +190,7 @@ with st.sidebar:
     """, unsafe_allow_html=True)
     st.markdown("---")
 
-    category = st.selectbox("📂 종목 카테고리", ["전체", "나스닥100", "S&P500 대형주", "ETF"],
+    category = st.selectbox("📂 종목 카테고리", ["전체", "S&P500 전체", "나스닥 추가", "ETF"],
                             key="us_category")
 
     if st.button("⚡ 기본 셋팅", use_container_width=True, key="us_default"):
@@ -273,7 +273,7 @@ st.markdown("""
     </div>
     <div style='text-align:right;'>
       <div style='color:#8b92a5;font-size:11px;margin-bottom:4px;'>스캔 대상</div>
-      <div style='color:#00d4aa;font-size:28px;font-weight:900;'>177+</div>
+      <div style='color:#00d4aa;font-size:28px;font-weight:900;'>556+</div>
       <div style='color:#6b7280;font-size:11px;'>종목</div>
     </div>
   </div>
