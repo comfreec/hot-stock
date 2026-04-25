@@ -328,9 +328,75 @@ if scan_btn:
 if alert_btn:
     results = st.session_state.get("us_results", [])
     if results:
-        with st.spinner("텔레그램 전송 중..."):
-            send_us_scan_alert(results)
-        st.success("텔레그램 전송 완료!")
+        # 1단계: 텍스트 알림 먼저 전송
+        with st.spinner("📨 텍스트 알림 전송 중..."):
+            try:
+                from us_stock.telegram_alert import send_telegram, calc_us_levels, _to_series
+                from datetime import date as _date
+                today = _date.today().strftime("%Y-%m-%d")
+                lines = [f"🇺🇸 <b>미국 스윙 레이더</b> ({today} 장마감) — {len(results[:10])}개\n{'━'*20}"]
+                for i, r in enumerate(results[:10], 1):
+                    cs = _to_series(r.get("close_series"))
+                    hs = _to_series(r.get("high_series"))
+                    ls = _to_series(r.get("low_series"))
+                    lv = {}
+                    if cs is not None and len(cs) > 20:
+                        lv = calc_us_levels(cs, hs if hs is not None else cs, ls if ls is not None else cs)
+                    cur = r["current_price"]
+                    block = (
+                        f"\n<b>{i}. {r['name']} ({r['symbol']})</b> ⭐ {r['total_score']}점\n"
+                        f"📍 매수가:  ${lv['entry']:,.2f}\n" if lv else f"\n<b>{i}. {r['name']} ({r['symbol']})</b> ⭐ {r['total_score']}점\n📍 현재가: ${cur:,.2f}\n"
+                    )
+                    if lv:
+                        block += (
+                            f"🎯 목표가:  ${lv['target']:,.2f} (+{lv['upside']:.1f}%)\n"
+                            f"🛑 손절가:  ${lv['stop']:,.2f} ({lv['downside']:.1f}%)\n"
+                            f"⚖️ 손익비:  {lv['rr']:.1f} : 1\n"
+                        )
+                    block += "━" * 20
+                    lines.append(block)
+                msg = "\n".join(lines)
+                send_telegram(msg)
+                text_ok = True
+            except Exception as e:
+                st.error(f"텍스트 전송 실패: {e}")
+                text_ok = False
+
+        if text_ok:
+            st.success("✅ 텍스트 알림 전송 완료!")
+            # 2단계: 차트 이미지 전송 (실패해도 무시)
+            with st.spinner("📊 차트 이미지 전송 중 (최대 5개)..."):
+                try:
+                    from us_stock.telegram_alert import make_us_chart_image, send_photo, calc_us_levels, _to_series
+                    import pandas as _pd
+                    chart_count = 0
+                    for r in results[:5]:
+                        try:
+                            cs = _to_series(r.get("close_series"))
+                            hs = _to_series(r.get("high_series"))
+                            ls = _to_series(r.get("low_series"))
+                            os_ = _to_series(r.get("open_series"))
+                            vs = _to_series(r.get("volume_series"))
+                            lv = {}
+                            if cs is not None and len(cs) > 20:
+                                lv = calc_us_levels(cs, hs if hs is not None else cs, ls if ls is not None else cs)
+                                df_chart = _pd.DataFrame({
+                                    "Open": os_ if os_ is not None else cs,
+                                    "High": hs if hs is not None else cs,
+                                    "Low":  ls if ls is not None else cs,
+                                    "Close": cs,
+                                    "Volume": vs if vs is not None else _pd.Series(0, index=cs.index),
+                                })
+                                img = make_us_chart_image(r["symbol"], r["name"], lv, df=df_chart)
+                                if img:
+                                    caption = f"🇺🇸 {r['name']} ({r['symbol']}) ⭐{r['total_score']}점 | ${r['current_price']:,.2f}"
+                                    send_photo(img, caption=caption)
+                                    chart_count += 1
+                        except Exception:
+                            pass
+                    st.success(f"✅ 차트 {chart_count}개 전송 완료!")
+                except Exception as e:
+                    st.warning(f"차트 전송 실패 (텍스트는 전송됨): {e}")
     else:
         st.warning("먼저 스캔을 실행하세요.")
 
