@@ -63,18 +63,19 @@ def make_us_chart_image(symbol: str, name: str, price_levels: dict = None, df=No
             df = df.dropna(subset=["Open", "High", "Low", "Close"])
             if len(df) < 20:
                 return None
+            # MA240 계산용 2년 데이터 (df가 None일 때만 yfinance 재호출)
+            try:
+                df2y = yf.Ticker(symbol).history(period="2y", auto_adjust=False).dropna(subset=["Close"])
+                ma240_full = df2y["Close"].rolling(240).mean()
+            except Exception:
+                ma240_full = df["Close"].rolling(240).mean()
+            ma240 = ma240_full.reindex(df.index)
         else:
             df = df.dropna(subset=["Open", "High", "Low", "Close"]).tail(120)
             if len(df) < 20:
                 return None
-
-        # MA240 계산용 2년 데이터
-        try:
-            df2y = yf.Ticker(symbol).history(period="2y", auto_adjust=False).dropna(subset=["Close"])
-            ma240_full = df2y["Close"].rolling(240).mean()
-        except Exception:
-            ma240_full = df["Close"].rolling(240).mean()
-        ma240 = ma240_full.reindex(df.index)
+            # 스캔 데이터로 MA240 직접 계산 (yfinance 재호출 없음)
+            ma240 = df["Close"].rolling(240).mean()
 
         fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 7),
                                         gridspec_kw={"height_ratios": [3, 1]},
