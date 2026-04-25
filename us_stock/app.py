@@ -331,35 +331,56 @@ if alert_btn:
         # 1단계: 텍스트 알림 먼저 전송
         with st.spinner("📨 텍스트 알림 전송 중..."):
             try:
-                from us_stock.telegram_alert import send_telegram, calc_us_levels, _to_series
-                from datetime import date as _date
-                today = _date.today().strftime("%Y-%m-%d")
-                lines = [f"🇺🇸 <b>미국 스윙 레이더</b> ({today} 장마감) — {len(results[:10])}개\n{'━'*20}"]
-                for i, r in enumerate(results[:10], 1):
-                    cs = _to_series(r.get("close_series"))
-                    hs = _to_series(r.get("high_series"))
-                    ls = _to_series(r.get("low_series"))
-                    lv = {}
-                    if cs is not None and len(cs) > 20:
-                        lv = calc_us_levels(cs, hs if hs is not None else cs, ls if ls is not None else cs)
-                    cur = r["current_price"]
-                    block = (
-                        f"\n<b>{i}. {r['name']} ({r['symbol']})</b> ⭐ {r['total_score']}점\n"
-                        f"📍 매수가:  ${lv['entry']:,.2f}\n" if lv else f"\n<b>{i}. {r['name']} ({r['symbol']})</b> ⭐ {r['total_score']}점\n📍 현재가: ${cur:,.2f}\n"
+                # hf3 secrets에서 직접 읽기
+                import os as _os
+                _token   = _os.environ.get("TELEGRAM_TOKEN", "")
+                _chat_id = _os.environ.get("TELEGRAM_CHAT_ID", "")
+                if not _token:
+                    _token   = st.secrets.get("TELEGRAM_TOKEN", "")
+                    _chat_id = st.secrets.get("TELEGRAM_CHAT_ID", "")
+
+                if not _token or not _chat_id:
+                    st.error("TELEGRAM_TOKEN 또는 TELEGRAM_CHAT_ID가 설정되지 않았습니다.")
+                    text_ok = False
+                else:
+                    import requests as _req
+                    from us_stock.telegram_alert import calc_us_levels, _to_series
+                    from datetime import date as _date
+                    today = _date.today().strftime("%Y-%m-%d")
+                    lines = [f"🇺🇸 <b>미국 스윙 레이더</b> ({today} 장마감) — {len(results[:10])}개\n{'━'*20}"]
+                    for i, r in enumerate(results[:10], 1):
+                        cs = _to_series(r.get("close_series"))
+                        hs = _to_series(r.get("high_series"))
+                        ls = _to_series(r.get("low_series"))
+                        lv = {}
+                        if cs is not None and len(cs) > 20:
+                            lv = calc_us_levels(cs, hs if hs is not None else cs, ls if ls is not None else cs)
+                        cur = r["current_price"]
+                        if lv:
+                            block = (
+                                f"\n<b>{i}. {r['name']} ({r['symbol']})</b> ⭐ {r['total_score']}점\n"
+                                f"📍 매수가:  ${lv['entry']:,.2f}\n"
+                                f"🎯 목표가:  ${lv['target']:,.2f} (+{lv['upside']:.1f}%)\n"
+                                f"🛑 손절가:  ${lv['stop']:,.2f} ({lv['downside']:.1f}%)\n"
+                                f"⚖️ 손익비:  {lv['rr']:.1f} : 1\n"
+                                f"{'━'*20}"
+                            )
+                        else:
+                            block = f"\n<b>{i}. {r['name']} ({r['symbol']})</b> ⭐ {r['total_score']}점\n📍 현재가: ${cur:,.2f}\n{'━'*20}"
+                        lines.append(block)
+                    msg = "\n".join(lines)
+                    resp = _req.post(
+                        f"https://api.telegram.org/bot{_token}/sendMessage",
+                        json={"chat_id": _chat_id, "text": msg, "parse_mode": "HTML"},
+                        timeout=15
                     )
-                    if lv:
-                        block += (
-                            f"🎯 목표가:  ${lv['target']:,.2f} (+{lv['upside']:.1f}%)\n"
-                            f"🛑 손절가:  ${lv['stop']:,.2f} ({lv['downside']:.1f}%)\n"
-                            f"⚖️ 손익비:  {lv['rr']:.1f} : 1\n"
-                        )
-                    block += "━" * 20
-                    lines.append(block)
-                msg = "\n".join(lines)
-                send_telegram(msg)
-                text_ok = True
+                    if resp.ok:
+                        text_ok = True
+                    else:
+                        st.error(f"전송 실패: {resp.status_code} {resp.text[:200]}")
+                        text_ok = False
             except Exception as e:
-                st.error(f"텍스트 전송 실패: {e}")
+                st.error(f"텍스트 전송 오류: {e}")
                 text_ok = False
 
         if text_ok:
