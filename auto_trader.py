@@ -29,6 +29,44 @@ def is_enabled() -> bool:
     return bool(os.environ.get("KIS_APP_KEY"))
 
 
+# ── API 한도 절약: 잔고 캐시 (5분에 1번만 조회) ─────────────────
+_balance_cache = {"data": None, "ts": 0.0}
+_BALANCE_TTL = 300  # 5분
+
+def _get_cached_balance(client) -> dict:
+    """잔고를 5분 캐시로 조회 (KIS API 한도 절약)"""
+    import time as _time
+    now = _time.time()
+    if _balance_cache["data"] is None or now - _balance_cache["ts"] > _BALANCE_TTL:
+        _balance_cache["data"] = client.get_balance()
+        _balance_cache["ts"]   = now
+    return _balance_cache["data"]
+
+def _invalidate_balance_cache():
+    """매수/매도 후 캐시 무효화 (즉시 재조회)"""
+    _balance_cache["data"] = None
+    _balance_cache["ts"]   = 0.0
+
+
+def _get_price_yfinance_first(symbol: str, client=None) -> float | None:
+    """
+    현재가 조회 - yfinance 우선, 실패 시 KIS API
+    (KIS API 한도 절약)
+    """
+    # 1. yfinance 먼저 시도 (한도 없음)
+    try:
+        import yfinance as _yf
+        _d = _yf.Ticker(symbol).history(period="1d", interval="1m")
+        if len(_d) > 0:
+            return float(_d["Close"].iloc[-1])
+    except Exception:
+        pass
+    # 2. KIS API 폴백
+    if client:
+        return client.get_price(symbol)
+    return None
+
+
 # ── 한국 공휴일 (5번: 공휴일 처리) ──────────────────────────────
 def _build_kr_holidays() -> set:
     year = date.today().year
@@ -877,6 +915,7 @@ def place_orders(results: list):
                     f"  2차: ₩{t2:,} ({t2_pct:.1f}%)\n"
                     f"  3차: ₩{t3:,} ({t3_pct:.1f}%)"
                 )
+                _invalidate_balance_cache()  # 매수 후 잔고 캐시 무효화
             except:
                 pass
         else:
@@ -1141,23 +1180,14 @@ def monitor_positions():
     # 4번: 이번 사이클에서 이미 매도 처리된 종목 추적 (중복 매도 방지)
     _sold_this_cycle = set()
 
-    # ── 실제 잔고 조회 (유저 임의 매도 감지용) ──────────────────
-    balance = client.get_balance()
+    # ── 실제 잔고 조회 (유저 임의 매도 감지용, 5분 캐시) ────────
+    balance = _get_cached_balance(client)
     actual_holdings = balance.get("holdings", {})  # {code: {qty, avg_price, ...}}
 
     for order in orders:
         symbol = order["symbol"]
         code   = symbol.replace(".KS", "").replace(".KQ", "")
-        cur    = client.get_price(symbol)
-        if cur is None:
-            # KIS API 실패 시 yfinance 폴백
-            try:
-                import yfinance as _yf
-                _d = _yf.Ticker(symbol).history(period="2d")
-                if len(_d) > 0:
-                    cur = float(_d["Close"].iloc[-1])
-            except Exception:
-                pass
+        cur    = _get_price_yfinance_first(symbol, client)
         if cur is None:
             # 가격 조회 완전 실패 → 거래정지/상장폐지 가능성 알림
             print(f"[자동매매] {order['name']} 가격 조회 실패 - 거래정지 가능성")
@@ -1354,6 +1384,7 @@ def monitor_positions():
                 print(f"[자동매매] {order['name']} 목표가 도달 → 매도 +{ret:.1f}%")
                 # ── 매도 체결 확인 ──────────────────────────────
                 time.sleep(2)
+                _invalidate_balance_cache()  # 매도 후 잔고 캐시 무효화
                 _verify_sell_filled(client, order, code, cur, avg_price)
                 _send_admin(
                     f"🎯 <b>목표가 달성!</b>\n"
@@ -1396,6 +1427,7 @@ def monitor_positions():
                 print(f"[자동매매] {order['name']} 손절가 도달 → 시장가 매도 {ret:.1f}%")
                 # ── 매도 체결 확인 ──────────────────────────────
                 time.sleep(2)
+                _invalidate_balance_cache()  # 매도 후 잔고 캐시 무효화
                 _verify_sell_filled(client, order, code, cur, avg_price)
                 _send_admin(
                     f"🛑 <b>손절 실행</b>\n"
