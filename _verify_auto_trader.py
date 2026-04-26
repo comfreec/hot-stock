@@ -77,6 +77,23 @@ src_monitor = inspect.getsource(at.monitor_positions)
 assert "time.sleep(1)" in src_monitor, "동시 매도 딜레이 없음"
 print("동시 매도 딜레이 OK")
 
+# 새로 추가된 3가지 검증
+src_monitor = inspect.getsource(at.monitor_positions)
+src_morning = inspect.getsource(at.morning_reorder)
+
+# 3번: 분할매수 예산 체크
+assert "2차 매수 예수금 부족" in src_monitor, "3번: 2차 분할매수 예산 체크 없음"
+assert "3차 매수 예수금 부족" in src_monitor, "3번: 3차 분할매수 예산 체크 없음"
+print("분할매수 예산 체크 OK")
+
+# 4번: 중복 매도 방지
+assert "_sold_this_cycle" in src_monitor, "4번: 중복 매도 방지 없음"
+print("중복 매도 방지 OK")
+
+# 7번: 갭하락 손절
+assert "갭하락" in src_morning, "7번: 갭하락 손절 없음"
+print("갭하락 손절 OK")
+
 print()
 print("=" * 40)
 print("모든 안전장치 검증 통과 ✅")
