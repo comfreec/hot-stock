@@ -185,10 +185,15 @@ def _run_app(filepath: str, extra_syspath: str = None):
 
 if service == "📡 주식":
     crypto_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "crypto_surge")
+    us_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "us_stock")
+    # us_stock, crypto_surge 경로 제거 (symbols 충돌 방지)
     while crypto_dir in sys.path:
         sys.path.remove(crypto_dir)
+    while us_dir in sys.path:
+        sys.path.remove(us_dir)
     for mod_name in list(sys.modules.keys()):
-        if "crypto_surge" in mod_name or mod_name in ("cache_db", "telegram_alert", "crypto_surge_detector"):
+        if "crypto_surge" in mod_name or "us_stock" in mod_name or \
+           mod_name in ("cache_db", "telegram_alert", "crypto_surge_detector", "symbols", "us_stock_detector"):
             sys.modules.pop(mod_name, None)
     _run_app("app.py")
 elif service == "₿ 코인":
