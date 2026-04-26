@@ -1076,6 +1076,47 @@ def morning_reorder():
         else:
             print(f"[자동매매] {order['name']} 재주문 실패")
 
+    # ── 7번: 갭하락 손절 체크 (장 시작 직후 09:00~09:15) ─────────
+    # 전날 손절가 아래에서 갭하락 시작 시 즉시 손절
+    now_kst = datetime.now(KST)
+    is_gap_check_time = (now_kst.hour == 9 and now_kst.minute <= 15)
+    if is_gap_check_time and is_trading_day():
+        try:
+            _gap_client = KISClient()
+            _gap_orders = _get_pending_orders()
+            _gap_today  = date.today().isoformat()
+            for _go in _gap_orders:
+                if _go["status"] != "active":
+                    continue
+                _gsym  = _go["symbol"]
+                _gcur  = _gap_client.get_price(_gsym)
+                _gstop = _go["stop_price"]
+                _gavg  = _go.get("avg_price") or _go["entry_price"]
+                _gqty  = _go["qty"]
+                if _gcur and _gstop and _gcur <= _gstop * 0.99:  # 손절가 -1% 이하 갭하락
+                    print(f"[자동매매] {_go['name']} 갭하락 감지 ₩{_gcur:,.0f} (손절가 ₩{_gstop:,}) → 즉시 손절")
+                    _gr = _gap_client.sell_order(_gsym, int(_gcur), _gqty, market=True)
+                    if _gr["success"]:
+                        _gret = (_gcur - _gavg) / _gavg * 100 if _gavg else 0
+                        _update_order(_go["id"],
+                            status="hit_stop", exit_price=int(_gcur),
+                            exit_date=_gap_today, return_pct=round(_gret, 2)
+                        )
+                        _send_admin(
+                            f"🚨 <b>갭하락 손절</b>\n"
+                            f"<b>{_go['name']}</b>\n"
+                            f"갭하락 ₩{_gcur:,.0f} (손절가 ₩{_gstop:,})\n"
+                            f"손실 <b>{_gret:.1f}%</b>"
+                        )
+                    else:
+                        _send_admin(
+                            f"🚨 <b>갭하락 손절 실패!</b>\n"
+                            f"<b>{_go['name']}</b> ₩{_gcur:,.0f}\n"
+                            f"⚠️ 즉시 수동 매도 필요!"
+                        )
+        except Exception as _ge:
+            print(f"[자동매매] 갭하락 체크 오류: {_ge}")
+
 
 def monitor_positions():
     """
@@ -1096,6 +1137,9 @@ def monitor_positions():
 
     if not orders:
         return
+
+    # 4번: 이번 사이클에서 이미 매도 처리된 종목 추적 (중복 매도 방지)
+    _sold_this_cycle = set()
 
     # ── 실제 잔고 조회 (유저 임의 매도 감지용) ──────────────────
     balance = client.get_balance()
@@ -1128,6 +1172,11 @@ def monitor_positions():
         # pending 종목은 morning_reorder()에서 체결 확인 처리
         # monitor_positions()에서는 active 종목만 처리
         if order["status"] != "active":
+            continue
+
+        # 4번: 이번 사이클에서 이미 매도 처리된 종목 중복 처리 방지
+        if symbol in _sold_this_cycle:
+            print(f"[자동매매] {order['name']} 이번 사이클 이미 처리됨 - 스킵")
             continue
 
         entry      = order["entry_price"]
@@ -1233,7 +1282,14 @@ def monitor_positions():
 
         # ── 분할매수 2/3차 트리거 ──────────────────────────────────
         if split_step == 1 and cur <= trigger2:
+            # 3번: 분할매수 전 예수금 재확인
+            _bal2 = client.get_balance()
+            _cash2 = _bal2.get("cash", 0)
             add_qty = max(1, int(split_budget / cur))
+            if int(cur) * add_qty > _cash2:
+                print(f"[자동매매] {order['name']} 2차 매수 예수금 부족 ({_cash2:,.0f}원) - 스킵")
+                _send_admin(f"⚠️ <b>2차 매수 예수금 부족</b>\n<b>{order['name']}</b>\n필요: ₩{int(cur)*add_qty:,} / 보유: ₩{_cash2:,.0f}")
+                continue
             result  = client.buy_order(order["symbol"], int(cur), add_qty, market=True)
             if result["success"]:
                 new_avg = (avg_price * qty + cur * add_qty) / (qty + add_qty)
@@ -1254,7 +1310,14 @@ def monitor_positions():
             continue
 
         elif split_step == 2 and cur <= trigger3:
+            # 3번: 3차 분할매수 전 예수금 재확인
+            _bal3 = client.get_balance()
+            _cash3 = _bal3.get("cash", 0)
             add_qty = max(1, int(split_budget / cur))
+            if int(cur) * add_qty > _cash3:
+                print(f"[자동매매] {order['name']} 3차 매수 예수금 부족 ({_cash3:,.0f}원) - 스킵")
+                _send_admin(f"⚠️ <b>3차 매수 예수금 부족</b>\n<b>{order['name']}</b>\n필요: ₩{int(cur)*add_qty:,} / 보유: ₩{_cash3:,.0f}")
+                continue
             result  = client.buy_order(order["symbol"], int(cur), add_qty, market=True)
             if result["success"]:
                 new_avg     = (avg_price * qty + cur * add_qty) / (qty + add_qty)
@@ -1287,6 +1350,7 @@ def monitor_positions():
                     status="hit_target", exit_price=int(cur),
                     exit_date=today, return_pct=round(ret, 2)
                 )
+                _sold_this_cycle.add(symbol)  # 4번: 중복 매도 방지
                 print(f"[자동매매] {order['name']} 목표가 도달 → 매도 +{ret:.1f}%")
                 # ── 매도 체결 확인 ──────────────────────────────
                 time.sleep(2)
@@ -1328,6 +1392,7 @@ def monitor_positions():
                     status="hit_stop", exit_price=int(cur),
                     exit_date=today, return_pct=round(ret, 2)
                 )
+                _sold_this_cycle.add(symbol)  # 4번: 중복 매도 방지
                 print(f"[자동매매] {order['name']} 손절가 도달 → 시장가 매도 {ret:.1f}%")
                 # ── 매도 체결 확인 ──────────────────────────────
                 time.sleep(2)
