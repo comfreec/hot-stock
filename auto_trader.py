@@ -96,6 +96,11 @@ def is_market_open() -> bool:
     if not is_trading_day():
         return False
     now = datetime.now(KST)
+    # KIS 서버 점검 시간 제외 (매일 05:30~06:00 KST)
+    if now.hour == 5 and now.minute >= 30:
+        return False
+    if now.hour == 6 and now.minute == 0:
+        return False
     return now.replace(hour=9, minute=0, second=0, microsecond=0) <= now <= now.replace(hour=15, minute=30, second=0, microsecond=0)
 
 
@@ -595,6 +600,8 @@ def _get_trade_conn():
         ("trigger2",   "INTEGER", "0"), ("trigger3",  "INTEGER", "0"),
         ("step2_price","REAL",    "0"), ("step2_qty", "INTEGER", "0"),
         ("step3_price","REAL",    "0"), ("step3_qty", "INTEGER", "0"),
+        ("sell_order_no", "TEXT", "''"),  # 매도 주문번호 (미체결 확인용)
+        ("sell_order_ts", "TEXT", "''"),  # 매도 주문 시각
     ]:
         if col not in existing_cols:
             conn.execute(f"ALTER TABLE trade_orders ADD COLUMN {col} {typ} DEFAULT {default}")
@@ -607,14 +614,16 @@ def _get_pending_orders() -> list:
     rows = conn.execute("""
         SELECT id, alert_date, symbol, name, entry_price, target_price, stop_price,
                qty, order_no, status, split_step, split_qty, avg_price, base_price,
-               trigger2, trigger3, step2_price, step2_qty, step3_price, step3_qty
+               trigger2, trigger3, step2_price, step2_qty, step3_price, step3_qty,
+               sell_order_no, sell_order_ts
         FROM trade_orders WHERE status IN ('pending', 'active')
         ORDER BY alert_date ASC
     """).fetchall()
     conn.close()
     keys = ["id","alert_date","symbol","name","entry_price","target_price","stop_price",
             "qty","order_no","status","split_step","split_qty","avg_price","base_price",
-            "trigger2","trigger3","step2_price","step2_qty","step3_price","step3_qty"]
+            "trigger2","trigger3","step2_price","step2_qty","step3_price","step3_qty",
+            "sell_order_no","sell_order_ts"]
     return [dict(zip(keys, r)) for r in rows]
 
 
@@ -1222,6 +1231,49 @@ def monitor_positions():
         # ── 실제 보유 수량 확인 (유저 임의 매도 대비) ────────────
         actual_qty = actual_holdings.get(code, {}).get("qty", 0)
 
+        # ── 매도 미체결 확인 (이전 사이클에서 매도 주문 넣은 경우) ──
+        _sell_ono = order.get("sell_order_no", "")
+        _sell_ots = order.get("sell_order_ts", "")
+        if _sell_ono and _sell_ots:
+            try:
+                _elapsed = (datetime.now(KST) - datetime.fromisoformat(_sell_ots).replace(tzinfo=KST)).total_seconds()
+                if _elapsed >= 300:  # 5분 이상 미체결
+                    _sell_status = client.get_order_status(_sell_ono, symbol)
+                    if _sell_status == "filled":
+                        # 체결됨 → DB 업데이트
+                        ret = (cur - avg_price) / avg_price * 100 if avg_price else 0
+                        _update_order(order["id"],
+                            status="hit_target" if cur >= target else "hit_stop",
+                            exit_price=int(cur), exit_date=today,
+                            return_pct=round(ret, 2),
+                            sell_order_no="", sell_order_ts=""
+                        )
+                        print(f"[자동매매] {order['name']} 매도 지연 체결 확인")
+                        continue
+                    elif _sell_status in ("pending", "partial"):
+                        # 아직 미체결 → 취소 후 시장가 재주문
+                        print(f"[자동매매] {order['name']} 매도 미체결 5분 경과 → 취소 후 시장가 재주문")
+                        client.cancel_order(_sell_ono, symbol, qty)
+                        time.sleep(1)
+                        _r2 = client.sell_order(symbol, int(cur), qty, market=True)
+                        if _r2["success"]:
+                            ret = (cur - avg_price) / avg_price * 100 if avg_price else 0
+                            _update_order(order["id"],
+                                status="hit_target" if cur >= target else "hit_stop",
+                                exit_price=int(cur), exit_date=today,
+                                return_pct=round(ret, 2),
+                                sell_order_no="", sell_order_ts=""
+                            )
+                            _send_admin(f"🔄 <b>매도 재주문 체결</b>\n<b>{order['name']}</b> {ret:+.1f}%")
+                        else:
+                            _send_admin(f"🚨 <b>매도 재주문 실패!</b>\n<b>{order['name']}</b> 수동 매도 필요")
+                        continue
+                    else:
+                        # 취소됨 → sell_order_no 초기화 (다음 사이클에서 재시도)
+                        _update_order(order["id"], sell_order_no="", sell_order_ts="")
+            except Exception as _se:
+                print(f"[자동매매] {order['name']} 매도 미체결 확인 오류: {_se}")
+
         if actual_qty == 0 and cur is not None:
             # 가격은 조회되는데 잔고가 0 → 전량 수동 매도된 경우
             ret = (cur - avg_price) / avg_price * 100 if avg_price else 0
@@ -1376,9 +1428,12 @@ def monitor_positions():
             result = client.sell_order(symbol, target, qty, market=True)
             if result["success"]:
                 ret = (cur - avg_price) / avg_price * 100
+                _sell_no = result.get("order_no", "")
+                _sell_ts = datetime.now(KST).isoformat()
                 _update_order(order["id"],
                     status="hit_target", exit_price=int(cur),
-                    exit_date=today, return_pct=round(ret, 2)
+                    exit_date=today, return_pct=round(ret, 2),
+                    sell_order_no=_sell_no, sell_order_ts=_sell_ts
                 )
                 _sold_this_cycle.add(symbol)  # 4번: 중복 매도 방지
                 print(f"[자동매매] {order['name']} 목표가 도달 → 매도 +{ret:.1f}%")
@@ -1419,9 +1474,12 @@ def monitor_positions():
             result = client.sell_order(symbol, stop, qty, market=True)
             if result["success"]:
                 ret = (cur - avg_price) / avg_price * 100
+                _sell_no = result.get("order_no", "")
+                _sell_ts = datetime.now(KST).isoformat()
                 _update_order(order["id"],
                     status="hit_stop", exit_price=int(cur),
-                    exit_date=today, return_pct=round(ret, 2)
+                    exit_date=today, return_pct=round(ret, 2),
+                    sell_order_no=_sell_no, sell_order_ts=_sell_ts
                 )
                 _sold_this_cycle.add(symbol)  # 4번: 중복 매도 방지
                 print(f"[자동매매] {order['name']} 손절가 도달 → 시장가 매도 {ret:.1f}%")
