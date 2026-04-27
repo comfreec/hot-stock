@@ -53,12 +53,18 @@ def _get_price_yfinance_first(symbol: str, client=None) -> float | None:
     현재가 조회 - yfinance 우선, 실패 시 KIS API
     (KIS API 한도 절약)
     """
-    # 1. yfinance 먼저 시도 (한도 없음)
+    # 1. yfinance 먼저 시도 (한도 없음) - 1분봉 우선, 없으면 일봉
     try:
         import yfinance as _yf
-        _d = _yf.Ticker(symbol).history(period="1d", interval="1m")
+        _ticker = _yf.Ticker(symbol)
+        # 장중: 1분봉
+        _d = _ticker.history(period="1d", interval="1m")
         if len(_d) > 0:
             return float(_d["Close"].iloc[-1])
+        # 장 마감 후: 일봉 (전일 종가)
+        _d2 = _ticker.history(period="2d")
+        if len(_d2) > 0:
+            return float(_d2["Close"].iloc[-1])
     except Exception:
         pass
     # 2. KIS API 폴백
