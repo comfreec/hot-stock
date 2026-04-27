@@ -53,7 +53,12 @@ def _get_price_yfinance_first(symbol: str, client=None) -> float | None:
     현재가 조회 - yfinance 우선, 실패 시 KIS API
     (KIS API 한도 절약)
     """
-    # 1. yfinance 먼저 시도 (한도 없음) - 1분봉 우선, 없으면 일봉
+    # 1. KIS API 우선 (한국 주식은 KIS가 더 안정적)
+    if client:
+        _kis_price = client.get_price(symbol)
+        if _kis_price:
+            return _kis_price
+    # 2. yfinance 폴백 (KIS 실패 시)
     try:
         import yfinance as _yf
         _ticker = _yf.Ticker(symbol)
@@ -61,15 +66,12 @@ def _get_price_yfinance_first(symbol: str, client=None) -> float | None:
         _d = _ticker.history(period="1d", interval="1m")
         if len(_d) > 0:
             return float(_d["Close"].iloc[-1])
-        # 장 마감 후: 일봉 (전일 종가)
+        # 장 마감 후: 일봉
         _d2 = _ticker.history(period="2d")
         if len(_d2) > 0:
             return float(_d2["Close"].iloc[-1])
     except Exception:
         pass
-    # 2. KIS API 폴백
-    if client:
-        return client.get_price(symbol)
     return None
 
 
