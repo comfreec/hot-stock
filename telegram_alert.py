@@ -571,6 +571,10 @@ def send_scan_alert(results: list, send_charts: bool = True):
                 lv = {"entry": _row[0], "target": _row[1], "stop": _row[2], "rr": _row[3],
                       "upside": (_row[1]/_row[0]-1)*100 if _row[0] else 0,
                       "downside": (_row[2]/_row[0]-1)*100 if _row[0] else 0}
+                # rr_ratio 실시간 재계산 (손절가 업데이트 후 DB 값과 다를 수 있음)
+                if _row[0] and _row[1] and _row[2]:
+                    _risk = max(_row[0] - _row[2], 1)
+                    lv["rr"] = (_row[1] - _row[0]) / _risk
                 already_tracking = True
         except Exception:
             pass
@@ -656,6 +660,10 @@ def send_scan_alert(results: list, send_charts: bool = True):
                     lv = {"entry": _row[0], "target": _row[1], "stop": _row[2], "rr": _row[3],
                           "upside": (_row[1]/_row[0]-1)*100 if _row[0] else 0,
                           "downside": (_row[2]/_row[0]-1)*100 if _row[0] else 0}
+                    # rr_ratio 실시간 재계산
+                    if _row[0] and _row[1] and _row[2]:
+                        _risk = max(_row[0] - _row[2], 1)
+                        lv["rr"] = (_row[1] - _row[0]) / _risk
             except Exception:
                 pass
             price_levels_map[r["symbol"]] = lv
