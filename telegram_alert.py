@@ -280,33 +280,44 @@ def _calc_levels_core(close, high, low) -> dict:
         stop = ma240_v * 0.95 if (ma240_v and ma240_v < entry) else entry * 0.95
     risk = max(entry - stop, entry * 0.01)
 
-    # 목표가: 다중 기법 (Fib × ATR × BB 가중평균)
+    # 목표가: 다중 기법 (Fib × ATR × BB × 저항선 가중평균)
     n = len(high)
     recent_high = float(high.tail(120).max()) if n >= 120 else float(high.max())
     recent_low  = float(low.tail(120).min())  if n >= 120 else float(low.min())
+    high_52w    = float(high.tail(252).max()) if n >= 252 else float(high.max())
     swing_range = max(recent_high - recent_low, entry * 0.01)
 
+    # 피보나치 확장 (스윙 저점 기준)
     fib_1272 = recent_low + swing_range * 1.272
     fib_1618 = recent_low + swing_range * 1.618
     fib_2000 = recent_low + swing_range * 2.000
-    prev_high_ext = recent_high * 1.05
+    fib_2618 = recent_low + swing_range * 2.618  # 추가: 공격적 목표
+
+    # 고점 기반 저항선
+    prev_high_ext  = recent_high * 1.05   # 직전 고점 돌파 +5%
+    prev_high_ext2 = recent_high * 1.10   # 직전 고점 돌파 +10%
+    high_52w_ext   = high_52w * 1.03      # 52주 고점 돌파 +3%
+
+    # ATR 멀티플
     atr_x3 = entry + atr * 3.0
     atr_x5 = entry + atr * 5.0
 
+    # 볼린저밴드 상단
     ma20_s  = close.rolling(20).mean()
     std20   = close.rolling(20).std()
     bb_upper = float((ma20_s + std20 * 2.0).dropna().iloc[-1])
 
     min_rr3 = entry + risk * 3.0
     min_rr2 = entry + risk * 2.0
-    all_cands = sorted([x for x in [fib_1272, fib_1618, fib_2000,
-                                     recent_high, prev_high_ext,
-                                     atr_x3, atr_x5, bb_upper]
+    all_cands = sorted([x for x in [fib_1272, fib_1618, fib_2000, fib_2618,
+                                     recent_high, prev_high_ext, prev_high_ext2,
+                                     high_52w_ext, atr_x3, atr_x5, bb_upper]
                         if x > entry * 1.03])
     valid_3 = [x for x in all_cands if x >= min_rr3]
     valid_2 = [x for x in all_cands if x >= min_rr2]
 
     if valid_3:
+        # 손익비 3:1 이상 후보들의 가중평균 (가까울수록 가중치 높음)
         weights = [1 / (x - entry) for x in valid_3]
         target = sum(x * w for x, w in zip(valid_3, weights)) / sum(weights)
     elif valid_2:
@@ -316,7 +327,7 @@ def _calc_levels_core(close, high, low) -> dict:
     else:
         target = entry + risk * 3.0
 
-    target = min(target, entry * 2.0)
+    target = min(target, entry * 2.5)  # 상한 150% (기존 100%에서 완화)
 
     # 호가 단위
     entry  = round_to_tick(entry)

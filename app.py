@@ -1187,33 +1187,35 @@ def make_candle(data, title, ma240_series=None, cross_date=None, show_levels=Tru
         # ── 목표가: 다중 기법 합산 ───────────────────────────────
         recent_high = float(high.tail(120).max())
         recent_low  = float(low.tail(120).min())
+        high_52w    = float(high.tail(252).max()) if len(high) >= 252 else float(high.max())
         swing_range = max(recent_high - recent_low, entry * 0.01)
 
         # 1) 피보나치 확장 (스윙 저점 기준)
-        fib_1272 = recent_low + swing_range * 1.272   # 보수적 목표
-        fib_1618 = recent_low + swing_range * 1.618   # 표준 목표
-        fib_2000 = recent_low + swing_range * 2.000   # 공격적 목표
+        fib_1272 = recent_low + swing_range * 1.272
+        fib_1618 = recent_low + swing_range * 1.618
+        fib_2000 = recent_low + swing_range * 2.000
+        fib_2618 = recent_low + swing_range * 2.618  # 추가
 
-        # 2) 직전 고점 돌파 후 저항 → 지지 전환
-        prev_high      = recent_high
-        prev_high_ext  = recent_high * 1.05  # 고점 돌파 후 +5% 저항
+        # 2) 고점 기반 저항선
+        prev_high_ext  = recent_high * 1.05
+        prev_high_ext2 = recent_high * 1.10
+        high_52w_ext   = high_52w * 1.03  # 52주 고점 돌파
 
-        # 3) ATR 멀티플 (변동성 기반)
+        # 3) ATR 멀티플
         atr_x3 = entry + atr * 3.0
         atr_x5 = entry + atr * 5.0
 
-        # 4) 볼린저밴드 상단 (2σ) - 과열 저항선
+        # 4) 볼린저밴드 상단
         ma20_s  = close.rolling(20).mean()
         std20   = close.rolling(20).std()
         bb_upper = float((ma20_s + std20 * 2.0).dropna().iloc[-1])
 
-        # 후보 중 현재가 +3% 이상, 손익비 2:1 이상인 것만
         min_rr2 = entry + risk * 2.0
         min_rr3 = entry + risk * 3.0
         all_cands = sorted([
-            x for x in [fib_1272, fib_1618, fib_2000,
-                         prev_high, prev_high_ext,
-                         atr_x3, atr_x5, bb_upper]
+            x for x in [fib_1272, fib_1618, fib_2000, fib_2618,
+                         recent_high, prev_high_ext, prev_high_ext2,
+                         high_52w_ext, atr_x3, atr_x5, bb_upper]
             if x > entry * 1.03
         ])
 
@@ -1230,7 +1232,7 @@ def make_candle(data, title, ma240_series=None, cross_date=None, show_levels=Tru
         else:
             target = entry + risk * 3.0
 
-        target = min(target, entry * 2.0)  # 상한 100%
+        target = min(target, entry * 2.5)  # 상한 150%
 
         # 호가 단위 적용
         entry  = round_to_tick(entry)
