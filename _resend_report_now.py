@@ -1,0 +1,6 @@
+import sys, os
+sys.path.insert(0, '/app')
+os.environ.setdefault('DB_PATH', '/data/scan_cache.db')
+from auto_trader import send_trade_report
+send_trade_report()
+print('done')
