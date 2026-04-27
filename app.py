@@ -1579,10 +1579,10 @@ if mode == "🔍 급등 예고 종목 탐지":
 
                     s = r.get("signals", {})
                     active = []
-                    if s.get("vol_strong_cross"):       active.append(f"🚀 돌파 시 거래량 폭발 ({s['cross_vol_ratio']:.1f}배 - 강한 돌파)")
-                    elif s.get("vol_at_cross"):         active.append(f"📦 돌파 시 거래량 급증 ({s['cross_vol_ratio']:.1f}배)")
+                    if s.get("vol_strong_cross"):       active.append(f"🚀 돌파 시 거래량 폭발 ({s.get('cross_vol_ratio',0):.1f}배 - 강한 돌파)")
+                    elif s.get("vol_at_cross"):         active.append(f"📦 돌파 시 거래량 급증 ({s.get('cross_vol_ratio',0):.1f}배)")
                     if s.get("vol_surge_sustained"):    active.append("📊 돌파 전후 거래량 지속 증가")
-                    if s.get("recent_vol"):             active.append(f"📊 최근 거래량 증가 ({s['recent_vol_ratio']:.1f}배)")
+                    if s.get("recent_vol"):             active.append(f"📊 최근 거래량 증가 ({s.get('recent_vol_ratio',0):.1f}배)")
                     if r.get("both_buying"):            active.append("🔥 기관+외국인 동시 순매수 (강한 수급)")
                     elif r.get("smart_money_in"):       active.append("✅ 기관 또는 외국인 순매수")
                     if s.get("obv_rising"):             active.append("📈 OBV 지속 상승 (매집 진행 중)")
