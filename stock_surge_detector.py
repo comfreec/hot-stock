@@ -1969,11 +1969,11 @@ class KoreanStockSurgeDetector:
 
     def analyze_stock_divergence(self, symbol):
         """
-        RSI(20) 강세 다이버전스 전용 스캔
-        신뢰도 높은 조건 3가지 동시 충족:
-          1) 과매도 구간(RSI 30 이하)에서 발생
-          2) 두 저점 간격 20일 이상
-          3) 두 번째 저점에서 거래량 감소 (매도 세력 소진)
+        RSI(20) 30선 상향 돌파 + 강세 다이버전스 동시 확인
+        조건:
+          1) RSI(20)이 최근 5일 이내에 30선을 상향 돌파 (이전 <=30, 현재 >30)
+          2) 그 돌파 시점 기준 과거 120일 내에서 RSI(20) 강세 다이버전스 성립
+             (주가는 신저 / RSI는 전저점보다 높음)
         """
         try:
             ticker = yf.Ticker(symbol)
@@ -1998,23 +1998,32 @@ class KoreanStockSurgeDetector:
             close_vals = close.values
             vol_vals   = vol.values
 
-            # 최근 120일 내에서 탐색 (범위 축소 - 최신 신호만)
-            search_start = max(1, n - 120)
+            # ── STEP 1: 최근 5일 이내 RSI(20) 30선 상향 돌파 시점 탐지 ──
+            cross30_idx = None
+            for i in range(n - 1, max(n - 6, 1), -1):
+                if rsi_vals[i - 1] <= 30 and rsi_vals[i] > 30:
+                    cross30_idx = i
+                    break
 
-            # 저점 후보 수집: 주가 로컬 최저점 기준, RSI 45 이하만
+            if cross30_idx is None:
+                return None  # 최근 5일 이내 30선 돌파 없으면 탈락
+
+            # ── STEP 2: 돌파 시점 기준 과거 120일 내 RSI 다이버전스 탐색 ──
+            div_search_end   = cross30_idx
+            div_search_start = max(1, cross30_idx - 120)
+
             troughs = []
-            for i in range(search_start + 5, n - 5):
-                price_window = close_vals[max(0, i-5): i+6]
+            for i in range(div_search_start + 5, div_search_end + 1):
+                price_window = close_vals[max(0, i - 5): min(n, i + 6)]
                 if close_vals[i] != price_window.min():
                     continue
-                if rsi_vals[i] > 45:  # RSI 45 이하만 (과매도 근처)
+                if rsi_vals[i] > 45:
                     continue
                 troughs.append((i, float(close_vals[i]), float(rsi_vals[i]), float(vol_vals[i])))
 
             if len(troughs) < 2:
                 return None
 
-            # 전체 저점 쌍 중 다이버전스 조건 충족하는 최적 조합 탐색
             best_pair = None
             for j in range(len(troughs) - 1, 0, -1):
                 t2_cand = troughs[j]
@@ -2036,18 +2045,18 @@ class KoreanStockSurgeDetector:
 
             t1, t2 = best_pair
 
-            # 거래량 감소 체크 (가산점용, 필수 아님)
-            vol_ma20_t2 = float(vol.iloc[max(0, t2[0]-20): t2[0]].mean()) if t2[0] > 20 else t2[3]
+            # 거래량 감소 체크
+            vol_ma20_t2 = float(vol.iloc[max(0, t2[0] - 20): t2[0]].mean()) if t2[0] > 20 else t2[3]
             vol_ratio_t2 = t2[3] / vol_ma20_t2 if vol_ma20_t2 > 0 else 1.0
             vol_decreasing = vol_ratio_t2 < 0.9
 
-            # 핵심 조건 3: 현재 RSI가 t2보다 10 이상 반등 중
             cur_rsi = float(rsi_vals[-1])
-            if cur_rsi <= t2[2] + 10:
-                return None
             current = float(close_vals[-1])
-            signals = {}  # 신호 딕셔너리 초기화
-
+            signals = {}
+            signals["rsi30_cross_days_ago"] = n - 1 - cross30_idx  # 돌파 며칠 전인지
+            # 전환선 관련 필드 초기화 (UI 호환)
+            signals["tenkan_slope_turned"] = False
+            signals["tenkan_slope_val"]    = 0.0
             # ── 필수 조건: 주봉 RSI(20) 다이버전스 동시 충족 ────────
             # 일봉 다이버전스만으로는 노이즈 많음 → 주봉도 같은 방향이어야 신뢰도 높음
             try:
@@ -2132,6 +2141,12 @@ class KoreanStockSurgeDetector:
             signals["recent_vol"] = recent_vr >= 1.3
             if signals["recent_vol"]: score += 2
 
+            # [+5] RSI 30선 돌파 (이미 필수 통과) + 돌파 타이밍 가산
+            days_ago = signals["rsi30_cross_days_ago"]
+            if days_ago == 0:   score += 5   # 오늘 돌파
+            elif days_ago <= 2: score += 4   # 1~2일 전
+            else:               score += 3   # 3~4일 전
+
             signals["rsi"]         = round(cur_rsi, 1)
             signals["current_rsi"] = round(cur_rsi, 1)
 
@@ -2159,9 +2174,12 @@ class KoreanStockSurgeDetector:
                 "weekly_rsi":       signals.get("weekly_rsi", 50),
                 "weekly_rsi_bull":  signals.get("weekly_rsi_bull", False),
                 "weekly_rsi_rising":signals.get("weekly_rsi_rising", False),
-                "weekly_rsi_div":   signals.get("weekly_rsi_div", False),
-                "obv_rising":       signals["obv_rising"],
-                "scan_type":        "divergence",
+                "weekly_rsi_div":      signals.get("weekly_rsi_div", False),
+                "obv_rising":         signals["obv_rising"],
+                "tenkan_slope_turned":  signals.get("tenkan_slope_turned", False),
+                "tenkan_slope_val":     signals.get("tenkan_slope_val", 0.0),
+                "rsi30_cross_days_ago": signals.get("rsi30_cross_days_ago", 0),
+                "scan_type":          "divergence",
                 "close_series":     close,
                 "high_series":      high,
                 "low_series":       low,

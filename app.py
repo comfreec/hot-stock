@@ -1440,7 +1440,7 @@ if mode == "🔍 급등 예고 종목 탐지":
             for r in results:
                 s = r.get("signals", {})
                 pct = r.get("price_change_1d", 0) or 0
-                rows.append({
+                row = {
                     "종목명":     r["name"],
                     "종목코드":   r["symbol"],
                     "현재가":     f"₩{r['current_price']:,.0f}",
@@ -1465,7 +1465,12 @@ if mode == "🔍 급등 예고 종목 탐지":
                     "VWAP":       "✅" if s.get("above_vwap") else "❌",
                     "일목":       "✅" if s.get("ichimoku_bull") else "❌",
                     "52주고점":   "✅" if s.get("near_52w_high") else "❌",
-                })
+                }
+                # 다이버전스 전용 컬럼
+                if r.get("scan_type") == "divergence":
+                    row["전환선꺾임"] = "🔀✅" if s.get("tenkan_slope_turned") else "❌"
+                    row["주봉DIV"]    = "✅" if r.get("weekly_rsi_div") else "❌"
+                rows.append(row)
             df = pd.DataFrame(rows)
             st.dataframe(df,
                 column_config={
@@ -1610,6 +1615,22 @@ if mode == "🔍 급등 예고 종목 탐지":
                     if s.get("bullish_engulf"):         active.append("🕯 장악형 캔들")
                     if s.get("news_sentiment",0) > 0:   active.append(f"📰 긍정 뉴스 {s.get('pos_news',0)}건")
                     if s.get("has_disclosure"):         active.append(f"📋 호재 공시: {', '.join(s.get('disclosure_types',[]))}")
+
+                    # ── 다이버전스 전용 신호 표시 ──────────────────────
+                    if r.get("scan_type") == "divergence":
+                        div_active = []
+                        days_ago = r.get("rsi30_cross_days_ago", 0)
+                        div_active.append(f"🔼 RSI(20) 30선 상향 돌파 ({days_ago}일 전, 현재 {r.get('rsi',0):.1f})")
+                        div_active.append(f"📉 RSI 다이버전스: 주가 {r.get('div_price_drop',0):.1f}% 하락 / RSI +{r.get('div_rsi_gain',0):.1f} 반등")
+                        div_active.append(f"📊 저점 간격: {r.get('div_gap_days',0)}일 | 1저점 RSI {r.get('div_t1_rsi',0):.1f} → 2저점 RSI {r.get('div_t2_rsi',0):.1f}")
+                        if r.get("vol_decreasing"):     div_active.append("📦 2저점 거래량 감소 (매도 세력 소진)")
+                        if r.get("weekly_rsi_div"):     div_active.append(f"📈 주봉 RSI 다이버전스 동시 확인 (주봉 RSI {r.get('weekly_rsi',0):.1f})")
+                        if r.get("weekly_rsi_rising"):  div_active.append(f"📈 주봉 RSI 상승 기울기 ({r.get('weekly_rsi',0):.1f})")
+                        if r.get("obv_rising"):         div_active.append("📈 OBV 상승 (저점 이후 매집 진행)")
+                        st.markdown("**📡 다이버전스 신호**")
+                        div_cols = st.columns(2)
+                        for j, sig in enumerate(div_active):
+                            div_cols[j%2].info(sig)
 
                     cols = st.columns(2)
                     for j, sig in enumerate(active):

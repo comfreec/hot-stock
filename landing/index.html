@@ -175,10 +175,6 @@ footer p{color:var(--muted);font-size:13px;line-height:1.8}
       <div class="stat-label">코스피·코스닥 스캔 종목</div>
     </div>
     <div class="stat-item fade-up">
-      <div class="stat-num">2:1+</div>
-      <div class="stat-label">최소 손익비 기준</div>
-    </div>
-    <div class="stat-item fade-up">
       <div class="stat-num">24/7</div>
       <div class="stat-label">주식 자동 알림</div>
     </div>
@@ -228,8 +224,7 @@ footer p{color:var(--muted);font-size:13px;line-height:1.8}
           <div class="tr"><span class="tl">종목</span><span class="tv">애경산업 ⭐ 28점</span></div>
           <div class="tr"><span class="tl">📍 매수가</span><span class="tv gd">₩18,500</span></div>
           <div class="tr"><span class="tl">🎯 목표가</span><span class="tv up">₩22,200 (+20.0%)</span></div>
-          <div class="tr"><span class="tl">🛑 손절가</span><span class="tv dn">₩17,575 (-5.0%)</span></div>
-          <div class="tr"><span class="tl">⚖️ 손익비</span><span class="tv up">4.0 : 1</span></div>
+          <div class="tr"><span class="tl">🛑 손절가</span><span class="tv dn">₩17,575 (추세이탈 저점)</span></div>
           <div class="tr"><span class="tl">⏱ 예상 기간</span><span class="tv" style="color:#a78bfa">1~3주</span></div>
         </div>
         <div class="ttime">오후 3:42 ✓✓ &nbsp;🔍 클릭해서 크게 보기</div>
@@ -240,8 +235,7 @@ footer p{color:var(--muted);font-size:13px;line-height:1.8}
         <ul class="fl">
           <li>장기선 기반 근거 있는 분할 매수가 제시</li>
           <li>피보나치 + ATR 다중 기법 목표가 자동 산출</li>
-          <li>장기선 대비 -5% 손절가 자동 설정</li>
-          <li>손익비 2:1 미만 종목 자동 제외</li>
+          <li>추세이탈 저점 기준 손절가 자동 설정</li>
           <li>캔들차트 이미지 함께 전송 (상위 5종목)</li>
           <li>매일 09:10 포트폴리오 현황 리포트</li>
           <li>주식: 매일 15:40 KST 자동 알림</li>
@@ -325,7 +319,6 @@ footer p{color:var(--muted);font-size:13px;line-height:1.8}
           <li>매일 돌파 준비 종목 알림</li>
           <li>텔레그램 자동 발송 (15:40)</li>
           <li>매수가 / 목표가 / 손절가</li>
-          <li>손익비 자동 계산</li>
           <li>캔들차트 이미지 포함</li>
           <li>매일 포트폴리오 리포트 (09:10)</li>
           <li>정식 출시 시 창립 멤버 할인</li>
@@ -362,7 +355,7 @@ footer p{color:var(--muted);font-size:13px;line-height:1.8}
     <div class="tg2">
       <div class="tc fade-up">
         <div class="stars">★★★★★</div>
-        <p class="tt2">"알림 받고 분할 매수 후 2주 만에 목표가 도달했어요. 단타처럼 바로 오르길 기대하지 않고 기다렸더니 손익비대로 됐습니다."</p>
+        <p class="tt2">"알림 받고 분할 매수 후 2주 만에 목표가 도달했어요. 단타처럼 바로 오르길 기대하지 않고 기다렸더니 목표가대로 됐습니다."</p>
         <div class="ta2"><div class="tav">👨</div><div><div class="tname">김*현</div><div class="trole">스윙 투자자 · 3년차</div></div></div>
       </div>
       <div class="tc fade-up">
@@ -372,7 +365,7 @@ footer p{color:var(--muted);font-size:13px;line-height:1.8}
       </div>
       <div class="tc fade-up">
         <div class="stars">★★★★☆</div>
-        <p class="tt2">"장기선 전략이 탄탄합니다. 단순 RSI 알림이랑 차원이 다르고, 손익비 2:1 이상만 걸러주니까 리스크 관리가 훨씬 쉬워졌어요."</p>
+        <p class="tt2">"장기선 전략이 탄탄합니다. 단순 RSI 알림이랑 차원이 다르고, 목표가/손절가가 자동으로 나오니까 리스크 관리가 훨씬 쉬워졌어요."</p>
         <div class="ta2"><div class="tav">👨</div><div><div class="tname">박*우</div><div class="trole">전업 투자자</div></div></div>
       </div>
     </div>
@@ -500,9 +493,6 @@ document.addEventListener('keydown', e => {
       </div>
       <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.06);">
         <span style="color:#c9d1e0;">🛑 손절가</span><span style="font-weight:700;color:#ff3355;">₩17,575 <small>(-5.0%)</small></span>
-      </div>
-      <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.06);">
-        <span style="color:#c9d1e0;">⚖️ 손익비</span><span style="font-weight:700;color:#00d4aa;">4.0 : 1</span>
       </div>
       <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.06);">
         <span style="color:#c9d1e0;">⏱ 예상 기간</span><span style="font-weight:700;color:#a78bfa;">1~3주</span>
