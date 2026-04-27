@@ -794,12 +794,12 @@ with st.sidebar:
 
     if "max_gap"   not in st.session_state: st.session_state["max_gap"]   = 7
     if "min_score" not in st.session_state: st.session_state["min_score"] = 40
-    if "ob_days"   not in st.session_state: st.session_state["ob_days"]   = 180
+    if "ob_days"   not in st.session_state: st.session_state["ob_days"]   = 90
     if "rc_below"  not in st.session_state: st.session_state["rc_below"]  = 0
 
     if st.button("⚡ 기본 셋팅", width='stretch'):
         st.session_state["max_gap"]     = 7
-        st.session_state["ob_days"]     = 180
+        st.session_state["ob_days"]     = 90
         st.session_state["rc_below"]    = 0
         st.session_state["min_score"]   = 40
         st.session_state["min_below_c"] = 60
