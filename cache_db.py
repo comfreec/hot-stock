@@ -255,7 +255,7 @@ def update_alert_status():
         today = date.today().isoformat()
         for row in rows:
             rid, sym, entry, target, stop, alert_date, status, avg_p = row
-            # 실제 평균단가 우선, 없으면 entry_price 사용
+            # 실제 평단가 우선, 없으면 entry_price 사용
             base = avg_p if avg_p and avg_p > 0 else entry
 
             # pending 종목만 거래일 기준 5일 경과 시 만료
