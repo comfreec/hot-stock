@@ -818,12 +818,19 @@ with st.sidebar:
             help="장기선 아래 최소 체류 일수 (0=제한없음)")
         min_below_c = st.session_state.get("min_below_c", 60)
         max_cross_c = st.session_state.get("max_cross_c", 90)
-    else:
-        ob_days = st.session_state.get("ob_days", 60)
+    elif scan_mode == "📈 장기선 돌파 스캔":
+        ob_days = st.session_state.get("ob_days", 90)
+        rc_below = 0
         min_below_c = st.slider("📉 최소 조정 기간 (일)", 30, 300, value=60, key="min_below_c",
             help="장기선 아래 최소 체류 일수")
         max_cross_c = st.slider("📈 돌파 후 최대 경과 (일)", 10, 180, value=90, key="max_cross_c",
             help="장기선 돌파 후 최대 경과 일수")
+    else:  # RSI 다이버전스 스캔
+        ob_days = st.session_state.get("ob_days", 90)
+        rc_below = 0
+        min_below_c = st.session_state.get("min_below_c", 60)
+        max_cross_c = st.session_state.get("max_cross_c", 90)
+        st.caption("💡 다이버전스 스캔은 240일선 이격 0~7% 고정 적용")
 
     # ── 과거 날짜 스캔 ──────────────────────────────────────────
     st.markdown("---")
@@ -1120,7 +1127,7 @@ def round_to_tick(price: float) -> int:
     else:                 tick = 1000
     return int(round(price / tick) * tick)
 
-def make_candle(data, title, ma240_series=None, cross_date=None, show_levels=True):
+def make_candle(data, title, ma240_series=None, cross_date=None, show_levels=True, override_stop=None):
     fig = go.Figure()
     fig.add_trace(go.Ohlc(
         x=data.index, open=data["Open"], high=data["High"],
@@ -1163,25 +1170,28 @@ def make_candle(data, title, ma240_series=None, cross_date=None, show_levels=Tru
         else:
             entry_label, entry = "현재가", current
 
-        # ── 손절가: RSI(20) 30 돌파 직전 5일 저가 ────────────────
-        try:
-            _d = close.diff()
-            _gain = _d.where(_d > 0, 0.0).ewm(alpha=1/20, min_periods=20, adjust=False).mean()
-            _loss = (-_d.where(_d < 0, 0.0)).ewm(alpha=1/20, min_periods=20, adjust=False).mean()
-            _rsi = (100 - 100 / (1 + _gain / _loss.replace(0, float('nan')))).fillna(50)
-            _rsi_vals = _rsi.values
-            _n = len(_rsi_vals)
-            _oversold_exit = None
-            for _i in range(1, _n):
-                if _rsi_vals[_i-1] <= 30 and _rsi_vals[_i] > 30:
-                    _oversold_exit = _i
-            if _oversold_exit is not None:
-                _lb = max(0, _oversold_exit - 5)
-                stop = float(low.iloc[_lb:_oversold_exit].min())
-            else:
+        # ── 손절가: override_stop 있으면 우선 사용 (다이버전스 t2 저가), 없으면 RSI 30 돌파 직전 5일 저가 ──
+        if override_stop is not None:
+            stop = float(override_stop)
+        else:
+            try:
+                _d = close.diff()
+                _gain = _d.where(_d > 0, 0.0).ewm(alpha=1/20, min_periods=20, adjust=False).mean()
+                _loss = (-_d.where(_d < 0, 0.0)).ewm(alpha=1/20, min_periods=20, adjust=False).mean()
+                _rsi = (100 - 100 / (1 + _gain / _loss.replace(0, float('nan')))).fillna(50)
+                _rsi_vals = _rsi.values
+                _n = len(_rsi_vals)
+                _oversold_exit = None
+                for _i in range(1, _n):
+                    if _rsi_vals[_i-1] <= 30 and _rsi_vals[_i] > 30:
+                        _oversold_exit = _i
+                if _oversold_exit is not None:
+                    _lb = max(0, _oversold_exit - 5)
+                    stop = float(low.iloc[_lb:_oversold_exit].min())
+                else:
+                    stop = ma240_v * 0.95 if ma240_v and ma240_v < entry else entry * 0.95
+            except Exception:
                 stop = ma240_v * 0.95 if ma240_v and ma240_v < entry else entry * 0.95
-        except Exception:
-            stop = ma240_v * 0.95 if ma240_v and ma240_v < entry else entry * 0.95
         risk = max(entry - stop, entry * 0.01)
 
         # ── 목표가: 다중 기법 합산 ───────────────────────────────
@@ -1468,25 +1478,35 @@ if mode == "🔍 급등 예고 종목 탐지":
                 }
                 # 다이버전스 전용 컬럼
                 if r.get("scan_type") == "divergence":
-                    row["전환선꺾임"] = "🔀✅" if s.get("tenkan_slope_turned") else "❌"
-                    row["주봉DIV"]    = "✅" if r.get("weekly_rsi_div") else "❌"
+                    row["240돌파"] = f"{r.get('ma240_cross_days_ago','-')}일 전"
+                    row["DIV간격"] = f"{r.get('div_gap_days','-')}일"
+                    row["RSI상승"] = f"+{r.get('div_rsi_gain',0):.1f}pt"
+                    row["주봉DIV"] = "✅" if r.get("weekly_rsi_div") else "❌"
+                    row["OBV"]     = "✅" if r.get("obv_rising") else "❌"
+                    row["정배열"]  = "✅" if s.get("ma_align") else "❌"
+                    row["거래량감소"] = "✅" if r.get("vol_decreasing") else "❌"
+                    row["손절가"]  = f"₩{int(r['div_t2_low']):,.0f}" if r.get("div_t2_low") else "-"
                 rows.append(row)
             df = pd.DataFrame(rows)
-            st.dataframe(df,
-                column_config={
-                    "종합점수": st.column_config.ProgressColumn(
-                        "종합점수(ML보정)", min_value=0, max_value=50, format="%d점"),
-                    "원점수": st.column_config.ProgressColumn(
-                        "원점수", min_value=0, max_value=39, format="%d점"),
-                    "R-cycle": st.column_config.ProgressColumn(
-                        "R-cycle", min_value=0, max_value=100, format="%.1f"),
-                    "수급": st.column_config.TextColumn("기관/외국인", help="🔥=동시매수 ✅=한쪽매수 ❌=없음"),
-                    "거래량": st.column_config.TextColumn("거래량", help="✅=3배이상 🔶=2배이상 ❌=미달"),
-                },
-                width='stretch', hide_index=True)
+            # 다이버전스 스캔이면 전용 컬럼 config 추가
+            _is_div = any(r.get("scan_type") == "divergence" for r in results)
+            _col_cfg = {
+                "종합점수": st.column_config.ProgressColumn(
+                    "종합점수", min_value=0, max_value=51, format="%d점"),
+                "원점수": st.column_config.ProgressColumn(
+                    "원점수", min_value=0, max_value=51, format="%d점"),
+                "R-cycle": st.column_config.ProgressColumn(
+                    "R-cycle", min_value=0, max_value=100, format="%.1f"),
+                "수급": st.column_config.TextColumn("기관/외국인", help="🔥=동시매수 ✅=한쪽매수 ❌=없음"),
+                "거래량": st.column_config.TextColumn("거래량", help="✅=3배이상 🔶=2배이상 ❌=미달"),
+            }
+            if _is_div:
+                _col_cfg["RSI상승"] = st.column_config.TextColumn("RSI상승폭", help="다이버전스 RSI 상승폭")
+                _col_cfg["240돌파"] = st.column_config.TextColumn("240선돌파", help="다이버전스 후 240선 돌파 경과일")
+            st.dataframe(df, column_config=_col_cfg, width='stretch', hide_index=True)
 
             # 차트
-            if len(results) > 1:
+            if len(results) >= 1:
                 fig = px.bar(pd.DataFrame(results), x="name", y="total_score",
                     color="total_score", color_continuous_scale="Greens",
                     labels={"name":"종목명","total_score":"점수"}, title="종합 점수")
@@ -1571,7 +1591,10 @@ if mode == "🔍 급등 예고 종목 탐지":
                     m3.metric("R-cycle 70이탈", f"{r.get('signals',{}).get('rsi_cycle_days_since','-')}일 전")
                     m4.metric("240일선", f"₩{r['ma240']:,.0f}" if r.get('ma240') else "-")
                     _cs = r.get("close_series"); _ls = r.get("low_series")
-                    if _cs is not None and _ls is not None and len(_cs) > 20:
+                    # 다이버전스 스캔은 t2 저점 저가를 손절가로 사용
+                    if r.get("scan_type") == "divergence" and r.get("div_t2_low"):
+                        _stop_disp = round_to_tick(r["div_t2_low"])
+                    elif _cs is not None and _ls is not None and len(_cs) > 20:
                         _ma240_v = r.get('ma240'); _cur = float(_cs.iloc[-1])
                         _entry = _ma240_v if (_ma240_v and _ma240_v < _cur) else _cur
                         _stop_disp = round_to_tick(calc_stop_from_series(pd.Series(list(_cs)), pd.Series(list(_ls)), _ma240_v, _entry))
@@ -1619,14 +1642,14 @@ if mode == "🔍 급등 예고 종목 탐지":
                     # ── 다이버전스 전용 신호 표시 ──────────────────────
                     if r.get("scan_type") == "divergence":
                         div_active = []
-                        days_ago = r.get("rsi30_cross_days_ago", 0)
-                        div_active.append(f"🔼 RSI(20) 30선 상향 돌파 ({days_ago}일 전, 현재 {r.get('rsi',0):.1f})")
+                        cross_days = r.get("ma240_cross_days_ago", 0)
+                        div_active.append(f"📈 240일선 상향 돌파 ({cross_days}일 전) → 현재 이격 +{r.get('ma240_gap',0):.1f}%")
                         div_active.append(f"📉 RSI 다이버전스: 주가 {r.get('div_price_drop',0):.1f}% 하락 / RSI +{r.get('div_rsi_gain',0):.1f} 반등")
                         div_active.append(f"📊 저점 간격: {r.get('div_gap_days',0)}일 | 1저점 RSI {r.get('div_t1_rsi',0):.1f} → 2저점 RSI {r.get('div_t2_rsi',0):.1f}")
-                        if r.get("vol_decreasing"):     div_active.append("📦 2저점 거래량 감소 (매도 세력 소진)")
-                        if r.get("weekly_rsi_div"):     div_active.append(f"📈 주봉 RSI 다이버전스 동시 확인 (주봉 RSI {r.get('weekly_rsi',0):.1f})")
-                        if r.get("weekly_rsi_rising"):  div_active.append(f"📈 주봉 RSI 상승 기울기 ({r.get('weekly_rsi',0):.1f})")
-                        if r.get("obv_rising"):         div_active.append("📈 OBV 상승 (저점 이후 매집 진행)")
+                        if r.get("vol_decreasing"):    div_active.append("📦 2저점 거래량 감소 (매도 세력 소진)")
+                        if r.get("weekly_rsi_div"):    div_active.append(f"📈 주봉 RSI 다이버전스 동시 확인 (주봉 RSI {r.get('weekly_rsi',0):.1f})")
+                        if r.get("weekly_rsi_rising"): div_active.append(f"📈 주봉 RSI 상승 기울기 ({r.get('weekly_rsi',0):.1f})")
+                        if r.get("obv_rising"):        div_active.append("📈 OBV 상승 (저점 이후 매집 진행)")
                         st.markdown("**📡 다이버전스 신호**")
                         div_cols = st.columns(2)
                         for j, sig in enumerate(div_active):
@@ -1652,7 +1675,10 @@ if mode == "🔍 급등 예고 종목 탐지":
                             cross_date = None
                             if r.get("days_since_cross") is not None and r["days_since_cross"] < len(close_s):
                                 cross_date = close_s.index[-(r["days_since_cross"]+1)]
-                            _c1 = make_candle(cd, f"{r['name']} ({r['symbol']})", cross_date=cross_date)
+                            # 다이버전스 스캔: t2 저점 저가를 손절가로 차트에 반영
+                            _div_stop = r.get("div_t2_low") if r.get("scan_type") == "divergence" else None
+                            _c1 = make_candle(cd, f"{r['name']} ({r['symbol']})", cross_date=cross_date,
+                                              override_stop=_div_stop)
                             st.plotly_chart(_c1, config={"scrollZoom":False,"displayModeBar":False,"staticPlot":True}, width='stretch', key=f"candle_{r['symbol']}_{i}")
                             show_price_levels(_c1)
                         except Exception as chart_err:

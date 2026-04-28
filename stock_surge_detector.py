@@ -1969,11 +1969,12 @@ class KoreanStockSurgeDetector:
 
     def analyze_stock_divergence(self, symbol):
         """
-        RSI(20) 30선 상향 돌파 + 강세 다이버전스 동시 확인
-        조건:
-          1) RSI(20)이 최근 5일 이내에 30선을 상향 돌파 (이전 <=30, 현재 >30)
-          2) 그 돌파 시점 기준 과거 120일 내에서 RSI(20) 강세 다이버전스 성립
-             (주가는 신저 / RSI는 전저점보다 높음)
+        RSI(20) 강세 다이버전스 + 240일선 돌파 후 근처 스캔
+        조건 (순서대로):
+          1) 과거 120일 내 RSI(20) 강세 다이버전스 발생
+             (주가 신저 + RSI 전저점보다 높음, 저점 간격 30일+)
+          2) 다이버전스 t2 저점 이후 240일선을 상향 돌파한 시점 존재
+          3) 현재가가 240일선 위 0~7% 이내 (max_gap 파라미터 무시, 고정 7%)
         """
         try:
             ticker = yf.Ticker(symbol)
@@ -1998,22 +1999,13 @@ class KoreanStockSurgeDetector:
             close_vals = close.values
             vol_vals   = vol.values
 
-            # ── STEP 1: 최근 5일 이내 RSI(20) 30선 상향 돌파 시점 탐지 ──
-            cross30_idx = None
-            for i in range(n - 1, max(n - 6, 1), -1):
-                if rsi_vals[i - 1] <= 30 and rsi_vals[i] > 30:
-                    cross30_idx = i
-                    break
+            ma240 = close.rolling(240).mean()
+            ma240_vals = ma240.values
 
-            if cross30_idx is None:
-                return None  # 최근 5일 이내 30선 돌파 없으면 탈락
-
-            # ── STEP 2: 돌파 시점 기준 과거 120일 내 RSI 다이버전스 탐색 ──
-            div_search_end   = cross30_idx
-            div_search_start = max(1, cross30_idx - 120)
-
+            # ── STEP 1: 최근 120일 내 RSI(20) 강세 다이버전스 탐색 ──
+            search_start = max(1, n - 120)
             troughs = []
-            for i in range(div_search_start + 5, div_search_end + 1):
+            for i in range(search_start + 5, n - 1):
                 price_window = close_vals[max(0, i - 5): min(n, i + 6)]
                 if close_vals[i] != price_window.min():
                     continue
@@ -2029,11 +2021,11 @@ class KoreanStockSurgeDetector:
                 t2_cand = troughs[j]
                 for i in range(j - 1, -1, -1):
                     t1_cand = troughs[i]
-                    if t2_cand[0] - t1_cand[0] < 30:    # 30일 이상 간격
+                    if t2_cand[0] - t1_cand[0] < 30:
                         continue
                     if t2_cand[1] >= t1_cand[1] * 0.92:  # 주가 8% 이상 하락
                         continue
-                    if t2_cand[2] <= t1_cand[2] + 6.0:   # RSI 6 이상 상승
+                    if t2_cand[2] <= t1_cand[2] + 6.0:   # RSI 6pt 이상 상승
                         continue
                     best_pair = (t1_cand, t2_cand)
                     break
@@ -2045,20 +2037,45 @@ class KoreanStockSurgeDetector:
 
             t1, t2 = best_pair
 
+            # t2 저점의 실제 저가 (손절가 기준)
+            t2_low = float(low.iloc[t2[0]])
+
+            # ── STEP 2: t2 이후 240일선 상향 돌파 시점 탐색 ──
+            ma240_cross_idx = None
+            for i in range(t2[0] + 1, n):
+                if np.isnan(ma240_vals[i]) or np.isnan(ma240_vals[i - 1]):
+                    continue
+                if close_vals[i - 1] <= ma240_vals[i - 1] and close_vals[i] > ma240_vals[i]:
+                    ma240_cross_idx = i
+                    break  # 첫 번째 돌파 시점
+
+            if ma240_cross_idx is None:
+                return None  # 다이버전스 이후 240일선 돌파 없으면 탈락
+
+            # ── STEP 3: 현재가가 240일선 위 0~7% 이내 ──
+            ma240_v = float(ma240_vals[-1]) if not np.isnan(ma240_vals[-1]) else None
+            if ma240_v is None:
+                return None
+
+            current = float(close_vals[-1])
+            ma240_gap = (current - ma240_v) / ma240_v * 100
+
+            if ma240_gap < 0 or ma240_gap > 7.0:
+                return None  # 240일선 아래이거나 7% 초과면 탈락
+
             # 거래량 감소 체크
             vol_ma20_t2 = float(vol.iloc[max(0, t2[0] - 20): t2[0]].mean()) if t2[0] > 20 else t2[3]
             vol_ratio_t2 = t2[3] / vol_ma20_t2 if vol_ma20_t2 > 0 else 1.0
             vol_decreasing = vol_ratio_t2 < 0.9
 
             cur_rsi = float(rsi_vals[-1])
-            current = float(close_vals[-1])
             signals = {}
-            signals["rsi30_cross_days_ago"] = n - 1 - cross30_idx  # 돌파 며칠 전인지
-            # 전환선 관련 필드 초기화 (UI 호환)
-            signals["tenkan_slope_turned"] = False
-            signals["tenkan_slope_val"]    = 0.0
-            # ── 필수 조건: 주봉 RSI(20) 다이버전스 동시 충족 ────────
-            # 일봉 다이버전스만으로는 노이즈 많음 → 주봉도 같은 방향이어야 신뢰도 높음
+            signals["ma240_cross_days_ago"] = n - 1 - ma240_cross_idx
+            signals["tenkan_slope_turned"]  = False
+            signals["tenkan_slope_val"]     = 0.0
+            signals["rsi30_cross_days_ago"] = 0
+
+            # ── 주봉 RSI 방향 확인 (가산점용) ──
             try:
                 weekly = yf.Ticker(symbol).history(period="2y", interval="1wk", auto_adjust=False).dropna(subset=["Close"])
                 if len(weekly) >= 25:
@@ -2069,7 +2086,6 @@ class KoreanStockSurgeDetector:
                     w_close = weekly["Close"].reindex(w_rsi.index).values
                     w_div = False
                     if len(w_vals) >= 10:
-                        # 최근 12주 저점 vs 이전 24주 저점 (윈도우 확대)
                         w_recent_low_idx = int(np.argmin(w_close[-12:])) + len(w_close) - 12
                         w_prev_window_close = w_close[-36:-12]
                         w_prev_window_rsi   = w_vals[-36:-12]
@@ -2086,110 +2102,105 @@ class KoreanStockSurgeDetector:
                     signals["weekly_rsi_div"]    = w_div
                 else:
                     w_div = False
-                    signals["weekly_rsi"]        = 50
-                    signals["weekly_rsi_bull"]   = False
-                    signals["weekly_rsi_slope"]  = 0
-                    signals["weekly_rsi_rising"] = False
-                    signals["weekly_rsi_div"]    = False
+                    signals.update({"weekly_rsi": 50, "weekly_rsi_bull": False,
+                                    "weekly_rsi_slope": 0, "weekly_rsi_rising": False, "weekly_rsi_div": False})
             except:
                 w_div = False
-                signals["weekly_rsi"]        = 50
-                signals["weekly_rsi_bull"]   = False
-                signals["weekly_rsi_slope"]  = 0
-                signals["weekly_rsi_rising"] = False
-                signals["weekly_rsi_div"]    = False
+                signals.update({"weekly_rsi": 50, "weekly_rsi_bull": False,
+                                "weekly_rsi_slope": 0, "weekly_rsi_rising": False, "weekly_rsi_div": False})
 
-            # 주봉 필수 조건: 다이버전스 OR 주봉 RSI 상승 기울기 (둘 중 하나)
-            if not w_div and not signals.get("weekly_rsi_rising"):
-                return None
-
-            # 점수 계산 시작
+            # ── 점수 계산 ──
             score = 0
-            signals["div_price_drop"]   = round((t2[1] - t1[1]) / t1[1] * 100, 2)
-            signals["div_rsi_gain"]     = round(t2[2] - t1[2], 1)
-            signals["div_t1_rsi"]       = round(t1[2], 1)
-            signals["div_t2_rsi"]       = round(t2[2], 1)
-            signals["div_gap_days"]     = t2[0] - t1[0]
-            signals["vol_ratio_t2"]     = round(vol_ratio_t2, 2)
-            signals["vol_decreasing"]   = vol_decreasing
+            signals["div_price_drop"] = round((t2[1] - t1[1]) / t1[1] * 100, 2)
+            signals["div_rsi_gain"]   = round(t2[2] - t1[2], 1)
+            signals["div_t1_rsi"]     = round(t1[2], 1)
+            signals["div_t2_rsi"]     = round(t2[2], 1)
+            signals["div_gap_days"]   = t2[0] - t1[0]
+            signals["vol_ratio_t2"]   = round(vol_ratio_t2, 2)
+            signals["vol_decreasing"] = vol_decreasing
 
             score += 10  # 일봉 다이버전스 기본
-            score += 8   # 주봉 다이버전스 추가 (필수 통과 보상)
-            if vol_decreasing: score += 3
-            if t2[2] - t1[2] >= 5: score += 3
-            elif t2[2] - t1[2] >= 3: score += 1
-            if t1[2] <= 35 and t2[2] <= 35: score += 3
-            if signals["weekly_rsi_bull"]:   score += 3
-            if signals["weekly_rsi_rising"]: score += 2
+            score += 8   # 240일선 돌파 (필수 통과 보상)
 
-            # [+2] OBV 상승 (두 번째 저점 이후)
+            # 240선 돌파 후 경과일 가산 (최근일수록 높은 점수)
+            cross_days = signals["ma240_cross_days_ago"]
+            if cross_days <= 5:    score += 5
+            elif cross_days <= 15: score += 3
+            elif cross_days <= 30: score += 1
+
+            # 240선 이격 가산 (작을수록 좋음)
+            if ma240_gap <= 2:   score += 3
+            elif ma240_gap <= 5: score += 1
+
+            if vol_decreasing:                   score += 3
+            if t2[2] - t1[2] >= 5:              score += 3
+            elif t2[2] - t1[2] >= 3:            score += 1
+            if t1[2] <= 35 and t2[2] <= 35:     score += 3
+            if signals["weekly_rsi_bull"]:       score += 3
+            if signals["weekly_rsi_rising"]:     score += 2
+            if w_div:                            score += 4
+
+            # OBV 상승
             obv = self._obv(data)
             obv_after = obv.iloc[t2[0]:]
             signals["obv_rising"] = len(obv_after) > 1 and float(obv_after.iloc[-1]) > float(obv_after.iloc[0])
             if signals["obv_rising"]: score += 2
 
-            # [+2] 이평선 정배열 시작
-            ma5  = close.rolling(5).mean()
+            # 이평선 정배열
+            ma5    = close.rolling(5).mean()
             ma20_s = close.rolling(20).mean()
             ma60_s = close.rolling(60).mean()
             signals["ma_align"] = bool(ma5.iloc[-1] > ma20_s.iloc[-1] > ma60_s.iloc[-1])
             if signals["ma_align"]: score += 2
 
-            # [+2] 거래량 최근 증가 (반등 확인)
+            # 거래량 최근 증가
             vol_ma20 = vol.rolling(20).mean()
             recent_vr = float(vol.iloc[-5:].mean() / vol_ma20.iloc[-1]) if vol_ma20.iloc[-1] > 0 else 0
             signals["recent_vol"] = recent_vr >= 1.3
             if signals["recent_vol"]: score += 2
 
-            # [+5] RSI 30선 돌파 (이미 필수 통과) + 돌파 타이밍 가산
-            days_ago = signals["rsi30_cross_days_ago"]
-            if days_ago == 0:   score += 5   # 오늘 돌파
-            elif days_ago <= 2: score += 4   # 1~2일 전
-            else:               score += 3   # 3~4일 전
-
             signals["rsi"]         = round(cur_rsi, 1)
             signals["current_rsi"] = round(cur_rsi, 1)
 
-            ma240 = close.rolling(240).mean()
-            ma240_v = float(ma240.iloc[-1]) if not pd.isna(ma240.iloc[-1]) else None
-
             return {
-                "symbol":           symbol,
-                "name":             STOCK_NAMES.get(symbol, symbol),
-                "current_price":    current,
-                "price_change_1d":  round((current - float(close.iloc[-2])) / float(close.iloc[-2]) * 100, 2),
-                "ma240":            round(ma240_v, 0) if ma240_v else None,
-                "ma240_gap":        round((current - ma240_v) / ma240_v * 100, 2) if ma240_v else None,
-                "total_score":      score,
-                "raw_score":        score,
-                "signals":          signals,
-                "rsi":              round(cur_rsi, 1),
-                "div_price_drop":   signals["div_price_drop"],
-                "div_rsi_gain":     signals["div_rsi_gain"],
-                "div_t1_rsi":       signals["div_t1_rsi"],
-                "div_t2_rsi":       signals["div_t2_rsi"],
-                "div_gap_days":     signals["div_gap_days"],
-                "vol_decreasing":   vol_decreasing,
-                "rsi_rebounding":   cur_rsi > t2[2] + 5,
-                "weekly_rsi":       signals.get("weekly_rsi", 50),
-                "weekly_rsi_bull":  signals.get("weekly_rsi_bull", False),
-                "weekly_rsi_rising":signals.get("weekly_rsi_rising", False),
-                "weekly_rsi_div":      signals.get("weekly_rsi_div", False),
-                "obv_rising":         signals["obv_rising"],
-                "tenkan_slope_turned":  signals.get("tenkan_slope_turned", False),
-                "tenkan_slope_val":     signals.get("tenkan_slope_val", 0.0),
-                "rsi30_cross_days_ago": signals.get("rsi30_cross_days_ago", 0),
-                "scan_type":          "divergence",
-                "close_series":     close,
-                "high_series":      high,
-                "low_series":       low,
-                "open_series":      data["Open"],
-                "ma240_series":     ma240,
-                "ma60_series":      ma60_s,
-                "ma20_series":      ma20_s,
-                "rsi_series":       rsi,
-                "volume_series":    vol,
-                "vol_ma_series":    vol_ma20,
+                "symbol":               symbol,
+                "name":                 STOCK_NAMES.get(symbol, symbol),
+                "current_price":        current,
+                "price_change_1d":      round((current - float(close.iloc[-2])) / float(close.iloc[-2]) * 100, 2),
+                "ma240":                round(ma240_v, 0),
+                "ma240_gap":            round(ma240_gap, 2),
+                "total_score":          score,
+                "raw_score":            score,
+                "signals":              signals,
+                "rsi":                  round(cur_rsi, 1),
+                "div_price_drop":       signals["div_price_drop"],
+                "div_rsi_gain":         signals["div_rsi_gain"],
+                "div_t1_rsi":           signals["div_t1_rsi"],
+                "div_t2_rsi":           signals["div_t2_rsi"],
+                "div_gap_days":         signals["div_gap_days"],
+                "vol_decreasing":       vol_decreasing,
+                "rsi_rebounding":       cur_rsi > t2[2] + 5,
+                "weekly_rsi":           signals.get("weekly_rsi", 50),
+                "weekly_rsi_bull":      signals.get("weekly_rsi_bull", False),
+                "weekly_rsi_rising":    signals.get("weekly_rsi_rising", False),
+                "weekly_rsi_div":       signals.get("weekly_rsi_div", False),
+                "obv_rising":           signals["obv_rising"],
+                "tenkan_slope_turned":  False,
+                "tenkan_slope_val":     0.0,
+                "rsi30_cross_days_ago": 0,
+                "ma240_cross_days_ago": signals["ma240_cross_days_ago"],
+                "div_t2_low":           t2_low,  # 다이버전스 t2 저점 저가 (손절가 기준)
+                "scan_type":            "divergence",
+                "close_series":         close,
+                "high_series":          high,
+                "low_series":           low,
+                "open_series":          data["Open"],
+                "ma240_series":         ma240,
+                "ma60_series":          ma60_s,
+                "ma20_series":          ma20_s,
+                "rsi_series":           rsi,
+                "volume_series":        vol,
+                "vol_ma_series":        vol_ma20,
             }
         except Exception:
             return None
