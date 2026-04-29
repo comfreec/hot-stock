@@ -861,7 +861,7 @@ def send_weekly_summary(force: bool = False):
 
         # 전체 누적 통계
         perf       = get_performance_summary()
-        history    = get_alert_history(200)
+        history    = get_alert_history(500)
         today      = date.today()
         week_start = today - timedelta(days=today.weekday())
         week_start_str = week_start.isoformat()
@@ -931,7 +931,8 @@ def send_weekly_summary(force: bool = False):
                             bar = ("🟩" if ret >= 0 else "🟥") * filled + "⬜" * (8 - filled)
                         cur_line = f"\n   {bar}  ₩{cur:,.0f}  <b>({ret:+.1f}%)</b>"
                 except:
-                    pass
+                    if base_price and h.get("target_price") and h.get("stop_price"):
+                        cur_line = f"\n   {'⬜' * 8}  (현재가 조회 중)"
                 lines.append(
                     f"📌 <b>{h['name']}</b>  {split_icons}\n"
                     f"   평단가 {avg_str}  🎯{target_str}  🛑{stop_str}"
