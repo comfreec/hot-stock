@@ -216,34 +216,78 @@ def update_alert_status():
         # ── trade_orders에서 avg_price / split_step 동기화 ──────────
         try:
             trade_rows = conn.execute("""
-                SELECT symbol, avg_price, split_step, stop_price FROM trade_orders
+                SELECT symbol, name, avg_price, split_step, stop_price, target_price, entry_price, alert_date
+                FROM trade_orders
                 WHERE status IN ('active','hit_target','hit_stop')
                   AND avg_price > 0
             """).fetchall()
-            for sym, avg_p, step, stop_p in trade_rows:
-                conn.execute("""
-                    UPDATE alert_history SET avg_price=?, split_step=?, stop_price=?
-                    WHERE symbol=? AND status IN ('pending','active')
-                """, (avg_p, step or 1, stop_p, sym))
+            for sym, name, avg_p, step, stop_p, target_p, entry_p, alert_date in trade_rows:
+                existing = conn.execute(
+                    "SELECT id FROM alert_history WHERE symbol=? AND status IN ('pending','active')",
+                    (sym,)
+                ).fetchone()
+                if existing:
+                    conn.execute("""
+                        UPDATE alert_history SET avg_price=?, split_step=?, stop_price=?
+                        WHERE symbol=? AND status IN ('pending','active')
+                    """, (avg_p, step or 1, stop_p, sym))
+                else:
+                    # alert_history에 없는 종목 → 신규 삽입
+                    conn.execute("""
+                        INSERT OR IGNORE INTO alert_history
+                        (alert_date, symbol, name, score, entry_price, entry_label,
+                         target_price, stop_price, rr_ratio, status, avg_price, split_step, created_at)
+                        VALUES (?,?,?,0,?,?,?,?,NULL,'active',?,?,?)
+                    """, (
+                        alert_date or date.today().isoformat(),
+                        sym, name or sym,
+                        int(entry_p or avg_p), "자동매매",
+                        int(target_p or 0), int(stop_p or 0),
+                        avg_p, step or 1,
+                        datetime.now().isoformat()
+                    ))
             conn.commit()
-        except Exception:
+        except Exception as e:
+            print(f"[동기화] trade_orders 동기화 오류: {e}")
             pass  # trade_orders 없는 환경(스캔 전용)이면 스킵
 
         # ── trade_orders_multi에서도 동기화 ─────────────────────────
         try:
             multi_rows = conn.execute("""
-                SELECT symbol, avg_price, split_step FROM trade_orders_multi
+                SELECT symbol, name, avg_price, split_step, stop_price, target_price, entry_price, alert_date
+                FROM trade_orders_multi
                 WHERE status IN ('active','hit_target','hit_stop')
                   AND avg_price > 0
             """).fetchall()
-            for sym, avg_p, step in multi_rows:
-                conn.execute("""
-                    UPDATE alert_history SET avg_price=?, split_step=?
-                    WHERE symbol=? AND status IN ('pending','active')
-                      AND (avg_price IS NULL OR avg_price = 0)
-                """, (avg_p, step or 1, sym))
+            for sym, name, avg_p, step, stop_p, target_p, entry_p, alert_date in multi_rows:
+                # alert_history에 해당 종목이 있으면 avg_price/split_step/stop_price 동기화
+                existing = conn.execute(
+                    "SELECT id FROM alert_history WHERE symbol=? AND status IN ('pending','active')",
+                    (sym,)
+                ).fetchone()
+                if existing:
+                    conn.execute("""
+                        UPDATE alert_history SET avg_price=?, split_step=?, stop_price=?
+                        WHERE symbol=? AND status IN ('pending','active')
+                    """, (avg_p, step or 1, stop_p, sym))
+                else:
+                    # alert_history에 없는 종목 (자동매매로만 매수된 경우) → 신규 삽입
+                    conn.execute("""
+                        INSERT OR IGNORE INTO alert_history
+                        (alert_date, symbol, name, score, entry_price, entry_label,
+                         target_price, stop_price, rr_ratio, status, avg_price, split_step, created_at)
+                        VALUES (?,?,?,0,?,?,?,?,NULL,'active',?,?,?)
+                    """, (
+                        alert_date or date.today().isoformat(),
+                        sym, name or sym,
+                        int(entry_p or avg_p), "자동매매",
+                        int(target_p or 0), int(stop_p or 0),
+                        avg_p, step or 1,
+                        datetime.now().isoformat()
+                    ))
             conn.commit()
-        except Exception:
+        except Exception as e:
+            print(f"[동기화] trade_orders_multi 동기화 오류: {e}")
             pass
 
         rows = conn.execute("""
@@ -288,9 +332,9 @@ def update_alert_status():
                 day_high = float(df["High"].iloc[-1])
 
                 if status == 'pending':
-                    # 전날 저가가 매수가 이하면 진입 확인
-                    prev_low = float(df["Low"].iloc[-1])
-                    if prev_low <= entry:
+                    # 5일 내 저가가 매수가 이하인 날이 있으면 진입 확인 (오늘 포함)
+                    min_low_5d = float(df["Low"].min())
+                    if min_low_5d <= entry:
                         conn.execute("UPDATE alert_history SET status='active' WHERE id=?", (rid,))
                         status = 'active'
 

@@ -193,7 +193,8 @@ if service == "📡 주식":
         sys.path.remove(us_dir)
     for mod_name in list(sys.modules.keys()):
         if "crypto_surge" in mod_name or "us_stock" in mod_name or \
-           mod_name in ("cache_db", "telegram_alert", "crypto_surge_detector", "symbols", "us_stock_detector"):
+           mod_name in ("cache_db", "telegram_alert", "crypto_surge_detector",
+                        "symbols", "us_stock_detector", "scheduler"):
             sys.modules.pop(mod_name, None)
     _run_app("app.py")
 elif service == "₿ 코인":
