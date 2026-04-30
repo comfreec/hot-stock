@@ -567,6 +567,27 @@ class KoreanStockSurgeDetector:
             if days_since_ob_exit < 5:
                 return None
 
+            # ── 첫 번째 70 이탈 이후 재돌파 필터 ────────────────────
+            # 70 이탈 후 10일 이후에 다시 70을 돌파했다가 이탈한 종목 제외
+            # (첫 번째 사이클만 유효한 신호로 인정)
+            rsi_after_exit = rsi_vals[overbought_exit + 1:]
+            _re_overbought = False   # 재돌파 여부
+            _re_exit       = False   # 재이탈 여부
+            _re_ob_idx     = None
+            for _i, _rv in enumerate(rsi_after_exit):
+                if not _re_overbought:
+                    if _rv >= 70:
+                        # 첫 이탈 후 10일 이후에 재돌파한 경우만 필터
+                        if _i >= 10:
+                            _re_overbought = True
+                            _re_ob_idx = _i
+                else:
+                    if _rv < 70:
+                        _re_exit = True
+                        break
+            if _re_overbought and _re_exit:
+                return None  # 재돌파+재이탈 사이클 존재 → 제외
+
             # ── 개선1: 주봉 RSI 방향 필터 ───────────────────────
             # 일봉 눌림목인데 주봉 RSI가 하락 중이면 제외 (노이즈 신호 차단)
             try:
