@@ -516,7 +516,7 @@ def _run_scan_job():
         from stock_surge_detector import KoreanStockSurgeDetector
         from telegram_alert import send_scan_alert
         det = KoreanStockSurgeDetector(max_gap_pct=7, min_below_days=60, max_cross_days=90)
-        det._ob_days = 180  # 70이탈 후 사이클 만료 기간
+        det._ob_days = 30  # 70이탈 후 사이클 만료 기간
         results = det.analyze_all_stocks()
         results = [r for r in results if r.get("total_score", 0) >= 40]
         if results:

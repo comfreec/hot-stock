@@ -39,7 +39,7 @@ def run_scan():
         log(f"스캔 전략: {scan_mode}")
 
         det = KoreanStockSurgeDetector(max_gap_pct=7, min_below_days=60, max_cross_days=90)
-        det._ob_days = 90  # R-cycle 70이탈 후 최대 경과일
+        det._ob_days = 30  # R-cycle 70이탈 후 최대 경과일
         det._rc_below = 0  # 장기선 아래 진행 기간 제한 없음
 
         if scan_mode == "classic":
