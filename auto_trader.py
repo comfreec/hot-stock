@@ -1201,6 +1201,11 @@ def monitor_positions():
     balance = _get_cached_balance(client)
     actual_holdings = balance.get("holdings", {})  # {code: {qty, avg_price, ...}}
 
+    # ── 잔고 조회 실패 감지 ───────────────────────────────────────
+    # holdings가 비어있으면 API 오류 가능성 → 수동매도 감지 로직 비활성화
+    # (장 시작 직후, 모의투자 등에서 잔고 조회가 빈 응답 반환하는 경우 방지)
+    _holdings_valid = bool(actual_holdings)
+
     for order in orders:
         symbol = order["symbol"]
         code   = symbol.replace(".KS", "").replace(".KQ", "")
@@ -1282,8 +1287,9 @@ def monitor_positions():
             except Exception as _se:
                 print(f"[자동매매] {order['name']} 매도 미체결 확인 오류: {_se}")
 
-        if actual_qty == 0 and cur is not None:
+        if actual_qty == 0 and cur is not None and _holdings_valid:
             # 가격은 조회되는데 잔고가 0 → 전량 수동 매도된 경우
+            # (_holdings_valid=False면 잔고 조회 실패이므로 스킵)
             ret = (cur - avg_price) / avg_price * 100 if avg_price else 0
             _update_order(order["id"],
                 status="expired", exit_price=int(cur),
@@ -1299,7 +1305,7 @@ def monitor_positions():
             )
             continue
 
-        if actual_qty < qty:
+        if actual_qty < qty and _holdings_valid:
             # 일부 매도된 경우 → DB qty를 실제 수량으로 업데이트
             print(f"[자동매매] {order['name']} 수량 불일치 DB:{qty}주 → 실제:{actual_qty}주 보정")
             _update_order(order["id"], qty=actual_qty)
@@ -1310,7 +1316,7 @@ def monitor_positions():
                 f"DB {order['qty']}주 → 실제 {actual_qty}주로 업데이트\n"
                 f"(일부 수동 매도 감지)"
             )
-        elif actual_qty > qty:
+        elif actual_qty > qty and _holdings_valid:
             # 유저가 직접 추가 매수한 경우 → 실제 수량/평단가로 업데이트
             actual_avg = actual_holdings.get(code, {}).get("avg_price", avg_price)
             print(f"[자동매매] {order['name']} 추가 매수 감지 DB:{qty}주 → 실제:{actual_qty}주 보정")
