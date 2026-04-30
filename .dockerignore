@@ -24,6 +24,7 @@ _check_*.py
 !_fly_sync_now.py
 !_fly_fix_hs.py
 !_check_jongkeundang.py
+!_check_scheduler_log.py
 !_restore_and_report.py
 !_resend_weekly_now.py
 !_resend_trade_report_now.py
