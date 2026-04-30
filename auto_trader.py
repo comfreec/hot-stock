@@ -1240,6 +1240,11 @@ def monitor_positions():
         avg_price  = order.get("avg_price", entry) or entry
         trigger2   = order.get("trigger2") or int(base_price * 0.98)
         trigger3   = order.get("trigger3") or int(base_price * 0.96)
+        # trigger가 base_price 이상이면 비정상 (저장 오류) → 강제 재계산
+        if trigger2 >= base_price:
+            trigger2 = int(base_price * 0.98)
+        if trigger3 >= base_price:
+            trigger3 = int(base_price * 0.96)
 
         # ── 실제 보유 수량 확인 (유저 임의 매도 대비) ────────────
         actual_qty = actual_holdings.get(code, {}).get("qty", 0)

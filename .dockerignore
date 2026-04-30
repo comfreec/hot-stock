@@ -26,6 +26,7 @@ _check_*.py
 !_check_jongkeundang.py
 !_check_scheduler_log.py
 !_check_selvas.py
+!_fix_selvas_avg.py
 !_restore_and_report.py
 !_resend_weekly_now.py
 !_resend_trade_report_now.py
