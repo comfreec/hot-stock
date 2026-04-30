@@ -1317,25 +1317,21 @@ def monitor_positions():
                 f"(일부 수동 매도 감지)"
             )
         elif actual_qty > qty and _holdings_valid:
-            # 유저가 직접 추가 매수한 경우 → 실제 수량/평단가로 업데이트
+            # 분할매수 직후 잔고 캐시 지연으로 인한 오탐 방지:
+            # split_step > 1이면 분할매수로 인한 정상 증가 → DB만 보정, 알림 생략
             actual_avg = actual_holdings.get(code, {}).get("avg_price", avg_price)
-            print(f"[자동매매] {order['name']} 추가 매수 감지 DB:{qty}주 → 실제:{actual_qty}주 보정")
+            print(f"[자동매매] {order['name']} 수량 증가 DB:{qty}주 → 실제:{actual_qty}주 (step={split_step})")
             _update_order(order["id"], qty=actual_qty, avg_price=round(actual_avg, 2))
             qty = actual_qty
             avg_price = actual_avg
-            _send_admin(
-                f"ℹ️ <b>추가 매수 감지</b>\n"
-                f"<b>{order['name']}</b> ({symbol})\n"
-                f"DB {order['qty']}주 → 실제 {actual_qty}주로 업데이트\n"
-                f"평단가 ₩{actual_avg:,.0f}"
-            )
-            qty = actual_qty  # 이후 로직에 실제 수량 반영
-            _send_admin(
-                f"⚠️ <b>수량 불일치 보정</b>\n"
-                f"<b>{order['name']}</b> ({symbol})\n"
-                f"DB {order['qty']}주 → 실제 {actual_qty}주로 업데이트\n"
-                f"(일부 수동 매도 감지)"
-            )
+            if split_step <= 1:
+                # 분할매수가 아닌 외부 추가 매수인 경우만 알림
+                _send_admin(
+                    f"ℹ️ <b>추가 매수 감지</b>\n"
+                    f"<b>{order['name']}</b> ({symbol})\n"
+                    f"DB {order['qty']}주 → 실제 {actual_qty}주로 업데이트\n"
+                    f"평단가 ₩{actual_avg:,.0f}"
+                )
 
         # ── 손절가 도달 시 분할매수 트리거보다 우선 처리 ────────────
         cfg = _cfg()
@@ -1394,6 +1390,7 @@ def monitor_positions():
                     avg_price=round(new_avg, 2), qty=qty + add_qty,
                     step2_price=round(cur, 2), step2_qty=add_qty,
                 )
+                _invalidate_balance_cache()  # 분할매수 후 잔고 캐시 즉시 무효화
                 print(f"[자동매매] {order['name']} 2차 매수 {add_qty}주 @{cur:,.0f}")
                 _send_admin(
                     f"📥 <b>2차 분할매수</b>  <b>{order['name']}</b>\n"
@@ -1425,6 +1422,7 @@ def monitor_positions():
                     avg_price=round(new_avg, 2), qty=qty + add_qty,
                     step3_price=round(cur, 2), step3_qty=add_qty,
                 )
+                _invalidate_balance_cache()  # 분할매수 후 잔고 캐시 즉시 무효화
                 print(f"[자동매매] {order['name']} 3차 매수 {add_qty}주 @{cur:,.0f}")
                 _send_admin(
                     f"📥 <b>3차 분할매수 완료</b>  <b>{order['name']}</b>\n"
