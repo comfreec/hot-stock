@@ -222,30 +222,32 @@ def main():
             _save_state({"last_scan_date": last_scan_date, "last_perf_date": last_perf_date,
                          "last_crypto_hour": last_crypto_hour, "last_reorder_date": last_reorder_date})
 
-            if os.environ.get("KIS_APP_KEY"):
-                try:
-                    from auto_trader import morning_reorder, place_orders
-                    from cache_db import load_scan
-                    import pandas as _pd
-                    from datetime import timedelta as _td
+            try:
+                from auto_trader import morning_reorder, place_orders, get_active_modes
+                from cache_db import load_scan
+                from datetime import timedelta as _td
 
-                    morning_reorder()
-                    log("[자동매매] 재주문 완료")
+                yesterday = (now_kst.date() - _td(days=1)).isoformat()
+                prev_results = load_scan(yesterday)
 
-                    yesterday = (now_kst.date() - _td(days=1)).isoformat()
-                    prev_results = load_scan(yesterday)
-                    if prev_results:
-                        place_orders(prev_results)
-                        log(f"[자동매매] 전날 스캔 {len(prev_results)}개 → 신규 매수 주문")
-                    else:
-                        log("[자동매매] 전날 스캔 결과 없음")
-                except Exception as e:
-                    log(f"[자동매매] 오류: {e}")
+                for _mode in get_active_modes():
                     try:
-                        from auto_trader import _send_admin
-                        _send_admin(f"⚠️ <b>자동매매 오류</b>\n{e}")
-                    except:
-                        pass
+                        morning_reorder(_mode)
+                        log(f"[자동매매/{_mode}] 재주문 완료")
+                        if prev_results:
+                            place_orders(prev_results, _mode)
+                            log(f"[자동매매/{_mode}] 전날 스캔 {len(prev_results)}개 → 신규 매수 주문")
+                        else:
+                            log(f"[자동매매/{_mode}] 전날 스캔 결과 없음")
+                    except Exception as e:
+                        log(f"[자동매매/{_mode}] 오류: {e}")
+                        try:
+                            from auto_trader import _send_admin
+                            _send_admin(f"⚠️ <b>자동매매/{_mode} 오류</b>\n{e}")
+                        except:
+                            pass
+            except Exception as e:
+                log(f"[자동매매] 초기화 오류: {e}")
 
             # 멀티유저 재주문 + 신규 주문
             try:
@@ -267,33 +269,36 @@ def main():
             _save_state({"last_scan_date": last_scan_date, "last_perf_date": last_perf_date,
                          "last_crypto_hour": last_crypto_hour, "last_reorder_date": last_reorder_date})
             run_performance()
-            # 자동매매 잔고 검증 (DB ↔ 실제 잔고 일치 확인)
-            if os.environ.get("KIS_APP_KEY"):
-                try:
-                    from auto_trader import verify_positions
-                    verify_positions()
-                    log("[자동매매] 잔고 검증 완료")
-                except Exception as e:
-                    log(f"[자동매매] 잔고 검증 오류: {e}")
-            # 자동매매 전용 리포트
-            if os.environ.get("KIS_APP_KEY"):
-                try:
-                    from auto_trader import send_trade_report
-                    send_trade_report()
-                    log("[자동매매] 리포트 전송 완료")
-                except Exception as e:
-                    log(f"[자동매매] 리포트 오류: {e}")
+            try:
+                from auto_trader import verify_positions, send_trade_report, get_active_modes
+                for _mode in get_active_modes():
+                    try:
+                        verify_positions(_mode)
+                        log(f"[자동매매/{_mode}] 잔고 검증 완료")
+                    except Exception as e:
+                        log(f"[자동매매/{_mode}] 잔고 검증 오류: {e}")
+                    try:
+                        send_trade_report(_mode)
+                        log(f"[자동매매/{_mode}] 리포트 전송 완료")
+                    except Exception as e:
+                        log(f"[자동매매/{_mode}] 리포트 오류: {e}")
+            except Exception as e:
+                log(f"[자동매매] 리포트 초기화 오류: {e}")
 
-        # 장중 모니터링 09:05~15:30 KST (자동매매 활성화 시)
-        if is_weekday and os.environ.get("KIS_APP_KEY"):
+        # 장중 모니터링 09:05~15:30 KST
+        if is_weekday:
             h, m = now_kst.hour, now_kst.minute
             in_market = (h == 9 and m >= 5) or (10 <= h <= 14) or (h == 15 and m <= 20)
             if in_market:
                 try:
-                    from auto_trader import monitor_positions
-                    monitor_positions()
+                    from auto_trader import monitor_positions, get_active_modes
+                    for _mode in get_active_modes():
+                        try:
+                            monitor_positions(_mode)
+                        except Exception as e:
+                            log(f"[자동매매/{_mode}] 모니터링 오류: {e}")
                 except Exception as e:
-                    log(f"[자동매매] 모니터링 오류: {e}")
+                    log(f"[자동매매] 모니터링 초기화 오류: {e}")
 
         # 멀티유저 장중 모니터링 (KIS_APP_KEY 없어도 독립 실행)
         if is_weekday:

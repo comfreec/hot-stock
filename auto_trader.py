@@ -14,19 +14,42 @@ from zoneinfo import ZoneInfo
 KST = ZoneInfo("Asia/Seoul")
 
 # ── 환경변수 ──────────────────────────────────────────────────────
-def _cfg():
+# ── 환경변수 ──────────────────────────────────────────────────────
+def _cfg(mode: str = "mock") -> dict:
+    """mode: 'mock' = 모의투자, 'real' = 실전투자"""
+    if mode == "real":
+        return {
+            "app_key":    os.environ.get("KIS_REAL_APP_KEY", ""),
+            "app_secret": os.environ.get("KIS_REAL_APP_SECRET", ""),
+            "account":    os.environ.get("KIS_REAL_ACCOUNT", ""),
+            "mock":       False,
+            "max_stocks": int(os.environ.get("KIS_REAL_MAX_STOCKS", "3")),
+            "budget_per": int(os.environ.get("KIS_REAL_BUDGET_PER", "300000")),
+            "max_days":   int(os.environ.get("KIS_MAX_DAYS", "5")),
+        }
     return {
         "app_key":    os.environ.get("KIS_APP_KEY", ""),
         "app_secret": os.environ.get("KIS_APP_SECRET", ""),
-        "account":    os.environ.get("KIS_ACCOUNT", ""),      # 예: 50123456-01
-        "mock":       os.environ.get("KIS_MOCK", "1") == "1", # 1=모의투자, 0=실전
-        "max_stocks": int(os.environ.get("KIS_MAX_STOCKS", "3")),   # 최대 동시 보유 종목
-        "budget_per": int(os.environ.get("KIS_BUDGET_PER", "300000")), # 종목당 예산 (원)
-        "max_days":   int(os.environ.get("KIS_MAX_DAYS", "5")),     # 미체결 최대 유지일
+        "account":    os.environ.get("KIS_ACCOUNT", ""),
+        "mock":       os.environ.get("KIS_MOCK", "1") == "1",
+        "max_stocks": int(os.environ.get("KIS_MAX_STOCKS", "3")),
+        "budget_per": int(os.environ.get("KIS_BUDGET_PER", "300000")),
+        "max_days":   int(os.environ.get("KIS_MAX_DAYS", "5")),
     }
 
-def is_enabled() -> bool:
+def is_enabled(mode: str = "mock") -> bool:
+    if mode == "real":
+        return bool(os.environ.get("KIS_REAL_APP_KEY"))
     return bool(os.environ.get("KIS_APP_KEY"))
+
+def get_active_modes() -> list:
+    """활성화된 모드 목록 반환 ('mock', 'real' 중 설정된 것)"""
+    modes = []
+    if is_enabled("mock"):
+        modes.append("mock")
+    if is_enabled("real"):
+        modes.append("real")
+    return modes
 
 
 # ── API 한도 절약: 잔고 캐시 (5분에 1번만 조회) ─────────────────
@@ -156,8 +179,9 @@ class KISClient:
     REAL_BASE = "https://openapi.koreainvestment.com:9443"
     MOCK_BASE = "https://openapivts.koreainvestment.com:29443"
 
-    def __init__(self):
-        cfg = _cfg()
+    def __init__(self, mode: str = "mock"):
+        cfg = _cfg(mode)
+        self.mode       = mode
         self.app_key    = cfg["app_key"]
         self.app_secret = cfg["app_secret"]
         self.account    = cfg["account"]
@@ -570,7 +594,7 @@ def _get_trade_conn():
     conn = sqlite3.connect(db_path, check_same_thread=False, timeout=30)
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
-    conn.execute("PRAGMA busy_timeout=10000")  # DB 락 시 10초 대기
+    conn.execute("PRAGMA busy_timeout=10000")
     conn.execute("""
         CREATE TABLE IF NOT EXISTS trade_orders (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -583,24 +607,21 @@ def _get_trade_conn():
             qty         INTEGER NOT NULL,
             order_no    TEXT,
             status      TEXT DEFAULT 'pending',
-            -- pending / active / hit_target / hit_stop / expired / cancelled
             exit_price  INTEGER,
             exit_date   TEXT,
             return_pct  REAL,
             created_at  TEXT NOT NULL,
-            -- 분할매수 관련
-            split_step  INTEGER DEFAULT 1,   -- 현재 몇 차 매수 (1/2/3)
-            split_qty   INTEGER DEFAULT 0,   -- 총 체결 수량
-            avg_price   REAL DEFAULT 0,      -- 평균 매수가
-            base_price  INTEGER DEFAULT 0,   -- 1차 매수가 (2/3차 트리거 기준)
-            step2_price REAL DEFAULT 0,      -- 2차 실제 체결가
-            step2_qty   INTEGER DEFAULT 0,   -- 2차 체결 수량
-            step3_price REAL DEFAULT 0,      -- 3차 실제 체결가
-            step3_qty   INTEGER DEFAULT 0    -- 3차 체결 수량
+            split_step  INTEGER DEFAULT 1,
+            split_qty   INTEGER DEFAULT 0,
+            avg_price   REAL DEFAULT 0,
+            base_price  INTEGER DEFAULT 0,
+            step2_price REAL DEFAULT 0,
+            step2_qty   INTEGER DEFAULT 0,
+            step3_price REAL DEFAULT 0,
+            step3_qty   INTEGER DEFAULT 0
         )
     """)
     conn.commit()
-    # 기존 DB에 컬럼 없으면 추가 (마이그레이션)
     existing_cols = [r[1] for r in conn.execute("PRAGMA table_info(trade_orders)").fetchall()]
     for col, typ, default in [
         ("split_step", "INTEGER", "1"), ("split_qty", "INTEGER", "0"),
@@ -608,8 +629,9 @@ def _get_trade_conn():
         ("trigger2",   "INTEGER", "0"), ("trigger3",  "INTEGER", "0"),
         ("step2_price","REAL",    "0"), ("step2_qty", "INTEGER", "0"),
         ("step3_price","REAL",    "0"), ("step3_qty", "INTEGER", "0"),
-        ("sell_order_no", "TEXT", "''"),  # 매도 주문번호 (미체결 확인용)
-        ("sell_order_ts", "TEXT", "''"),  # 매도 주문 시각
+        ("sell_order_no", "TEXT", "''"),
+        ("sell_order_ts", "TEXT", "''"),
+        ("mode", "TEXT", "'mock'"),  # 모의/실전 구분
     ]:
         if col not in existing_cols:
             conn.execute(f"ALTER TABLE trade_orders ADD COLUMN {col} {typ} DEFAULT {default}")
@@ -617,16 +639,16 @@ def _get_trade_conn():
     return conn
 
 
-def _get_pending_orders() -> list:
+def _get_pending_orders(mode: str = "mock") -> list:
     conn = _get_trade_conn()
     rows = conn.execute("""
         SELECT id, alert_date, symbol, name, entry_price, target_price, stop_price,
                qty, order_no, status, split_step, split_qty, avg_price, base_price,
                trigger2, trigger3, step2_price, step2_qty, step3_price, step3_qty,
                sell_order_no, sell_order_ts
-        FROM trade_orders WHERE status IN ('pending', 'active')
+        FROM trade_orders WHERE status IN ('pending', 'active') AND mode=?
         ORDER BY alert_date ASC
-    """).fetchall()
+    """, (mode,)).fetchall()
     conn.close()
     keys = ["id","alert_date","symbol","name","entry_price","target_price","stop_price",
             "qty","order_no","status","split_step","split_qty","avg_price","base_price",
@@ -674,15 +696,15 @@ def _calc_split_triggers(base_price: float, ma240: float) -> tuple:
 
 
 def _save_order(alert_date, symbol, name, entry_price, target_price, stop_price, qty, order_no,
-                split_step=1, base_price=0, trigger2=0, trigger3=0):
+                split_step=1, base_price=0, trigger2=0, trigger3=0, mode="mock"):
     conn = _get_trade_conn()
     existing = conn.execute(
-        "SELECT id FROM trade_orders WHERE symbol=? AND status IN ('pending','active')", (symbol,)
+        "SELECT id FROM trade_orders WHERE symbol=? AND status IN ('pending','active') AND mode=?",
+        (symbol, mode)
     ).fetchone()
     if existing:
         conn.close()
         return
-    # trigger2/trigger3 컬럼 마이그레이션
     existing_cols = [r[1] for r in conn.execute("PRAGMA table_info(trade_orders)").fetchall()]
     for col in ["trigger2", "trigger3"]:
         if col not in existing_cols:
@@ -691,53 +713,50 @@ def _save_order(alert_date, symbol, name, entry_price, target_price, stop_price,
     conn.execute("""
         INSERT INTO trade_orders
         (alert_date, symbol, name, entry_price, target_price, stop_price, qty, order_no, status,
-         split_step, split_qty, avg_price, base_price, trigger2, trigger3, created_at)
-        VALUES (?,?,?,?,?,?,?,?,'pending',?,?,?,?,?,?,?)
+         split_step, split_qty, avg_price, base_price, trigger2, trigger3, mode, created_at)
+        VALUES (?,?,?,?,?,?,?,?,'pending',?,?,?,?,?,?,?,?)
     """, (alert_date, symbol, name, entry_price, target_price, stop_price, qty, order_no,
           split_step, qty, float(entry_price), base_price or entry_price,
-          int(trigger2), int(trigger3), datetime.now().isoformat()))
+          int(trigger2), int(trigger3), mode, datetime.now().isoformat()))
     conn.commit()
     conn.close()
 
 
 # ── 핵심 함수 ─────────────────────────────────────────────────────
-def place_orders(results: list):
+def place_orders(results: list, mode: str = "mock"):
     """
     스캔 결과 기반 매수 주문 배치
-    - 이미 보유/대기 중인 종목 스킵
-    - 예산 내에서 수량 계산
-    - 지정가 매수 주문
+    mode: 'mock' = 모의투자, 'real' = 실전투자
     """
-    if not is_enabled():
+    if not is_enabled(mode):
         return
 
     # ── 장 시간 체크 ──────────────────────────────────────────────
     if not is_order_time():
         now = datetime.now(KST)
-        print(f"[자동매매] 주문 가능 시간 외 ({now.strftime('%H:%M')}) - 매수 주문 스킵")
+        print(f"[자동매매/{mode}] 주문 가능 시간 외 ({now.strftime('%H:%M')}) - 매수 주문 스킵")
         return
 
-    cfg    = _cfg()
-    client = KISClient()
+    cfg    = _cfg(mode)
+    client = KISClient(mode)
     today  = date.today().isoformat()
+    mode_tag = "🔵모의" if mode == "mock" else "🔴실전"
 
     # 현재 보유 종목 수 확인
-    pending = _get_pending_orders()
+    pending = _get_pending_orders(mode)
     active_count = len([o for o in pending if o["status"] in ("pending", "active")])
     if active_count >= cfg["max_stocks"]:
-        print(f"[자동매매] 최대 보유 종목 수 도달 ({active_count}/{cfg['max_stocks']}) - 신규 주문 스킵")
+        print(f"[자동매매/{mode}] 최대 보유 종목 수 도달 ({active_count}/{cfg['max_stocks']}) - 신규 주문 스킵")
         return
 
     balance = client.get_balance()
     cash    = balance.get("cash", 0)
     holdings = balance.get("holdings", {})
 
-    # 총 투자금 한도 체크 (예수금 기준)
-    total_budget = cfg["max_stocks"] * cfg["budget_per"]
     if cash < cfg["budget_per"]:
-        print(f"[자동매매] 예수금 부족 (₩{cash:,.0f}) - 주문 중단")
+        print(f"[자동매매/{mode}] 예수금 부족 (₩{cash:,.0f}) - 주문 중단")
         _send_admin(
-            f"⚠️ <b>예수금 부족 - 주문 중단</b>\n"
+            f"⚠️ {mode_tag} <b>예수금 부족 - 주문 중단</b>\n"
             f"현재 예수금: ₩{cash:,.0f}\n"
             f"종목당 필요 예산: ₩{cfg['budget_per']:,.0f}\n"
             f"→ 신규 매수 주문이 실행되지 않았습니다."
@@ -746,7 +765,6 @@ def place_orders(results: list):
 
     slots = cfg["max_stocks"] - active_count
     budget = cfg["budget_per"]
-    # 실제 사용 가능 예산 = min(종목당 예산, 예수금/남은슬롯)
     if slots > 0:
         budget = min(budget, int(cash / slots))
 
@@ -845,7 +863,7 @@ def place_orders(results: list):
             ma240 = _get_ma240(symbol)
             t2, t3 = _calc_split_triggers(entry, ma240) if ma240 else (int(entry * 0.98), int(entry * 0.96))
             _save_order(today, symbol, name, entry, target, stop, qty, order_no,
-                       split_step=1, base_price=entry, trigger2=t2, trigger3=t3)
+                       split_step=1, base_price=entry, trigger2=t2, trigger3=t3, mode=mode)
 
             # 시장가 주문 → 잠시 후 실제 체결가 조회 (2가지 방법 병행)
             time.sleep(2)
@@ -939,18 +957,17 @@ def place_orders(results: list):
             print(f"[자동매매] {name} 주문 실패: {result.get('error')}")
 
 
-def morning_reorder():
+def morning_reorder(mode: str = "mock"):
     """
     매일 09:05 실행 - 미체결 pending 주문 재주문
-    - 전날 미체결이면 취소 후 오늘 다시 지정가 주문
-    - max_days 초과 시 포기
+    mode: 'mock' = 모의투자, 'real' = 실전투자
     """
-    if not is_enabled():
+    if not is_enabled(mode):
         return
 
     # ── 재시작 중복 실행 방지 (오늘 이미 실행됐으면 스킵) ─────────
     import os as _os
-    lock_file = "/data/.morning_reorder_lock" if _os.path.isdir("/data") else ".morning_reorder_lock"
+    lock_file = f"/data/.morning_reorder_lock_{mode}" if _os.path.isdir("/data") else f".morning_reorder_lock_{mode}"
     today_str = date.today().isoformat()
     try:
         if _os.path.exists(lock_file):
@@ -967,10 +984,10 @@ def morning_reorder():
     except Exception:
         pass
 
-    cfg    = _cfg()
-    client = KISClient()
+    cfg    = _cfg(mode)
+    client = KISClient(mode)
     today  = date.today().isoformat()
-    pending = _get_pending_orders()
+    pending = _get_pending_orders(mode)
 
     for order in pending:
         if order["status"] != "pending":
@@ -1174,22 +1191,20 @@ def morning_reorder():
             print(f"[자동매매] 갭하락 체크 오류: {_ge}")
 
 
-def monitor_positions():
+def monitor_positions(mode: str = "mock"):
     """
     장중 모니터링 - 1분 간격 호출
-    - active 종목: 목표가/손절가 도달 시 매도
-    - pending 종목: 현재가 <= 매수가면 active로 전환
+    mode: 'mock' = 모의투자, 'real' = 실전투자
     """
-    if not is_enabled():
+    if not is_enabled(mode):
         return
 
-    # ── 장 시간 체크 ──────────────────────────────────────────────
     if not is_market_open():
         return
 
-    client  = KISClient()
+    client  = KISClient(mode)
     today   = date.today().isoformat()
-    orders  = _get_pending_orders()
+    orders  = _get_pending_orders(mode)
 
     if not orders:
         return
@@ -1591,48 +1606,47 @@ def check_scheduler_alive(max_minutes: int = 10) -> bool:
         return False
 
 
-def send_trade_report():
+def send_trade_report(mode: str = "mock"):
     """자동매매 전용 일일 리포트 - 가독성 최적화"""
-    if not is_enabled():
+    if not is_enabled(mode):
         return
     try:
-        client    = KISClient()
+        client    = KISClient(mode)
         conn      = _get_trade_conn()
+        mode_tag  = "🔵모의" if mode == "mock" else "🔴실전"
         today     = date.today().isoformat()
         today_fmt = date.today().strftime("%Y.%m.%d")
-        cfg       = _cfg()
-        mock_tag  = "[모의] " if cfg["mock"] else ""
+        cfg       = _cfg(mode)
 
-        # ── DB 조회 ───────────────────────────────────────────────
+        # ── DB 조회 (mode 필터 적용) ──────────────────────────────
         closed_today = conn.execute("""
             SELECT name, symbol, avg_price, exit_price, return_pct, status, split_step, qty
-            FROM trade_orders WHERE exit_date=? AND status IN ('hit_target','hit_stop')
-        """, (today,)).fetchall()
+            FROM trade_orders WHERE exit_date=? AND status IN ('hit_target','hit_stop') AND mode=?
+        """, (today, mode)).fetchall()
 
         active_rows = conn.execute("""
             SELECT id, name, symbol, avg_price, target_price, stop_price,
                    qty, split_step, entry_price, alert_date
-            FROM trade_orders WHERE status='active'
-        """).fetchall()
+            FROM trade_orders WHERE status='active' AND mode=?
+        """, (mode,)).fetchall()
 
         pending_rows = conn.execute("""
             SELECT name, symbol, entry_price, target_price, alert_date
-            FROM trade_orders WHERE status='pending'
-        """).fetchall()
+            FROM trade_orders WHERE status='pending' AND mode=?
+        """, (mode,)).fetchall()
 
         all_closed = conn.execute("""
             SELECT name, symbol, return_pct, status, exit_date
             FROM trade_orders
-            WHERE status IN ('hit_target','hit_stop') AND return_pct IS NOT NULL
-        """).fetchall()
+            WHERE status IN ('hit_target','hit_stop') AND return_pct IS NOT NULL AND mode=?
+        """, (mode,)).fetchall()
 
-        # 이번 달 손익
         month_start = date.today().strftime("%Y-%m-01")
         month_closed = conn.execute("""
             SELECT return_pct, avg_price, qty FROM trade_orders
             WHERE status IN ('hit_target','hit_stop')
-              AND exit_date >= ? AND return_pct IS NOT NULL
-        """, (month_start,)).fetchall()
+              AND exit_date >= ? AND return_pct IS NOT NULL AND mode=?
+        """, (month_start, mode)).fetchall()
         conn.close()
 
         # ── 잔고 조회 ─────────────────────────────────────────────
@@ -1688,7 +1702,7 @@ def send_trade_report():
         total_asset   = total_eval + cash
 
         # 전날 대비 손익 변화
-        prev_eval_file = "/data/.prev_eval" if os.path.isdir("/data") else ".prev_eval"
+        prev_eval_file = f"/data/.prev_eval_{mode}" if os.path.isdir("/data") else f".prev_eval_{mode}"
         prev_eval = 0
         try:
             with open(prev_eval_file) as f:
@@ -1714,7 +1728,7 @@ def send_trade_report():
         SEP2 = "─" * 16
 
         lines = [
-            f"🤖 {mock_tag}<b>자동매매 리포트</b>",
+            f"🤖 {mode_tag} <b>자동매매 리포트</b>",
             f"<i>{today_fmt}  {kospi_str}</i>",
             SEP,
         ]
@@ -1859,22 +1873,18 @@ def send_trade_report():
         import traceback; traceback.print_exc()
 
 
-def verify_positions():
+def verify_positions(mode: str = "mock"):
     """
     실제 KIS 잔고 vs DB 상태 검증 (매일 09:10 실행)
     불일치 발견 시 DB 자동 수정 + 개인 알림
-    케이스:
-      1) DB active/pending인데 실제 미보유 → DB를 cancelled로 수정
-      2) DB pending인데 실제 보유 중 → DB를 active로 수정 + 평단가 동기화
-      3) DB 수량 vs 실제 수량 불일치 → DB 수량 동기화
     """
-    if not is_enabled():
+    if not is_enabled(mode):
         return
 
     try:
-        client = KISClient()
+        client = KISClient(mode)
         balance = client.get_balance()
-        holdings = balance.get("holdings", {})  # {code: {qty, avg_price, ...}}
+        holdings = balance.get("holdings", {})
 
         # ── 잔고 조회 실패 시 검증 중단 (오탐 방지) ──────────────
         # holdings가 비어있고 cash도 0이면 API 오류로 판단
@@ -1886,7 +1896,8 @@ def verify_positions():
         conn = _get_trade_conn()
         db_orders = conn.execute(
             "SELECT id, symbol, name, status, qty, avg_price, entry_price FROM trade_orders "
-            "WHERE status IN ('pending', 'active')"
+            "WHERE status IN ('pending', 'active') AND mode=?",
+            (mode,)
         ).fetchall()
 
         issues = []
