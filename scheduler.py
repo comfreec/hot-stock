@@ -201,7 +201,12 @@ def main():
         now_kst = datetime.now(KST)
         now_utc = datetime.now(UTC)
         today   = now_kst.date().isoformat()
-        is_weekday = now_kst.weekday() < 5
+        # 평일 + 공휴일 아닌 날만 거래일로 처리
+        try:
+            from auto_trader import is_trading_day
+            is_weekday = is_trading_day()
+        except Exception:
+            is_weekday = now_kst.weekday() < 5
 
         # 02:00 KST DB 백업 (매일)
         if now_kst.hour == 2 and now_kst.minute >= 0 and now_kst.minute < 5 and last_backup_date != today:

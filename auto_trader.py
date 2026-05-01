@@ -79,9 +79,9 @@ def _get_price_yfinance_first(symbol: str, client=None) -> float | None:
 def _build_kr_holidays() -> set:
     year = date.today().year
     fixed = {
-        f"{year}-01-01", f"{year}-03-01", f"{year}-05-05",
-        f"{year}-06-06", f"{year}-08-15", f"{year}-10-03",
-        f"{year}-10-09", f"{year}-12-25",
+        f"{year}-01-01", f"{year}-03-01", f"{year}-05-01",  # 근로자의 날 추가
+        f"{year}-05-05", f"{year}-06-06", f"{year}-08-15",
+        f"{year}-10-03", f"{year}-10-09", f"{year}-12-25",
     }
     extra = os.environ.get("KR_HOLIDAYS_EXTRA", "")  # "2026-01-28,2026-01-29"
     if extra:
