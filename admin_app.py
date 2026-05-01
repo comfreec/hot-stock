@@ -576,9 +576,11 @@ print('OK: scan_mode =', '{_val}')
 2. **실전 계좌번호** 확인 (8자리-2자리)
 3. 아래 폼에서 KEY/SECRET/계좌번호 입력 + **KIS_MOCK = 0** 으로 변경
 4. 저장 버튼 클릭 → fly 자동 재시작 (~1분)
-> ⚠️ 실전 전환 후에는 실제 돈으로 주문이 실행됩니다!
+> ⚠️ 실전 전환 후에는 실제 주문이 실행됩니다!
         """)
 
+    # 모의투자 설정
+    st.markdown("##### 🔵 모의투자 설정")
     with st.form("env_form"):
         st.markdown("**🔑 KIS API 설정**")
         col1, col2 = st.columns(2)
@@ -612,7 +614,7 @@ print('OK: scan_mode =', '{_val}')
             new_days    = st.text_input("미체결 만료일 (거래일)",
                 value=os.environ.get("KIS_MAX_DAYS", "5"))
 
-        if st.form_submit_button("💾 Fly 환경변수 저장", type="primary"):
+        if st.form_submit_button("💾 모의투자 환경변수 저장", type="primary"):
             import subprocess
             with st.spinner("저장 중... (fly 재시작 약 1분 소요)"):
                 try:
@@ -634,6 +636,91 @@ print('OK: scan_mode =', '{_val}')
                         st.success(f"✅ 환경변수 저장 완료! [{mode_str}] fly 재시작 중...")
                         if new_mock[0] == "0":
                             st.warning("⚠️ 실전투자 모드로 전환됐습니다. 실제 주문이 실행됩니다!")
+                    else:
+                        st.error(f"❌ 실패: {r.stderr[:300]}")
+                except Exception as e:
+                    st.error(f"❌ 오류: {e}")
+
+    # 실전투자 설정
+    st.markdown("---")
+    st.markdown("##### 🔴 실전투자 설정")
+    st.caption("실전 앱키/시크릿/계좌번호를 입력하면 모의투자와 동시에 실전 자동매매가 활성화됩니다.")
+
+    _real_key_set = bool(os.environ.get("KIS_REAL_APP_KEY", ""))
+    if _real_key_set:
+        st.success("🔴 실전투자 활성화 중")
+    else:
+        st.info("⬜ 실전투자 비활성화 (앱키 미입력)")
+
+    with st.form("env_form_real"):
+        st.markdown("**🔑 실전 KIS API 설정**")
+        col1r, col2r = st.columns(2)
+        with col1r:
+            new_real_key     = st.text_input("실전 APP KEY", type="password",
+                placeholder="변경 시에만 입력 (비워두면 기존 유지)",
+                help="한국투자증권 실전투자 앱키")
+            new_real_account = st.text_input("실전 계좌번호",
+                value=os.environ.get("KIS_REAL_ACCOUNT", ""),
+                placeholder="50123456-01",
+                help="8자리-2자리 형식")
+        with col2r:
+            new_real_secret  = st.text_input("실전 APP SECRET", type="password",
+                placeholder="변경 시에만 입력 (비워두면 기존 유지)",
+                help="한국투자증권 실전투자 앱시크릿")
+
+        st.markdown("**💰 실전 매매 설정**")
+        col3r, col4r, col5r = st.columns(3)
+        with col3r:
+            new_real_budget = st.text_input("종목당 예산 (원)",
+                value=os.environ.get("KIS_REAL_BUDGET_PER", os.environ.get("KIS_BUDGET_PER", "1000000")),
+                help="1차 매수 시 종목당 예산")
+        with col4r:
+            new_real_stocks = st.text_input("최대 보유 종목",
+                value=os.environ.get("KIS_REAL_MAX_STOCKS", os.environ.get("KIS_MAX_STOCKS", "20")))
+        with col5r:
+            new_real_days   = st.text_input("미체결 만료일 (거래일)",
+                value=os.environ.get("KIS_MAX_DAYS", "7"))
+
+        col_save, col_del = st.columns(2)
+        with col_save:
+            save_real = st.form_submit_button("💾 실전투자 환경변수 저장", type="primary")
+        with col_del:
+            del_real = st.form_submit_button("🗑️ 실전투자 비활성화", type="secondary")
+
+        if save_real:
+            import subprocess
+            with st.spinner("저장 중... (fly 재시작 약 1분 소요)"):
+                try:
+                    args = ["flyctl", "secrets", "set", "--app", "hot-stock-app"]
+                    if new_real_key.strip():
+                        args.append(f"KIS_REAL_APP_KEY={new_real_key.strip()}")
+                    if new_real_secret.strip():
+                        args.append(f"KIS_REAL_APP_SECRET={new_real_secret.strip()}")
+                    if new_real_account.strip():
+                        args.append(f"KIS_REAL_ACCOUNT={new_real_account.strip()}")
+                    args.append(f"KIS_REAL_BUDGET_PER={new_real_budget.strip()}")
+                    args.append(f"KIS_REAL_MAX_STOCKS={new_real_stocks.strip()}")
+                    args.append(f"KIS_MAX_DAYS={new_real_days.strip()}")
+                    r = subprocess.run(args, capture_output=True, text=True, timeout=90)
+                    if r.returncode == 0:
+                        st.success("✅ 실전투자 환경변수 저장 완료! fly 재시작 중...")
+                        st.warning("⚠️ 실전투자가 활성화됩니다. 실제 돈으로 주문이 실행됩니다!")
+                    else:
+                        st.error(f"❌ 실패: {r.stderr[:300]}")
+                except Exception as e:
+                    st.error(f"❌ 오류: {e}")
+
+        if del_real:
+            import subprocess
+            with st.spinner("비활성화 중..."):
+                try:
+                    r = subprocess.run(
+                        ["flyctl", "secrets", "set", "--app", "hot-stock-app",
+                         "KIS_REAL_APP_KEY=", "KIS_REAL_APP_SECRET=", "KIS_REAL_ACCOUNT="],
+                        capture_output=True, text=True, timeout=90
+                    )
+                    if r.returncode == 0:
+                        st.success("✅ 실전투자 비활성화 완료")
                     else:
                         st.error(f"❌ 실패: {r.stderr[:300]}")
                 except Exception as e:
