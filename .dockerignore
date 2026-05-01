@@ -28,6 +28,7 @@ _check_*.py
 !_check_selvas.py
 !_check_trade_config.py
 !_fix_selvas_avg.py
+!_verify_sync.py
 !_restore_and_report.py
 !_resend_weekly_now.py
 !_resend_trade_report_now.py
