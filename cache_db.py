@@ -224,6 +224,7 @@ def update_alert_status():
                 FROM trade_orders
                 WHERE status IN ('active','pending','hit_target','hit_stop','expired','cancelled')
                   AND avg_price >= 0
+                  AND (mode IS NULL OR mode = 'mock')
                 ORDER BY id DESC
             """).fetchall()
 

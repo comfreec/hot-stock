@@ -887,6 +887,7 @@ def send_weekly_summary(force: bool = False):
                         SELECT symbol, name, avg_price, split_step, entry_price, target_price, stop_price, alert_date
                         FROM {tbl}
                         WHERE status IN ('active','pending') AND avg_price > 0
+                          AND (mode IS NULL OR mode = 'mock')
                     """).fetchall()
                     for sym, name, avg_p, step, entry_p, target_p, stop_p, alert_d in to_active:
                         if sym not in _seen:

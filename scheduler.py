@@ -108,7 +108,7 @@ def run_scan():
         traceback.print_exc()
 
 def run_db_backup():
-    """매일 새벽 2시 DB 백업 (7일치 보관) + 개인 알림"""
+    """매일 새벽 2시 DB 백업 (7일치 보관) + DB 정리 + 개인 알림"""
     if not os.path.isdir("/data"):
         return
     try:
@@ -119,11 +119,44 @@ def run_db_backup():
         today_str = _dt.now(KST).strftime("%Y%m%d")
         src = "/data/scan_cache.db"
         dst = f"{backup_dir}/scan_cache_{today_str}.db"
+
+        # ── DB 정리 (백업 전 실행) ────────────────────────────────
+        cleaned_msg = ""
+        try:
+            import sqlite3
+            conn = sqlite3.connect(src)
+            # 1. scan_results: 30일 이상 된 것 삭제
+            cutoff_scan = (_dt.now(KST).date() - __import__('datetime').timedelta(days=30)).isoformat()
+            r1 = conn.execute("DELETE FROM scan_results WHERE scan_date < ?", (cutoff_scan,))
+            # 2. alert_history: 종료된 것 중 90일 이상 된 것 삭제 (성과 통계 보존)
+            cutoff_alert = (_dt.now(KST).date() - __import__('datetime').timedelta(days=90)).isoformat()
+            r2 = conn.execute("""
+                DELETE FROM alert_history
+                WHERE status IN ('hit_target','hit_stop','expired','cancelled')
+                  AND alert_date < ?
+            """, (cutoff_alert,))
+            # 3. trade_orders: 종료된 것 중 90일 이상 된 것 삭제
+            r3 = conn.execute("""
+                DELETE FROM trade_orders
+                WHERE status IN ('hit_target','hit_stop','expired','cancelled')
+                  AND alert_date < ?
+            """, (cutoff_alert,))
+            conn.execute("VACUUM")  # 실제 파일 크기 축소
+            conn.commit()
+            conn.close()
+            cleaned_msg = (
+                f"\n🧹 DB 정리: scan_results -{r1.rowcount}건 "
+                f"/ alert_history -{r2.rowcount}건 "
+                f"/ trade_orders -{r3.rowcount}건"
+            )
+            log(f"[백업] DB 정리 완료{cleaned_msg}")
+        except Exception as ce:
+            log(f"[백업] DB 정리 오류: {ce}")
+
         if os.path.exists(src):
             shutil.copy2(src, dst)
             size_mb = os.path.getsize(dst) / 1024 / 1024
             log(f"[백업] DB 백업 완료: {dst} ({size_mb:.1f}MB)")
-            # 백업 성공 알림
             try:
                 from auto_trader import _send_admin
                 _send_admin(
@@ -131,9 +164,11 @@ def run_db_backup():
                     f"파일: scan_cache_{today_str}.db\n"
                     f"크기: {size_mb:.1f}MB\n"
                     f"시각: {_dt.now(KST).strftime('%Y-%m-%d %H:%M KST')}"
+                    + cleaned_msg
                 )
             except Exception:
                 pass
+
         # 7일 이상 된 백업 삭제
         for fname in os.listdir(backup_dir):
             fpath = os.path.join(backup_dir, fname)
@@ -143,7 +178,6 @@ def run_db_backup():
                 log(f"[백업] 오래된 백업 삭제: {fname}")
     except Exception as e:
         log(f"[백업] 오류: {e}")
-        # 백업 실패 알림
         try:
             from auto_trader import _send_admin
             _send_admin(f"⚠️ <b>DB 백업 실패</b>\n오류: {e}")
