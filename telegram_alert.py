@@ -876,31 +876,37 @@ def send_weekly_summary(force: bool = False):
                 active_list.append(h)
                 _seen.add(h["symbol"])
 
-        # trade_orders_multi에서 active인데 alert_history에 없는 종목 보완
+        # trade_orders / trade_orders_multi에서 active인데 alert_history에 없는 종목 보완
+        # (update_alert_status가 동기화하지만 타이밍 차이로 누락될 수 있는 경우 대비)
         try:
             from cache_db import _get_conn as _db_conn
             _conn = _db_conn()
-            multi_active = _conn.execute("""
-                SELECT symbol, name, avg_price, split_step, entry_price, target_price, stop_price, alert_date
-                FROM trade_orders_multi
-                WHERE status = 'active' AND avg_price > 0
-            """).fetchall()
+            for tbl in ("trade_orders", "trade_orders_multi"):
+                try:
+                    to_active = _conn.execute(f"""
+                        SELECT symbol, name, avg_price, split_step, entry_price, target_price, stop_price, alert_date
+                        FROM {tbl}
+                        WHERE status IN ('active','pending') AND avg_price > 0
+                    """).fetchall()
+                    for sym, name, avg_p, step, entry_p, target_p, stop_p, alert_d in to_active:
+                        if sym not in _seen:
+                            active_list.append({
+                                "symbol": sym, "name": name or sym,
+                                "status": "active",
+                                "avg_price": avg_p,
+                                "entry_price": int(entry_p or avg_p),
+                                "target_price": int(target_p or 0),
+                                "stop_price": int(stop_p or 0),
+                                "split_step": step or 1,
+                                "alert_date": alert_d or date.today().isoformat(),
+                            })
+                            _seen.add(sym)
+                except Exception:
+                    pass
             _conn.close()
-            for sym, name, avg_p, step, entry_p, target_p, stop_p, alert_d in multi_active:
-                if sym not in _seen:
-                    active_list.append({
-                        "symbol": sym, "name": name or sym,
-                        "status": "active",
-                        "avg_price": avg_p,
-                        "entry_price": int(entry_p or avg_p),
-                        "target_price": int(target_p or 0),
-                        "stop_price": int(stop_p or 0),
-                        "split_step": step or 1,
-                        "alert_date": alert_d or date.today().isoformat(),
-                    })
-                    _seen.add(sym)
         except Exception as _e:
-            print(f"[주간리포트] trade_orders_multi 보완 오류: {_e}")
+            print(f"[주간리포트] trade_orders 보완 오류: {_e}")
+
         # 이번 주 청산된 종목
         closed_this_week = [h for h in this_week if h["status"] in ("hit_target", "hit_stop", "expired")]
 
