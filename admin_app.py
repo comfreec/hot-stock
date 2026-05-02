@@ -596,10 +596,6 @@ print('OK: scan_mode =', '{_val}')
             new_app_secret = st.text_input("KIS APP SECRET", type="password",
                 placeholder="변경 시에만 입력 (비워두면 기존 유지)",
                 help="한국투자증권 Open API 시크릿")
-            new_mock       = st.selectbox("투자 모드",
-                ["1 (모의투자)", "0 (실전투자)"],
-                index=0 if os.environ.get("KIS_MOCK", "1") == "1" else 1,
-                help="1=모의투자, 0=실전투자")
 
         st.markdown("**💰 매매 설정**")
         col3, col4, col5 = st.columns(3)
@@ -625,15 +621,13 @@ print('OK: scan_mode =', '{_val}')
                         args.append(f"KIS_APP_SECRET={new_app_secret.strip()}")
                     if new_account.strip():
                         args.append(f"KIS_ACCOUNT={new_account.strip()}")
-                    args.append(f"KIS_MOCK={new_mock[0]}")
                     args.append(f"KIS_BUDGET_PER={new_budget.strip()}")
                     args.append(f"KIS_MAX_STOCKS={new_stocks.strip()}")
                     args.append(f"KIS_MAX_DAYS={new_days.strip()}")
 
                     r = subprocess.run(args, capture_output=True, text=True, timeout=90)
                     if r.returncode == 0:
-                        mode_str = "실전투자" if new_mock[0] == "0" else "모의투자"
-                        st.success(f"✅ 환경변수 저장 완료! [{mode_str}] fly 재시작 중...")
+                        st.success("✅ 모의투자 환경변수 저장 완료! fly 재시작 중...")
                         if new_mock[0] == "0":
                             st.warning("⚠️ 실전투자 모드로 전환됐습니다. 실제 주문이 실행됩니다!")
                     else:
