@@ -527,16 +527,18 @@ print('OK: scan_mode =', '{_val}')
                 try:
                     import subprocess, os
                     from datetime import datetime as _dt
+                    backup_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "db_backup")
+                    os.makedirs(backup_dir, exist_ok=True)
                     fname = f"fly_backup_{_dt.now().strftime('%Y%m%d_%H%M%S')}.db"
+                    fpath = os.path.join(backup_dir, fname)
                     r = subprocess.run(
-                        ["flyctl", "ssh", "sftp", "get", "/data/scan_cache.db", fname, "--app", "hot-stock-app"],
+                        ["flyctl", "ssh", "sftp", "get", "/data/scan_cache.db", fpath, "--app", "hot-stock-app"],
                         capture_output=True, text=True, timeout=60
                     )
-                    if os.path.exists(fname):
-                        size_mb = os.path.getsize(fname) / 1024 / 1024
-                        st.success(f"✅ 다운로드 완료: {fname} ({size_mb:.1f}MB)")
-                        # 다운로드 버튼 제공
-                        with open(fname, "rb") as f:
+                    if os.path.exists(fpath):
+                        size_mb = os.path.getsize(fpath) / 1024 / 1024
+                        st.success(f"✅ 다운로드 완료: db_backup/{fname} ({size_mb:.1f}MB)")
+                        with open(fpath, "rb") as f:
                             st.download_button(
                                 label=f"💾 {fname} 저장",
                                 data=f.read(),
@@ -627,7 +629,12 @@ print('OK: scan_mode =', '{_val}')
 
                     r = subprocess.run(args, capture_output=True, text=True, timeout=90)
                     if r.returncode == 0:
-                        st.success("✅ 모의투자 환경변수 저장 완료! fly 재시작 중...")
+                        # secrets set 후 deploy까지 실행
+                        rd = subprocess.run(
+                            ["flyctl", "secrets", "deploy", "--app", "hot-stock-app"],
+                            capture_output=True, text=True, timeout=120
+                        )
+                        st.success("✅ 모의투자 환경변수 저장 및 배포 완료!")
                         if new_mock[0] == "0":
                             st.warning("⚠️ 실전투자 모드로 전환됐습니다. 실제 주문이 실행됩니다!")
                     else:
@@ -697,7 +704,12 @@ print('OK: scan_mode =', '{_val}')
                     args.append(f"KIS_MAX_DAYS={new_real_days.strip()}")
                     r = subprocess.run(args, capture_output=True, text=True, timeout=90)
                     if r.returncode == 0:
-                        st.success("✅ 실전투자 환경변수 저장 완료! fly 재시작 중...")
+                        # secrets set 후 deploy까지 실행
+                        rd = subprocess.run(
+                            ["flyctl", "secrets", "deploy", "--app", "hot-stock-app"],
+                            capture_output=True, text=True, timeout=120
+                        )
+                        st.success("✅ 실전투자 환경변수 저장 및 배포 완료!")
                         st.warning("⚠️ 실전투자가 활성화됩니다. 실제 돈으로 주문이 실행됩니다!")
                     else:
                         st.error(f"❌ 실패: {r.stderr[:300]}")
@@ -714,6 +726,10 @@ print('OK: scan_mode =', '{_val}')
                         capture_output=True, text=True, timeout=90
                     )
                     if r.returncode == 0:
+                        subprocess.run(
+                            ["flyctl", "secrets", "deploy", "--app", "hot-stock-app"],
+                            capture_output=True, text=True, timeout=120
+                        )
                         st.success("✅ 실전투자 비활성화 완료")
                     else:
                         st.error(f"❌ 실패: {r.stderr[:300]}")
