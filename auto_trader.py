@@ -56,6 +56,9 @@ def get_active_modes() -> list:
 _balance_cache = {"data": None, "ts": 0.0}
 _BALANCE_TTL = 300  # 5분
 
+# ── 가격 조회 실패 카운터 (상장폐지 감지용) ──────────────────────
+_price_fail_count: dict = {}
+
 def _get_cached_balance(client) -> dict:
     """잔고를 5분 캐시로 조회 (KIS API 한도 절약)"""
     import time as _time
@@ -1226,14 +1229,19 @@ def monitor_positions(mode: str = "mock"):
         code   = symbol.replace(".KS", "").replace(".KQ", "")
         cur    = _get_price_yfinance_first(symbol, client)
         if cur is None:
-            # 가격 조회 완전 실패 → 거래정지/상장폐지 가능성 알림
-            print(f"[자동매매] {order['name']} 가격 조회 실패 - 거래정지 가능성")
-            _send_admin(
-                f"⚠️ <b>가격 조회 실패</b>\n"
-                f"<b>{order['name']}</b> ({symbol})\n"
-                f"KIS/yfinance 모두 가격 조회 불가\n"
-                f"거래정지 또는 상장폐지 여부 확인 필요"
-            )
+            # 가격 조회 실패 횟수 누적 (메모리 캐시)
+            _price_fail_count[symbol] = _price_fail_count.get(symbol, 0) + 1
+            fail_cnt = _price_fail_count[symbol]
+            print(f"[자동매매] {order['name']} 가격 조회 실패 ({fail_cnt}회) - 거래정지 가능성")
+            if fail_cnt >= 3:
+                # 3회 연속 실패 → expired 처리하고 알림
+                _update_order(order["id"], status="expired", exit_date=today)
+                _price_fail_count.pop(symbol, None)
+                _send_admin(
+                    f"⚠️ <b>가격 조회 3회 실패 → expired 처리</b>\n"
+                    f"<b>{order['name']}</b> ({symbol})\n"
+                    f"거래정지 또는 상장폐지로 판단하여 모니터링에서 제외했습니다."
+                )
             continue
 
         # pending 종목은 morning_reorder()에서 체결 확인 처리

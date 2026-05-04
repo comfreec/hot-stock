@@ -67,8 +67,10 @@ def _get_db_path() -> str:
 
 
 def _get_conn():
-    conn = sqlite3.connect(_get_db_path(), check_same_thread=False)
+    conn = sqlite3.connect(_get_db_path(), check_same_thread=False, timeout=30)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
     _migrate(conn)
     return conn
 
