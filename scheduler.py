@@ -124,7 +124,10 @@ def run_db_backup():
         cleaned_msg = ""
         try:
             import sqlite3
-            conn = sqlite3.connect(src)
+            # WAL + timeout으로 잠금 충돌 방지
+            conn = sqlite3.connect(src, timeout=30)
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA synchronous=NORMAL")
             # 1. scan_results: 30일 이상 된 것 삭제
             cutoff_scan = (_dt.now(KST).date() - __import__('datetime').timedelta(days=30)).isoformat()
             r1 = conn.execute("DELETE FROM scan_results WHERE scan_date < ?", (cutoff_scan,))
@@ -141,7 +144,6 @@ def run_db_backup():
                 WHERE status IN ('hit_target','hit_stop','expired','cancelled')
                   AND alert_date < ?
             """, (cutoff_alert,))
-            conn.execute("VACUUM")  # 실제 파일 크기 축소
             conn.commit()
             conn.close()
             cleaned_msg = (
@@ -155,6 +157,15 @@ def run_db_backup():
 
         if os.path.exists(src):
             shutil.copy2(src, dst)
+            # VACUUM은 원본 대신 백업 파일에만 적용 (원본 잠금 방지)
+            try:
+                import sqlite3 as _sq
+                _vc = _sq.connect(dst, timeout=60)
+                _vc.execute("VACUUM")
+                _vc.close()
+                log(f"[백업] 백업 파일 VACUUM 완료")
+            except Exception as _ve:
+                log(f"[백업] VACUUM 오류(무시): {_ve}")
             size_mb = os.path.getsize(dst) / 1024 / 1024
             log(f"[백업] DB 백업 완료: {dst} ({size_mb:.1f}MB)")
             try:
