@@ -396,6 +396,13 @@ def update_alert_status():
                         status = 'active'
 
                 if status == 'active':
+                    # 오늘 데이터인지 확인 (어제 데이터로 잘못 처리 방지)
+                    last_date = df.index[-1]
+                    if hasattr(last_date, 'date'):
+                        last_date = last_date.date()
+                    import datetime as _dt
+                    if last_date < _dt.date.today():
+                        continue  # 오늘 데이터 없으면 스킵
                     if day_high >= target:
                         exit_price = target
                         ret = (exit_price - base) / base * 100 if base else 0
