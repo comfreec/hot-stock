@@ -1666,8 +1666,9 @@ def send_trade_report(mode: str = "mock"):
                 FROM alert_history WHERE status IN ('active','pending')
             """).fetchall()
             _ah_conn.close()
-            # trade_orders에 이미 있는 종목 제외
-            to_syms = {r[2] for r in active_rows}  # symbol 컬럼
+            # trade_orders active/pending에 이미 있는 종목 제외
+            to_syms = {r[2] for r in active_rows}  # active 종목
+            to_syms |= {r[0] for r in pending_rows}  # pending 종목도 제외
             ah_extra = [r for r in ah_active if r[0] not in to_syms]
             # active_rows 형식으로 변환 (id=0, qty=1 기본값)
             active_rows = list(active_rows) + [
