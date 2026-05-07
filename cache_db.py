@@ -214,7 +214,8 @@ def update_alert_status():
         conn = _get_conn()
 
         # ══════════════════════════════════════════════════════════
-        # STEP 1: trade_orders → alert_history 양방향 동기화
+        # STEP 1: trade_orders → alert_history 단방향 동기화
+        # (avg_price/split_step 업데이트만, 종료 처리는 하지 않음)
         # ══════════════════════════════════════════════════════════
         try:
             trade_rows = conn.execute("""
@@ -222,7 +223,7 @@ def update_alert_status():
                        target_price, entry_price, alert_date,
                        status, exit_price, exit_date, return_pct
                 FROM trade_orders
-                WHERE status IN ('active','pending','hit_target','hit_stop','expired','cancelled')
+                WHERE status IN ('active','pending')
                   AND avg_price >= 0
                   AND (mode IS NULL OR mode = 'mock')
                 ORDER BY id DESC
@@ -240,46 +241,27 @@ def update_alert_status():
 
                 if existing:
                     ah_id, ah_status = existing
-                    if to_status in ('active', 'pending'):
-                        # 진행 중 → avg_price/split_step/stop_price 동기화
-                        conn.execute("""
-                            UPDATE alert_history
-                            SET avg_price=?, split_step=?, stop_price=?
-                            WHERE id=?
-                        """, (avg_p, step or 1, stop_p, ah_id))
-                    elif to_status in ('hit_target', 'hit_stop', 'expired', 'cancelled'):
-                        # 종료됨 → alert_history도 동일하게 종료 처리
-                        ah_new_status = to_status if to_status in ('hit_target', 'hit_stop', 'expired') else 'expired'
-                        base = avg_p if avg_p and avg_p > 0 else entry_p
-                        if exit_p and base and base > 0:
-                            calc_ret = (exit_p - base) / base * 100
-                        else:
-                            calc_ret = ret_pct
-                        conn.execute("""
-                            UPDATE alert_history
-                            SET status=?, exit_price=?, exit_date=?, return_pct=?, avg_price=?, split_step=?
-                            WHERE id=?
-                        """, (ah_new_status, exit_p, exit_d or date.today().isoformat(),
-                              round(calc_ret, 2) if calc_ret is not None else None,
-                              avg_p, step or 1, ah_id))
+                    # 진행 중 → avg_price/split_step/stop_price 동기화만
+                    conn.execute("""
+                        UPDATE alert_history
+                        SET avg_price=?, split_step=?, stop_price=?
+                        WHERE id=?
+                    """, (avg_p, step or 1, stop_p, ah_id))
                 else:
-                    # alert_history에 없는 종목
-                    if to_status in ('active', 'pending'):
-                        # 자동매매로만 매수된 종목 → 신규 삽입
-                        conn.execute("""
-                            INSERT OR IGNORE INTO alert_history
-                            (alert_date, symbol, name, score, entry_price, entry_label,
-                             target_price, stop_price, rr_ratio, status, avg_price, split_step, created_at)
-                            VALUES (?,?,?,0,?,?,?,?,NULL,'active',?,?,?)
-                        """, (
-                            alert_date or date.today().isoformat(),
-                            sym, name or sym,
-                            int(entry_p or avg_p or 0), "자동매매",
-                            int(target_p or 0), int(stop_p or 0),
-                            avg_p, step or 1,
-                            datetime.now().isoformat()
-                        ))
-                    # 이미 종료된 종목은 삽입 불필요
+                    # alert_history에 없는 종목 → 자동매매로만 매수된 경우 신규 삽입
+                    conn.execute("""
+                        INSERT OR IGNORE INTO alert_history
+                        (alert_date, symbol, name, score, entry_price, entry_label,
+                         target_price, stop_price, rr_ratio, status, avg_price, split_step, created_at)
+                        VALUES (?,?,?,0,?,?,?,?,NULL,'active',?,?,?)
+                    """, (
+                        alert_date or date.today().isoformat(),
+                        sym, name or sym,
+                        int(entry_p or avg_p or 0), "자동매매",
+                        int(target_p or 0), int(stop_p or 0),
+                        avg_p, step or 1,
+                        datetime.now().isoformat()
+                    ))
 
             conn.commit()
         except Exception as e:
@@ -293,7 +275,7 @@ def update_alert_status():
                        target_price, entry_price, alert_date,
                        status, exit_price, exit_date, return_pct
                 FROM trade_orders_multi
-                WHERE status IN ('active','pending','hit_target','hit_stop','expired','cancelled')
+                WHERE status IN ('active','pending')
                   AND avg_price >= 0
             """).fetchall()
 
@@ -309,23 +291,11 @@ def update_alert_status():
 
                 if existing:
                     ah_id, ah_status = existing
-                    if to_status in ('active', 'pending'):
-                        conn.execute("""
-                            UPDATE alert_history
-                            SET avg_price=?, split_step=?, stop_price=?
-                            WHERE id=?
-                        """, (avg_p, step or 1, stop_p, ah_id))
-                    elif to_status in ('hit_target', 'hit_stop', 'expired', 'cancelled'):
-                        ah_new_status = to_status if to_status in ('hit_target', 'hit_stop', 'expired') else 'expired'
-                        base = avg_p if avg_p and avg_p > 0 else entry_p
-                        calc_ret = (exit_p - base) / base * 100 if (exit_p and base and base > 0) else ret_pct
-                        conn.execute("""
-                            UPDATE alert_history
-                            SET status=?, exit_price=?, exit_date=?, return_pct=?, avg_price=?, split_step=?
-                            WHERE id=?
-                        """, (ah_new_status, exit_p, exit_d or date.today().isoformat(),
-                              round(calc_ret, 2) if calc_ret is not None else None,
-                              avg_p, step or 1, ah_id))
+                    conn.execute("""
+                        UPDATE alert_history
+                        SET avg_price=?, split_step=?, stop_price=?
+                        WHERE id=?
+                    """, (avg_p, step or 1, stop_p, ah_id))
                 else:
                     if to_status in ('active', 'pending'):
                         conn.execute("""
