@@ -1655,6 +1655,28 @@ def send_trade_report(mode: str = "mock"):
             WHERE status IN ('hit_target','hit_stop')
               AND exit_date >= ? AND return_pct IS NOT NULL AND mode=?
         """, (month_start, mode)).fetchall()
+
+        # ── alert_history active 종목 보완 (trade_orders에 없는 채널 알림 종목) ──
+        try:
+            from cache_db import _get_conn as _db_conn
+            _ah_conn = _db_conn()
+            ah_active = _ah_conn.execute("""
+                SELECT symbol, name, avg_price, target_price, stop_price,
+                       split_step, entry_price, alert_date
+                FROM alert_history WHERE status IN ('active','pending')
+            """).fetchall()
+            _ah_conn.close()
+            # trade_orders에 이미 있는 종목 제외
+            to_syms = {r[2] for r in active_rows}  # symbol 컬럼
+            ah_extra = [r for r in ah_active if r[0] not in to_syms]
+            # active_rows 형식으로 변환 (id=0, qty=1 기본값)
+            active_rows = list(active_rows) + [
+                (0, r[1], r[0], r[2], r[3], r[4], 1, r[5] or 1, r[6], r[7])
+                for r in ah_extra
+            ]
+        except Exception as _e:
+            print(f"[리포트] alert_history 보완 오류: {_e}")
+
         conn.close()
 
         # ── 잔고 조회 ─────────────────────────────────────────────
