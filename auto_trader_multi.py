@@ -238,7 +238,8 @@ class UserKISClient(_BaseKISClient):
         self.app_key    = user["app_key"]
         self.app_secret = user["app_secret"]
         self.account    = user["account"]
-        self.mock       = bool(user.get("mock", 1))
+        # 실전매매 일시 중지 - 항상 모의 모드로
+        self.mock       = True
         self.base       = self.MOCK_BASE if self.mock else self.REAL_BASE
         self._token     = None
         self._token_exp = None

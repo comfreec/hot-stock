@@ -797,18 +797,26 @@ def send_performance_update():
             lines.append("─" * 16)
             for h in active_list:
                 days       = (date.today() - date.fromisoformat(h["alert_date"])).days
-                base_price = h.get("avg_price") or h.get("entry_price")
+                _ap = h.get("avg_price")
+                try:
+                    _ap_f = float(_ap) if _ap is not None else 0.0
+                except (TypeError, ValueError):
+                    _ap_f = 0.0
+                # 평단만 실현손익 기준 — entry_price는 스캔 시 계획가(240선)라 시장가 체결보다 낮으면 수익률 과대
+                base_price = _ap_f if _ap_f > 0 else h.get("entry_price")
                 avg_str    = f"₩{base_price:,.0f}" if base_price else "미정"
                 target_str = f"₩{h['target_price']:,.0f}" if h.get("target_price") else "?"
                 stop_str   = f"₩{h['stop_price']:,.0f}"   if h.get("stop_price")   else "?"
-                # 분할매수 차수 표시
                 split_step = h.get("split_step", 1) or 1
-                split_tag  = f" <i>({split_step}차 평균)</i>" if split_step > 1 else ""
+                split_icons = "".join(["🔵" if i <= split_step else "⚪" for i in range(1, 4)])
 
                 cur_line = ""
                 try:
                     if base_price:
-                        cur = float(yf.Ticker(h["symbol"]).history(period="1d")["Close"].iloc[-1])
+                        _cdf = yf.Ticker(h["symbol"]).history(period="5d").dropna(subset=["Close"])
+                        if len(_cdf) == 0:
+                            raise ValueError("no close")
+                        cur = float(_cdf["Close"].iloc[-1])
                         ret = (cur - base_price) / base_price * 100
                         entry  = base_price
                         target = h.get("target_price")
@@ -926,7 +934,12 @@ def send_weekly_summary(force: bool = False):
             lines.append(f"\n🟢 <b>매수 중</b>  ({len(active_list)}종목)")
             lines.append("─" * 16)
             for h in active_list:
-                base_price = h.get("avg_price") or h.get("entry_price")  # 자동매매 평단가 우선
+                _ap = h.get("avg_price")
+                try:
+                    _ap_f = float(_ap) if _ap is not None else 0.0
+                except (TypeError, ValueError):
+                    _ap_f = 0.0
+                base_price = _ap_f if _ap_f > 0 else h.get("entry_price")
                 avg_str    = f"₩{base_price:,.0f}" if base_price else "미정"
                 target_str = f"₩{h['target_price']:,.0f}" if h.get("target_price") else "?"
                 stop_str   = f"₩{h['stop_price']:,.0f}"   if h.get("stop_price")   else "?"

@@ -47,8 +47,9 @@ def get_active_modes() -> list:
     modes = []
     if is_enabled("mock"):
         modes.append("mock")
-    if is_enabled("real"):
-        modes.append("real")
+    # 실전매매 일시 중지
+    # if is_enabled("real"):
+    #     modes.append("real")
     return modes
 
 
@@ -1667,8 +1668,9 @@ def send_trade_report(mode: str = "mock"):
             """).fetchall()
             _ah_conn.close()
             # trade_orders active/pending에 이미 있는 종목 제외
-            to_syms = {r[2] for r in active_rows}  # active 종목
-            to_syms |= {r[0] for r in pending_rows}  # pending 종목도 제외
+            to_syms = {r[2] for r in active_rows}  # active 종목 (tuple: id,name,symbol,...)
+            # pending_rows = (name, symbol, ...) → 심볼은 r[1]
+            to_syms |= {r[1] for r in pending_rows}
             ah_extra = [r for r in ah_active if r[0] not in to_syms]
             # active_rows 형식으로 변환 (id=0, qty=1 기본값)
             active_rows = list(active_rows) + [
@@ -1702,7 +1704,11 @@ def send_trade_report(mode: str = "mock"):
         active_data  = []
         for row in active_rows:
             rid, name, sym, avg_p, target, stop, qty, step, entry, alert_date = row
-            avg_p = float(avg_p or entry or 0)
+            # 평단(실제 체결)이 있으면 필수 사용 — entry_price는 240선 계획가라 시장가 매수와 괴리 시 가짜 수익률 발생
+            if avg_p is not None and float(avg_p) > 0:
+                avg_p = float(avg_p)
+            else:
+                avg_p = float(entry or 0)
             cur   = client.get_price(sym)
             # 현재가 조회 실패 시 yfinance 폴백
             if cur is None:
