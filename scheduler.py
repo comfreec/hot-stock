@@ -261,107 +261,37 @@ def main():
                          "last_backup_date": last_backup_date})
             run_db_backup()
 
-        # 09:05 KST 자동매매 주문 (전날 스캔 결과 기반 신규 매수 + 미체결 재주문)
-        if is_weekday and now_kst.hour == 9 and now_kst.minute >= 5 and last_reorder_date != today:
-            last_reorder_date = today
-            _save_state({"last_scan_date": last_scan_date, "last_perf_date": last_perf_date,
-                         "last_crypto_hour": last_crypto_hour, "last_reorder_date": last_reorder_date})
+        # 09:05 KST 자동매매 주문 - 비활성화
+        # if is_weekday and now_kst.hour == 9 and now_kst.minute >= 5 and last_reorder_date != today:
+        #     (자동매매 비활성화)
 
-            try:
-                from auto_trader import morning_reorder, place_orders, get_active_modes
-                from cache_db import load_scan
-                from datetime import timedelta as _td
-
-                yesterday = (now_kst.date() - _td(days=1)).isoformat()
-                prev_results = load_scan(yesterday)
-
-                for _mode in get_active_modes():
-                    try:
-                        morning_reorder(_mode)
-                        log(f"[자동매매/{_mode}] 재주문 완료")
-                        if prev_results:
-                            place_orders(prev_results, _mode)
-                            log(f"[자동매매/{_mode}] 전날 스캔 {len(prev_results)}개 → 신규 매수 주문")
-                        else:
-                            log(f"[자동매매/{_mode}] 전날 스캔 결과 없음")
-                    except Exception as e:
-                        log(f"[자동매매/{_mode}] 오류: {e}")
-                        try:
-                            from auto_trader import _send_admin
-                            _send_admin(f"⚠️ <b>자동매매/{_mode} 오류</b>\n{e}")
-                        except:
-                            pass
-            except Exception as e:
-                log(f"[자동매매] 초기화 오류: {e}")
-
-            # 멀티유저 재주문 + 신규 주문
-            try:
-                from auto_trader_multi import run_all_users_morning_reorder, run_all_users_place_orders
-                from cache_db import load_scan
-                from datetime import timedelta as _td
-                run_all_users_morning_reorder()
-                yesterday = (now_kst.date() - _td(days=1)).isoformat()
-                prev_results = load_scan(yesterday)
-                if prev_results:
-                    run_all_users_place_orders(prev_results)
-                log("[멀티유저] 재주문/신규주문 완료")
-            except Exception as e:
-                log(f"[멀티유저] 재주문 오류: {e}")
-
-        # 09:10 KST 잔고검증 + 주간 리포트
+        # 09:10 KST 채널 주간 리포트만 전송 (자동매매 리포트 비활성화)
         if is_weekday and now_kst.hour == 9 and now_kst.minute >= 10 and last_perf_date != today:
             last_perf_date = today
             _save_state({"last_scan_date": last_scan_date, "last_perf_date": last_perf_date,
                          "last_crypto_hour": last_crypto_hour, "last_reorder_date": last_reorder_date})
             run_performance()
-            try:
-                from auto_trader import verify_positions, send_trade_report, get_active_modes
-                for _mode in get_active_modes():
-                    try:
-                        verify_positions(_mode)
-                        log(f"[자동매매/{_mode}] 잔고 검증 완료")
-                    except Exception as e:
-                        log(f"[자동매매/{_mode}] 잔고 검증 오류: {e}")
-                    try:
-                        send_trade_report(_mode)
-                        log(f"[자동매매/{_mode}] 리포트 전송 완료")
-                    except Exception as e:
-                        log(f"[자동매매/{_mode}] 리포트 오류: {e}")
-            except Exception as e:
-                log(f"[자동매매] 리포트 초기화 오류: {e}")
+            # 자동매매 잔고검증/리포트 비활성화
+            # try:
+            #     from auto_trader import verify_positions, send_trade_report, get_active_modes
+            #     ...
+            # except Exception as e:
+            #     log(f"[자동매매] 리포트 초기화 오류: {e}")
 
-        # 장중 모니터링 09:05~15:30 KST
-        if is_weekday:
-            h, m = now_kst.hour, now_kst.minute
-            in_market = (h == 9 and m >= 5) or (10 <= h <= 14) or (h == 15 and m <= 20)
-            if in_market:
-                try:
-                    from auto_trader import monitor_positions, get_active_modes
-                    for _mode in get_active_modes():
-                        try:
-                            monitor_positions(_mode)
-                        except Exception as e:
-                            log(f"[자동매매/{_mode}] 모니터링 오류: {e}")
-                except Exception as e:
-                    log(f"[자동매매] 모니터링 초기화 오류: {e}")
+        # 장중 모니터링 비활성화
+        # if is_weekday:
+        #     ...monitor_positions...
 
-        # 멀티유저 장중 모니터링 (KIS_APP_KEY 없어도 독립 실행)
-        if is_weekday:
-            h, m = now_kst.hour, now_kst.minute
-            in_market = (h == 9 and m >= 5) or (10 <= h <= 14) or (h == 15 and m <= 20)
-            if in_market:
-                try:
-                    from auto_trader_multi import run_all_users_monitor
-                    run_all_users_monitor()
-                except Exception as e:
-                    log(f"[멀티유저] 모니터링 오류: {e}")
+        # 멀티유저 장중 모니터링 비활성화
+        # if is_weekday:
+        #     ...run_all_users_monitor...
 
-        # 봇 커맨드 폴링 (30초마다)
-        try:
-            from auto_trader_multi import poll_bot_commands
-            poll_bot_commands()
-        except Exception as e:
-            log(f"[멀티유저] 봇 폴링 오류: {e}")
+        # 봇 커맨드 폴링 비활성화
+        # try:
+        #     from auto_trader_multi import poll_bot_commands
+        #     poll_bot_commands()
+        # except Exception as e:
+        #     log(f"[멀티유저] 봇 폴링 오류: {e}")
 
         # 15:40 KST 주식 스캔
         if is_weekday and now_kst.hour == 15 and now_kst.minute >= 40 and last_scan_date != today:
@@ -383,12 +313,12 @@ def main():
 
         time.sleep(30)
 
-        # 7번: 스케줄러 heartbeat 기록 (매 루프마다)
-        try:
-            from auto_trader import scheduler_heartbeat
-            scheduler_heartbeat()
-        except Exception:
-            pass
+        # 7번: 스케줄러 heartbeat 기록 비활성화
+        # try:
+        #     from auto_trader import scheduler_heartbeat
+        #     scheduler_heartbeat()
+        # except Exception:
+        #     pass
 
 if __name__ == "__main__":
     main()
